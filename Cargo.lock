@@ -3791,6 +3791,8 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "image",
+ "tempfile",
+ "viewer-cli",
  "viewer-core",
  "viewer-opensysml",
 ]

@@ -136,6 +136,27 @@ fn nodes_do_not_overlap_and_fit_inside_the_scene() {
 }
 
 #[test]
+fn finds_the_element_whose_node_is_under_a_point() {
+    let scene = general(&vehicles(), "Vehicles");
+    let car = scene.node_bounds(&qn("Vehicles::Car")).unwrap();
+    let inside = viewer_core::scene::Point::new(car.x + 5.0, car.bottom() - 5.0);
+    let outside = viewer_core::scene::Point::new(scene.width + 10.0, 0.0);
+
+    assert_eq!(scene.element_at(inside), Some(&qn("Vehicles::Car")));
+    assert_eq!(scene.element_at(outside), None);
+}
+
+#[test]
+fn general_diagrams_are_rooted_at_packages_and_definitions() {
+    let model = vehicles();
+    let accepts = |name: &str| DiagramKind::General.accepts_root(model.element(&qn(name)).unwrap());
+
+    assert!(accepts("Vehicles"));
+    assert!(accepts("Vehicles::Car"));
+    assert!(!accepts("Vehicles::TopSpeed"));
+}
+
+#[test]
 fn an_empty_package_gives_an_empty_diagram() {
     let model = Model::builder().package("Empty").build();
 

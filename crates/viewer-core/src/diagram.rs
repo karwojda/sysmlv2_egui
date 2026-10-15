@@ -13,6 +13,16 @@ pub enum DiagramKind {
     General,
 }
 
+impl DiagramKind {
+    /// Whether a Diagram of this kind can be rooted at `element`: a General
+    /// Diagram shows the members of a package or definition.
+    pub fn accepts_root(self, element: &Element) -> bool {
+        match self {
+            DiagramKind::General => element.kind == ElementKind::Package || element.kind.is_definition(),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum DiagramError {
     #[error("root element `{0}` does not exist in the Model")]

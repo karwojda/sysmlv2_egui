@@ -1,6 +1,6 @@
 //! Dev tool: runs the viewer on a Model folder, waits, saves a screenshot
 //! of the window as PNG and exits.
-//! `cargo run -p viewer-app --example screenshot -- <model-folder> <out.png> [filter]`
+//! `cargo run -p viewer-app --example screenshot -- <model-folder> <out.png> [root-element]`
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -48,6 +48,7 @@ fn main() -> eframe::Result {
     let mut args = std::env::args_os().skip(1);
     let folder = PathBuf::from(args.next().expect("model folder"));
     let out = PathBuf::from(args.next().expect("output png"));
+    let root = args.next().map(|r| viewer_core::QualifiedName::new(r.to_string_lossy()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
         ..Default::default()
@@ -56,7 +57,7 @@ fn main() -> eframe::Result {
         "SysML v2 Viewer",
         options,
         Box::new(move |cc| {
-            let app = ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::new()), Some(folder));
+            let app = ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::new()), Some(folder), root);
             Ok(Box::new(Screenshot { app, out, started: Instant::now(), requested: false, saved: Default::default() }))
         }),
     )

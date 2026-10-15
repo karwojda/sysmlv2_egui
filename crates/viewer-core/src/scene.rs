@@ -37,6 +37,10 @@ impl Rect {
         self.x + self.width / 2.0
     }
 
+    pub fn contains(&self, point: Point) -> bool {
+        point.x >= self.x && point.x <= self.right() && point.y >= self.y && point.y <= self.bottom()
+    }
+
     pub fn intersects(&self, other: &Rect) -> bool {
         self.x < other.right()
             && other.x < self.right()
@@ -137,6 +141,14 @@ impl Scene {
     pub fn node_bounds(&self, element: &QualifiedName) -> Option<Rect> {
         self.items.iter().find_map(|item| match (&item.depicts, &item.shape) {
             (Depicts::Element(e), Shape::Rect { rect, .. }) if e == element => Some(*rect),
+            _ => None,
+        })
+    }
+
+    /// The element whose node is topmost at `point`, if any.
+    pub fn element_at(&self, point: Point) -> Option<&QualifiedName> {
+        self.items.iter().rev().find_map(|item| match (&item.depicts, &item.shape) {
+            (Depicts::Element(e), Shape::Rect { rect, .. }) if rect.contains(point) => Some(e),
             _ => None,
         })
     }
