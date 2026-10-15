@@ -48,6 +48,15 @@ impl From<&str> for QualifiedName {
 pub enum ElementKind {
     Package,
     PartDefinition,
+    PartUsage,
+    AttributeDefinition,
+    AttributeUsage,
+    PortDefinition,
+    PortUsage,
+    ConnectionDefinition,
+    ConnectionUsage,
+    InterfaceDefinition,
+    InterfaceUsage,
     Unsupported(String),
 }
 
@@ -57,8 +66,82 @@ impl ElementKind {
         match self {
             ElementKind::Package => "package",
             ElementKind::PartDefinition => "part def",
+            ElementKind::PartUsage => "part",
+            ElementKind::AttributeDefinition => "attribute def",
+            ElementKind::AttributeUsage => "attribute",
+            ElementKind::PortDefinition => "port def",
+            ElementKind::PortUsage => "port",
+            ElementKind::ConnectionDefinition => "connection def",
+            ElementKind::ConnectionUsage => "connection",
+            ElementKind::InterfaceDefinition => "interface def",
+            ElementKind::InterfaceUsage => "interface",
             ElementKind::Unsupported(keyword) => keyword,
         }
+    }
+
+    pub fn is_definition(&self) -> bool {
+        matches!(
+            self,
+            ElementKind::PartDefinition
+                | ElementKind::AttributeDefinition
+                | ElementKind::PortDefinition
+                | ElementKind::ConnectionDefinition
+                | ElementKind::InterfaceDefinition
+        )
+    }
+
+    /// Connection and interface usages, which join other usages.
+    pub fn is_connection(&self) -> bool {
+        matches!(self, ElementKind::ConnectionUsage | ElementKind::InterfaceUsage)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    In,
+    Out,
+    InOut,
+}
+
+impl Direction {
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Direction::In => "in",
+            Direction::Out => "out",
+            Direction::InOut => "inout",
+        }
+    }
+}
+
+/// Declared bounds, as written: `lower` may be a number, `upper` a number
+/// or `*`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Multiplicity {
+    pub lower: String,
+    pub upper: String,
+}
+
+impl fmt::Display for Multiplicity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.lower == self.upper {
+            write!(f, "[{}]", self.upper)
+        } else {
+            write!(f, "[{}..{}]", self.lower, self.upper)
+        }
+    }
+}
+
+/// One end of a connection: the chain of features it reaches, such as
+/// `[Vehicle::tanks, Tank::fuelOut]` for `tanks.fuelOut`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConnectionEnd {
+    pub path: Vec<QualifiedName>,
+}
+
+impl fmt::Display for ConnectionEnd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names: Vec<&str> = self.path.iter().map(QualifiedName::simple_name).collect();
+        f.write_str(&names.join("."))
     }
 }
 
@@ -76,7 +159,37 @@ pub struct Element {
     pub owner: Option<QualifiedName>,
     /// Elements this one specializes (`:>`), by qualified name.
     pub specializes: Vec<QualifiedName>,
+    /// The definition a usage is typed by (`:`).
+    pub typed_by: Option<QualifiedName>,
+    /// Whether a port is typed by the conjugate of its definition (`~`).
+    pub conjugated: bool,
+    pub multiplicity: Option<Multiplicity>,
+    pub direction: Option<Direction>,
+    /// The ends a connection or interface usage joins, in order.
+    pub ends: Vec<ConnectionEnd>,
+    pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
+}
+
+impl Element {
+    /// A plain element of `kind`; its name and owner come from the
+    /// qualified name and every other property is empty.
+    pub fn new(qualified_name: QualifiedName, kind: ElementKind) -> Self {
+        Self {
+            name: qualified_name.simple_name().to_owned(),
+            owner: qualified_name.parent(),
+            qualified_name,
+            kind,
+            specializes: Vec::new(),
+            typed_by: None,
+            conjugated: false,
+            multiplicity: None,
+            direction: None,
+            ends: Vec::new(),
+            documentation: None,
+            source: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,7 +252,8 @@ impl Model {
 }
 
 /// Builds a Model by hand, for tests and the fake backend. Owners and names
-/// are derived from qualified names.
+/// are derived from qualified names; property setters apply to the most
+/// recently added element.
 #[derive(Default)]
 pub struct ModelBuilder {
     elements: Vec<Element>,
@@ -155,31 +269,90 @@ impl ModelBuilder {
         self.element(name, ElementKind::PartDefinition)
     }
 
+    pub fn part(self, name: &str) -> Self {
+        self.element(name, ElementKind::PartUsage)
+    }
+
+    pub fn attribute_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::AttributeDefinition)
+    }
+
+    pub fn attribute(self, name: &str) -> Self {
+        self.element(name, ElementKind::AttributeUsage)
+    }
+
+    pub fn port_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::PortDefinition)
+    }
+
+    pub fn port(self, name: &str) -> Self {
+        self.element(name, ElementKind::PortUsage)
+    }
+
+    pub fn connection_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::ConnectionDefinition)
+    }
+
+    pub fn connection(self, name: &str) -> Self {
+        self.element(name, ElementKind::ConnectionUsage)
+    }
+
+    pub fn interface_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::InterfaceDefinition)
+    }
+
+    pub fn interface(self, name: &str) -> Self {
+        self.element(name, ElementKind::InterfaceUsage)
+    }
+
     pub fn unsupported(self, name: &str, keyword: &str) -> Self {
         self.element(name, ElementKind::Unsupported(keyword.to_owned()))
     }
 
     pub fn element(mut self, name: &str, kind: ElementKind) -> Self {
-        let qualified_name = QualifiedName::new(name);
-        self.elements.push(Element {
-            name: qualified_name.simple_name().to_owned(),
-            owner: qualified_name.parent(),
-            qualified_name,
-            kind,
-            specializes: Vec::new(),
-            source: None,
-        });
+        self.elements.push(Element::new(QualifiedName::new(name), kind));
         self
     }
 
-    /// Makes the most recently added element specialize `general`.
     pub fn specializes(mut self, general: &str) -> Self {
         self.last().specializes.push(QualifiedName::new(general));
         self
     }
 
-    /// Sets the source location of the most recently added element.
-    pub fn at(mut self, file: &str, line: u32) -> Self {
+    pub fn typed_by(mut self, definition: &str) -> Self {
+        self.last().typed_by = Some(QualifiedName::new(definition));
+        self
+    }
+
+    pub fn conjugated(mut self) -> Self {
+        self.last().conjugated = true;
+        self
+    }
+
+    pub fn multiplicity(mut self, lower: &str, upper: &str) -> Self {
+        self.last().multiplicity = Some(Multiplicity { lower: lower.to_owned(), upper: upper.to_owned() });
+        self
+    }
+
+    pub fn direction(mut self, direction: Direction) -> Self {
+        self.last().direction = Some(direction);
+        self
+    }
+
+    /// Adds an end reaching the given feature chain, e.g.
+    /// `&["Vehicle::tanks", "Tank::fuelOut"]`.
+    pub fn end(mut self, path: &[&str]) -> Self {
+        let path = path.iter().map(|p| QualifiedName::new(*p)).collect();
+        self.last().ends.push(ConnectionEnd { path });
+        self
+    }
+
+    pub fn doc(mut self, text: &str) -> Self {
+        self.last().documentation = Some(text.to_owned());
+        self
+    }
+
+    pub fn at(mut self, file: impl Into<PathBuf>, line: u32) -> Self {
         self.last().source = Some(SourceLocation { file: file.into(), line });
         self
     }

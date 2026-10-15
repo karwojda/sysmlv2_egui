@@ -4,11 +4,22 @@
 //! The client locates the service binary itself: `$OPENSYSML_GRPC_BINARY`,
 //! then its cache in `~/.opensysml/bin`, then a pinned download, then `$PATH`.
 //! The private service it starts stops when the last connection is dropped.
+//!
+//! Elements come from two views of the parsed Model. The symbol tree gives
+//! kinds, owners, typing (library types included), multiplicity,
+//! specializations and port direction. The standard API's JSON element form,
+//! which the service marks experimental, adds what the symbol tree lacks:
+//! connection ends, documentation, port conjugation and source lines.
 
+mod api_json;
+
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
-use viewer_core::model::{Diagnostic, Element, ElementKind, Model, QualifiedName, Severity, SourceLocation};
+use viewer_core::model::{
+    Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity, SourceLocation,
+};
 use viewer_core::{BackendError, ModelBackend};
 
 const MODEL_EXTENSIONS: [&str; 2] = ["sysml", "kerml"];
@@ -43,8 +54,9 @@ impl ModelBackend for OpenSysmlBackend {
             return Ok(Model::default());
         }
         let documents: Vec<SourceDocument> = files.iter().map(SourceDocument::file).collect();
+        let connection = self.connection()?.clone();
 
-        let parsed = match self.connection()?.parse_sources(&documents, &SourcesOptions::default()) {
+        let parsed = match connection.parse_sources(&documents, &SourcesOptions::default()) {
             Ok(parsed) => parsed,
             // The service refused the whole Model; its diagnostics say why.
             Err(opensysml::Error::ModelErrors { message, diagnostics }) => {
@@ -57,12 +69,21 @@ impl ModelBackend for OpenSysmlBackend {
             Err(error) => return Err(unavailable(error)),
         };
 
-        let mut elements = Vec::new();
+        let mut elements = BTreeMap::new();
         for root in parsed.roots() {
             collect(root, None, &mut elements)?;
         }
-        let diagnostics = parsed.diagnostics().iter().map(diagnostic).collect();
-        Ok(Model::new(elements, diagnostics))
+        let mut diagnostics: Vec<Diagnostic> = parsed.diagnostics().iter().map(diagnostic).collect();
+        if let Err(error) = api_json::enrich(&connection, &parsed, &mut elements) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "could not read connection ends, documentation and source lines from the service: {error}"
+                ),
+                location: None,
+            });
+        }
+        Ok(Model::new(elements.into_values(), diagnostics))
     }
 }
 
@@ -89,27 +110,41 @@ fn model_files(folder: &Path) -> std::io::Result<Vec<PathBuf>> {
 }
 
 /// Converts `symbol` and its descendants. Each document's root namespace has
-/// an empty id and is not itself an element.
-fn collect(symbol: &Symbol, owner: Option<&QualifiedName>, out: &mut Vec<Element>) -> Result<(), BackendError> {
+/// an empty id and is not itself an element; connector ends are part of
+/// their connection, not elements of their own.
+fn collect(
+    symbol: &Symbol,
+    owner: Option<&QualifiedName>,
+    out: &mut BTreeMap<QualifiedName, Element>,
+) -> Result<(), BackendError> {
     let info = symbol.wire();
+    if info.kind == "connectorEnd" {
+        return Ok(());
+    }
     let this = if info.id.is_empty() {
         None
     } else {
         let qualified_name = QualifiedName::new(info.id.clone());
-        out.push(Element {
-            qualified_name: qualified_name.clone(),
-            name: info.name.clone(),
-            kind: element_kind(&info.kind),
-            owner: owner.cloned(),
-            specializes: info
-                .specializations
-                .iter()
-                .filter(|s| s.kind == "specializes" && !s.target_id.is_empty())
-                .map(|s| QualifiedName::new(s.target_id.clone()))
-                .collect(),
-            // The service does not report element source locations yet.
-            source: None,
-        });
+        let mut element = Element::new(qualified_name.clone(), element_kind(&info.kind));
+        element.name = info.name.clone();
+        element.owner = owner.cloned();
+        element.specializes = info
+            .specializations
+            .iter()
+            .filter(|s| s.kind == "specializes" && !s.target_id.is_empty())
+            .map(|s| QualifiedName::new(s.target_id.clone()))
+            .collect();
+        element.typed_by = info
+            .type_info
+            .as_ref()
+            .filter(|t| !t.resolved_id.is_empty())
+            .map(|t| QualifiedName::new(t.resolved_id.clone()));
+        element.multiplicity = info
+            .multiplicity
+            .as_ref()
+            .map(|m| Multiplicity { lower: m.lower.clone(), upper: m.upper.clone() });
+        element.direction = info.metadata.get("direction").and_then(|d| direction(d));
+        out.insert(qualified_name.clone(), element);
         Some(qualified_name)
     };
     for child in symbol.children().map_err(unavailable)? {
@@ -123,12 +158,23 @@ fn element_kind(kind: &str) -> ElementKind {
     match kind {
         "package" => ElementKind::Package,
         "partDef" => ElementKind::PartDefinition,
+        "partUsage" => ElementKind::PartUsage,
+        "attributeDef" => ElementKind::AttributeDefinition,
+        "attributeUsage" => ElementKind::AttributeUsage,
+        "portDef" => ElementKind::PortDefinition,
+        "portUsage" => ElementKind::PortUsage,
+        "connectionDef" => ElementKind::ConnectionDefinition,
+        "connectionUsage" => ElementKind::ConnectionUsage,
+        "interfaceDef" => ElementKind::InterfaceDefinition,
+        "interfaceUsage" => ElementKind::InterfaceUsage,
         other => ElementKind::Unsupported(keyword_of(other)),
     }
 }
 
-/// `requirementDef` → `requirement def`: the SysML keyword the kind names.
+/// `requirementDef` → `requirement def`, `actionUsage` → `action`: the
+/// SysML keyword the kind names.
 fn keyword_of(kind: &str) -> String {
+    let kind = kind.strip_suffix("Usage").unwrap_or(kind);
     let mut keyword = String::new();
     for c in kind.chars() {
         if c.is_uppercase() && !keyword.is_empty() {
@@ -137,6 +183,15 @@ fn keyword_of(kind: &str) -> String {
         keyword.extend(c.to_lowercase());
     }
     keyword
+}
+
+fn direction(text: &str) -> Option<Direction> {
+    match text {
+        "in" => Some(Direction::In),
+        "out" => Some(Direction::Out),
+        "inout" => Some(Direction::InOut),
+        _ => None,
+    }
 }
 
 fn diagnostic(d: &opensysml::Diagnostic) -> Diagnostic {
@@ -159,10 +214,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn service_kinds_become_sysml_keywords() {
-        assert_eq!(element_kind("requirementDef"), ElementKind::Unsupported("requirement def".into()));
-        assert_eq!(element_kind("actionUsage"), ElementKind::Unsupported("action usage".into()));
+    fn service_kinds_become_our_kinds_or_sysml_keywords() {
         assert_eq!(element_kind("partDef"), ElementKind::PartDefinition);
-        assert_eq!(element_kind("package"), ElementKind::Package);
+        assert_eq!(element_kind("interfaceUsage"), ElementKind::InterfaceUsage);
+        assert_eq!(element_kind("requirementDef"), ElementKind::Unsupported("requirement def".into()));
+        assert_eq!(element_kind("actionUsage"), ElementKind::Unsupported("action".into()));
     }
 }

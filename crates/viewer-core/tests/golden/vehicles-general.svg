@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270" font-family="sans-serif">
 <rect x="0" y="0" width="480" height="270" fill="#ffffff"/>
-<polyline points="80,110 147.48,76.26" fill="none" stroke="#000000"/>
-<polygon points="160,70 151.06,83.42 143.9,69.11" fill="#ffffff" stroke="#000000"/>
+<polyline points="102.22,110 128.48,80.46" fill="none" stroke="#000000"/>
+<polygon points="137.78,70 134.46,85.78 122.5,75.15" fill="#ffffff" stroke="#000000"/>
 <polyline points="80,200 80,174" fill="none" stroke="#000000"/>
 <polygon points="80,160 88,174 72,174" fill="#ffffff" stroke="#000000"/>
-<polyline points="240,110 172.52,76.26" fill="none" stroke="#000000"/>
-<polygon points="160,70 176.1,69.11 168.94,83.42" fill="#ffffff" stroke="#000000"/>
+<polyline points="217.78,110 191.52,80.46" fill="none" stroke="#000000"/>
+<polygon points="182.22,70 197.5,75.15 185.54,85.78" fill="#ffffff" stroke="#000000"/>
 <rect x="20" y="110" width="120" height="50" fill="#ffffff" stroke="#000000"/>
 <text x="80" y="132" text-anchor="middle" font-size="12">«part def»</text>
 <text x="80" y="150" text-anchor="middle" font-size="14" font-weight="bold">Car</text>

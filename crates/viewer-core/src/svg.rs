@@ -27,19 +27,21 @@ pub fn render(scene: &Scene) -> String {
 
 fn shape(out: &mut String, shape: &Shape) {
     match shape {
-        Shape::Rect { rect, fill } => writeln!(
+        Shape::Rect { rect, fill, corner_radius } => writeln!(
             out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{STROKE}"/>"#,
+            r#"<rect x="{}" y="{}" width="{}" height="{}"{} fill="{}" stroke="{STROKE}"/>"#,
             num(rect.x),
             num(rect.y),
             num(rect.width),
             num(rect.height),
+            if *corner_radius > 0.0 { format!(r#" rx="{}""#, num(*corner_radius)) } else { String::new() },
             fill_color(*fill),
         ),
-        Shape::Polyline { points } => writeln!(
+        Shape::Polyline { points, dashed } => writeln!(
             out,
-            r#"<polyline points="{}" fill="none" stroke="{STROKE}"/>"#,
-            point_list(points)
+            r#"<polyline points="{}" fill="none" stroke="{STROKE}"{}/>"#,
+            point_list(points),
+            if *dashed { r#" stroke-dasharray="6 4""# } else { "" },
         ),
         Shape::Polygon { points, fill } => writeln!(
             out,
@@ -49,7 +51,7 @@ fn shape(out: &mut String, shape: &Shape) {
         ),
         Shape::Text { position, text, anchor, font } => writeln!(
             out,
-            r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}>{}</text>"#,
+            r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}{}>{}</text>"#,
             num(position.x),
             num(position.y),
             match anchor {
@@ -58,6 +60,7 @@ fn shape(out: &mut String, shape: &Shape) {
             },
             num(font.size),
             if font.bold { r#" font-weight="bold""# } else { "" },
+            if font.italic { r#" font-style="italic""# } else { "" },
             escape(text),
         ),
     }
@@ -68,6 +71,7 @@ fn fill_color(fill: Fill) -> &'static str {
     match fill {
         Fill::None => "none",
         Fill::Background => BACKGROUND,
+        Fill::Stroke => STROKE,
     }
 }
 

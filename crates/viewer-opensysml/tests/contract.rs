@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use viewer_core::model::Severity;
+use viewer_core::model::{Direction, Severity};
 use viewer_core::{BackendError, FakeBackend, Model, ModelBackend, QualifiedName};
 use viewer_opensysml::OpenSysmlBackend;
 
@@ -13,24 +13,135 @@ fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
 }
 
+/// Asserts element by element, so a mismatch names the element.
+fn assert_same_model(real: &Model, fake: &Model) {
+    assert_eq!(real.diagnostics(), fake.diagnostics());
+    let names = |m: &Model| m.elements().map(|e| e.qualified_name.clone()).collect::<Vec<_>>();
+    assert_eq!(names(real), names(fake));
+    for (real, fake) in real.elements().zip(fake.elements()) {
+        assert_eq!(real, fake);
+    }
+}
+
 /// The fake-backend twin of `fixtures/vehicles`.
 fn vehicles() -> Model {
+    let vehicles = fixture("vehicles").join("vehicles.sysml");
+    let fleet = fixture("vehicles").join("fleet.sysml");
     Model::builder()
         .package("Fleet")
+        .at(&fleet, 1)
         .part_def("Fleet::Taxi")
         .specializes("Vehicles::Car")
+        .at(&fleet, 3)
         .package("Vehicles")
+        .at(&vehicles, 1)
         .part_def("Vehicles::Vehicle")
+        .at(&vehicles, 2)
         .part_def("Vehicles::Car")
         .specializes("Vehicles::Vehicle")
+        .at(&vehicles, 3)
         .part_def("Vehicles::Truck")
         .specializes("Vehicles::Vehicle")
+        .at(&vehicles, 4)
         .part_def("Vehicles::ElectricCar")
         .specializes("Vehicles::Car")
+        .at(&vehicles, 5)
         .part_def("Vehicles::Engine")
+        .at(&vehicles, 6)
         .unsupported("Vehicles::TopSpeed", "requirement def")
+        .at(&vehicles, 7)
         .package("Vehicles::Parts")
+        .at(&vehicles, 8)
         .part_def("Vehicles::Parts::Wheel")
+        .at(&vehicles, 9)
+        .build()
+}
+
+/// The fake-backend twin of `fixtures/structure`, also used (without
+/// source lines) by the core crate's General Diagram tests.
+fn structure() -> Model {
+    let file = fixture("structure").join("structure.sysml");
+    Model::builder()
+        .package("Structure")
+        .at(&file, 1)
+        .attribute_def("Structure::Fuel")
+        .at(&file, 2)
+        .attribute_def("Structure::Mass")
+        .at(&file, 3)
+        .port_def("Structure::FuelPort")
+        .at(&file, 4)
+        .attribute("Structure::FuelPort::fuel")
+        .typed_by("Structure::Fuel")
+        .direction(Direction::Out)
+        .at(&file, 5)
+        .interface_def("Structure::FuelInterface")
+        .at(&file, 7)
+        .port("Structure::FuelInterface::supply")
+        .typed_by("Structure::FuelPort")
+        .at(&file, 8)
+        .port("Structure::FuelInterface::demand")
+        .typed_by("Structure::FuelPort")
+        .conjugated()
+        .at(&file, 9)
+        .connection_def("Structure::FuelLine")
+        .at(&file, 11)
+        .unsupported("Structure::FuelLine::a", "reference")
+        .typed_by("Structure::FuelPort")
+        .at(&file, 12)
+        .unsupported("Structure::FuelLine::b", "reference")
+        .typed_by("Structure::FuelPort")
+        .at(&file, 13)
+        .part_def("Structure::Engine")
+        .doc("Turns fuel into motion.")
+        .at(&file, 15)
+        .attribute("Structure::Engine::mass")
+        .typed_by("Structure::Mass")
+        .at(&file, 17)
+        .port("Structure::Engine::fuelIn")
+        .typed_by("Structure::FuelPort")
+        .conjugated()
+        .direction(Direction::In)
+        .at(&file, 18)
+        .part_def("Structure::Tank")
+        .at(&file, 20)
+        .port("Structure::Tank::fuelOut")
+        .typed_by("Structure::FuelPort")
+        .direction(Direction::Out)
+        .at(&file, 21)
+        .part_def("Structure::Vehicle")
+        .at(&file, 23)
+        .part("Structure::Vehicle::engine")
+        .typed_by("Structure::Engine")
+        .multiplicity("1", "1")
+        .at(&file, 24)
+        .part("Structure::Vehicle::tanks")
+        .typed_by("Structure::Tank")
+        .multiplicity("1", "2")
+        .at(&file, 25)
+        .attribute("Structure::Vehicle::mass")
+        .typed_by("Structure::Mass")
+        .at(&file, 26)
+        .connection("Structure::Vehicle::line")
+        .typed_by("Structure::FuelLine")
+        .end(&["Structure::Vehicle::tanks", "Structure::Tank::fuelOut"])
+        .end(&["Structure::Vehicle::engine", "Structure::Engine::fuelIn"])
+        .at(&file, 27)
+        .interface("Structure::Vehicle::iface")
+        .typed_by("Structure::FuelInterface")
+        .end(&["Structure::Vehicle::tanks", "Structure::Tank::fuelOut"])
+        .end(&["Structure::Vehicle::engine", "Structure::Engine::fuelIn"])
+        .at(&file, 28)
+        .part("Structure::vehicle")
+        .typed_by("Structure::Vehicle")
+        .at(&file, 30)
+        .part("Structure::spare")
+        .typed_by("Structure::Engine")
+        .multiplicity("0", "*")
+        .at(&file, 31)
+        .connection("Structure::link")
+        .end(&["Structure::vehicle"])
+        .end(&["Structure::spare"])
+        .at(&file, 32)
         .build()
 }
 
@@ -40,11 +151,27 @@ fn loads_the_same_model_as_the_fake_backend() {
     let real = OpenSysmlBackend::new().load(&fixture("vehicles")).unwrap();
     let fake = FakeBackend::new(vehicles()).load(&fixture("vehicles")).unwrap();
 
-    assert_eq!(real.diagnostics(), &[]);
-    assert_eq!(
-        real.elements().collect::<Vec<_>>(),
-        fake.elements().collect::<Vec<_>>()
-    );
+    assert_same_model(&real, &fake);
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_the_full_language_subset_like_the_fake_backend() {
+    let real = OpenSysmlBackend::new().load(&fixture("structure")).unwrap();
+
+    assert_same_model(&real, &structure());
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn resolves_types_from_imports_and_the_standard_library() {
+    let model = OpenSysmlBackend::new().load(&fixture("imports")).unwrap();
+    let typed_by = |name: &str| model.element(&QualifiedName::from(name)).unwrap().typed_by.clone();
+
+    assert_eq!(model.diagnostics(), &[]);
+    assert_eq!(typed_by("Uses::limit"), Some(QualifiedName::from("ScalarValues::Real")));
+    assert_eq!(typed_by("Defs::Car::speed"), Some(QualifiedName::from("ScalarValues::Real")));
+    assert_eq!(typed_by("Uses::car"), Some(QualifiedName::from("Defs::Car")));
 }
 
 #[test]

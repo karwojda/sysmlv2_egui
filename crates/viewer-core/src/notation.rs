@@ -1,15 +1,22 @@
 //! The Standard Notation: how nodes and edges are drawn as scene primitives.
 
-use crate::model::Element;
+use crate::model::{Element, ElementKind, Model};
 use crate::scene::{Depicts, Fill, Font, Item, Point, Rect, Shape, TextAnchor};
 
-const KEYWORD_FONT: Font = Font { size: 12.0, bold: false };
-const NAME_FONT: Font = Font { size: 14.0, bold: true };
+const KEYWORD_FONT: Font = Font { size: 12.0, bold: false, italic: false };
+const NAME_FONT: Font = Font { size: 14.0, bold: true, italic: false };
+const COMPARTMENT_TITLE_FONT: Font = Font { size: 11.0, bold: false, italic: true };
+const ROW_FONT: Font = Font { size: 12.0, bold: false, italic: false };
+const LABEL_FONT: Font = Font { size: 11.0, bold: false, italic: false };
 const PADDING: f32 = 10.0;
 const LINE_GAP: f32 = 4.0;
 const MIN_NODE_WIDTH: f32 = 120.0;
+const USAGE_CORNER_RADIUS: f32 = 10.0;
 const ARROW_LENGTH: f32 = 14.0;
 const ARROW_HALF_WIDTH: f32 = 8.0;
+const DIAMOND_LENGTH: f32 = 18.0;
+const DIAMOND_HALF_WIDTH: f32 = 6.0;
+const LABEL_OFFSET: f32 = 6.0;
 
 /// Text width estimated from character count, so layout never depends on
 /// the fonts installed on the machine doing the Export.
@@ -18,75 +25,276 @@ fn text_width(text: &str, font: Font) -> f32 {
     text.chars().count() as f32 * font.size * average
 }
 
-fn keyword_label(element: &Element) -> String {
-    format!("«{}»", element.kind.keyword())
+/// What a node shows: a header, then titled compartments of feature rows.
+pub struct NodeContent {
+    keyword: String,
+    title: String,
+    usage: bool,
+    compartments: Vec<(&'static str, Vec<String>)>,
 }
 
-pub fn node_size(element: &Element) -> (f32, f32) {
-    let content = text_width(&keyword_label(element), KEYWORD_FONT)
-        .max(text_width(&element.name, NAME_FONT));
-    let width = (content + 2.0 * PADDING).max(MIN_NODE_WIDTH).ceil();
-    let height = (2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + NAME_FONT.size).ceil();
-    (width, height)
+/// The compartments a node lists, in order, with the kinds of owned
+/// feature each one holds.
+const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
+    ("attributes", &[ElementKind::AttributeUsage]),
+    ("ports", &[ElementKind::PortUsage]),
+    ("parts", &[ElementKind::PartUsage]),
+    ("connections", &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage]),
+];
+
+pub fn node_content(element: &Element, model: &Model) -> NodeContent {
+    let usage = !element.kind.is_definition();
+    let compartments = COMPARTMENTS
+        .iter()
+        .filter_map(|(title, kinds)| {
+            let rows: Vec<String> = model
+                .owned_members(&element.qualified_name)
+                .filter(|m| kinds.contains(&m.kind))
+                .map(feature_row)
+                .collect();
+            (!rows.is_empty()).then_some((*title, rows))
+        })
+        .collect();
+    NodeContent {
+        keyword: format!("«{}»", element.kind.keyword()),
+        title: if usage { usage_label(element) } else { element.name.clone() },
+        usage,
+        compartments,
+    }
 }
 
-/// A definition node: a square-cornered box with the keyword in guillemets
-/// above the bold name.
-pub fn node(element: &Element, rect: Rect) -> Vec<Item> {
+/// `name : Type [multiplicity]`, with `~` for a conjugated type.
+fn usage_label(element: &Element) -> String {
+    let mut label = element.name.clone();
+    if let Some(definition) = &element.typed_by {
+        let conjugate = if element.conjugated { "~" } else { "" };
+        label.push_str(&format!(" : {conjugate}{}", definition.simple_name()));
+    }
+    if let Some(multiplicity) = &element.multiplicity {
+        label.push_str(&format!(" {multiplicity}"));
+    }
+    label
+}
+
+/// A compartment row: ports lead with their direction, connections trail
+/// with their ends.
+fn feature_row(feature: &Element) -> String {
+    let mut row = String::new();
+    if let Some(direction) = feature.direction {
+        row.push_str(direction.keyword());
+        row.push(' ');
+    }
+    row.push_str(&usage_label(feature));
+    if feature.kind.is_connection() && !feature.ends.is_empty() {
+        let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
+        row.push_str(&format!(" ({})", ends.join(" → ")));
+    }
+    row
+}
+
+fn header_height() -> f32 {
+    2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + NAME_FONT.size
+}
+
+fn compartment_height(rows: usize) -> f32 {
+    PADDING + COMPARTMENT_TITLE_FONT.size + rows as f32 * (LINE_GAP + ROW_FONT.size) + PADDING
+}
+
+pub fn node_size(content: &NodeContent) -> (f32, f32) {
+    let mut widest = text_width(&content.keyword, KEYWORD_FONT).max(text_width(&content.title, NAME_FONT));
+    for (title, rows) in &content.compartments {
+        widest = widest.max(text_width(title, COMPARTMENT_TITLE_FONT));
+        for row in rows {
+            widest = widest.max(text_width(row, ROW_FONT));
+        }
+    }
+    let width = (widest + 2.0 * PADDING).max(MIN_NODE_WIDTH).ceil();
+    let height = header_height()
+        + content
+            .compartments
+            .iter()
+            .map(|(_, rows)| compartment_height(rows.len()))
+            .sum::<f32>();
+    (width, height.ceil())
+}
+
+/// A node: square corners for definitions, rounded for usages; the keyword
+/// in guillemets above the bold title; then each compartment under a
+/// separator, with an italic title and left-aligned rows.
+pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
     let depicts = Depicts::Element(element.qualified_name.clone());
+    let corner_radius = if content.usage { USAGE_CORNER_RADIUS } else { 0.0 };
     let keyword_baseline = rect.y + PADDING + KEYWORD_FONT.size;
-    let name_baseline = keyword_baseline + LINE_GAP + NAME_FONT.size;
-    [
-        Shape::Rect { rect, fill: Fill::Background },
+    let mut shapes = vec![
+        Shape::Rect { rect, fill: Fill::Background, corner_radius },
         Shape::Text {
             position: Point::new(rect.center_x(), keyword_baseline),
-            text: keyword_label(element),
+            text: content.keyword.clone(),
             anchor: TextAnchor::Middle,
             font: KEYWORD_FONT,
         },
         Shape::Text {
-            position: Point::new(rect.center_x(), name_baseline),
-            text: element.name.clone(),
+            position: Point::new(rect.center_x(), keyword_baseline + LINE_GAP + NAME_FONT.size),
+            text: content.title.clone(),
             anchor: TextAnchor::Middle,
             font: NAME_FONT,
         },
-    ]
-    .into_iter()
-    .map(|shape| Item { depicts: depicts.clone(), shape })
-    .collect()
+    ];
+    let mut top = rect.y + header_height();
+    for (title, rows) in &content.compartments {
+        shapes.push(Shape::Polyline {
+            points: vec![Point::new(rect.x, top), Point::new(rect.right(), top)],
+            dashed: false,
+        });
+        let mut baseline = top + PADDING + COMPARTMENT_TITLE_FONT.size;
+        shapes.push(Shape::Text {
+            position: Point::new(rect.center_x(), baseline),
+            text: (*title).to_owned(),
+            anchor: TextAnchor::Middle,
+            font: COMPARTMENT_TITLE_FONT,
+        });
+        for row in rows {
+            baseline += LINE_GAP + ROW_FONT.size;
+            shapes.push(Shape::Text {
+                position: Point::new(rect.x + PADDING, baseline),
+                text: row.clone(),
+                anchor: TextAnchor::Start,
+                font: ROW_FONT,
+            });
+        }
+        top += compartment_height(rows.len());
+    }
+    tag(depicts, shapes)
 }
 
-/// A specialization edge from the specific node up to the general node,
-/// ending in a hollow triangle on the general node's border.
+/// Specialization: a solid line from the specific node ending in a hollow
+/// triangle on the general node.
 pub fn specialization(depicts: Depicts, specific: Rect, general: Rect) -> Vec<Item> {
-    let (start, tip) = if specific.y >= general.bottom() {
-        (
-            Point::new(specific.center_x(), specific.y),
-            Point::new(general.center_x(), general.bottom()),
-        )
-    } else {
-        (
-            Point::new(specific.center_x(), specific.bottom()),
-            Point::new(general.center_x(), general.y),
-        )
-    };
-    let (dx, dy) = (tip.x - start.x, tip.y - start.y);
-    let length = (dx * dx + dy * dy).sqrt().max(f32::EPSILON);
-    let (ux, uy) = (dx / length, dy / length);
-    let base = Point::new(tip.x - ux * ARROW_LENGTH, tip.y - uy * ARROW_LENGTH);
-    let (nx, ny) = (-uy * ARROW_HALF_WIDTH, ux * ARROW_HALF_WIDTH);
-    [
-        Shape::Polyline { points: vec![start, base] },
+    let (start, end) = connect(specific, general);
+    let base = back_from(end, start, ARROW_LENGTH);
+    tag(depicts, vec![
+        Shape::Polyline { points: vec![start, base], dashed: false },
+        triangle(end, start),
+    ])
+}
+
+/// Definition (typing): a dashed line from the usage ending in a hollow
+/// triangle on its definition.
+pub fn typing(depicts: Depicts, usage: Rect, definition: Rect) -> Vec<Item> {
+    let (start, end) = connect(usage, definition);
+    let base = back_from(end, start, ARROW_LENGTH);
+    tag(depicts, vec![
+        Shape::Polyline { points: vec![start, base], dashed: true },
+        triangle(end, start),
+    ])
+}
+
+/// Composition: a solid line from the owner, starting in a filled diamond,
+/// to the part's definition, labelled with the part's name and multiplicity
+/// near the definition.
+pub fn composition(depicts: Depicts, usage: &Element, owner: Rect, part_type: Rect) -> Vec<Item> {
+    let (start, end) = connect(owner, part_type);
+    let diamond_back = back_from(start, end, DIAMOND_LENGTH);
+    let middle = back_from(start, end, DIAMOND_LENGTH / 2.0);
+    let (nx, ny) = normal(start, end, DIAMOND_HALF_WIDTH);
+    let mut label = usage.name.clone();
+    if let Some(multiplicity) = &usage.multiplicity {
+        label.push_str(&format!(" {multiplicity}"));
+    }
+    let near_end = back_from(end, start, 2.0 * LABEL_OFFSET + LABEL_FONT.size);
+    tag(depicts, vec![
+        Shape::Polyline { points: vec![diamond_back, end], dashed: false },
         Shape::Polygon {
             points: vec![
-                tip,
-                Point::new(base.x + nx, base.y + ny),
-                Point::new(base.x - nx, base.y - ny),
+                start,
+                Point::new(middle.x + nx, middle.y + ny),
+                diamond_back,
+                Point::new(middle.x - nx, middle.y - ny),
             ],
-            fill: Fill::Background,
+            fill: Fill::Stroke,
         },
-    ]
-    .into_iter()
-    .map(|shape| Item { depicts: depicts.clone(), shape })
-    .collect()
+        Shape::Text {
+            position: Point::new(near_end.x + LABEL_OFFSET, near_end.y),
+            text: label,
+            anchor: TextAnchor::Start,
+            font: LABEL_FONT,
+        },
+    ])
+}
+
+/// A connection or interface: a plain solid line between the usages it
+/// joins, labelled with its name and type at the middle.
+pub fn connection(depicts: Depicts, element: &Element, a: Rect, b: Rect) -> Vec<Item> {
+    let (start, end) = connect(a, b);
+    let middle = Point::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+    tag(depicts, vec![
+        Shape::Polyline { points: vec![start, end], dashed: false },
+        Shape::Text {
+            position: Point::new(middle.x, middle.y - LABEL_OFFSET),
+            text: usage_label(element),
+            anchor: TextAnchor::Middle,
+            font: LABEL_FONT,
+        },
+    ])
+}
+
+fn tag(depicts: Depicts, shapes: Vec<Shape>) -> Vec<Item> {
+    shapes
+        .into_iter()
+        .map(|shape| Item { depicts: depicts.clone(), shape })
+        .collect()
+}
+
+/// The points where the line between the centers of `from` and `to`
+/// leaves `from` and enters `to`.
+fn connect(from: Rect, to: Rect) -> (Point, Point) {
+    let (a, b) = (center(from), center(to));
+    (border_point(from, b), border_point(to, a))
+}
+
+fn center(rect: Rect) -> Point {
+    Point::new(rect.center_x(), rect.y + rect.height / 2.0)
+}
+
+/// Where the ray from the center of `rect` toward `toward` crosses its
+/// border. The coordinate on the crossed side is exact, so edges meet
+/// borders precisely.
+fn border_point(rect: Rect, toward: Point) -> Point {
+    let c = center(rect);
+    let (dx, dy) = (toward.x - c.x, toward.y - c.y);
+    let (half_w, half_h) = (rect.width / 2.0, rect.height / 2.0);
+    if dx == 0.0 && dy == 0.0 {
+        return c;
+    }
+    if dx.abs() * half_h <= dy.abs() * half_w {
+        let y = if dy > 0.0 { rect.bottom() } else { rect.y };
+        Point::new(c.x + dx * (half_h / dy.abs()), y)
+    } else {
+        let x = if dx > 0.0 { rect.right() } else { rect.x };
+        Point::new(x, c.y + dy * (half_w / dx.abs()))
+    }
+}
+
+/// The point `distance` back from `tip` toward `from`.
+fn back_from(tip: Point, from: Point, distance: f32) -> Point {
+    let (dx, dy) = (from.x - tip.x, from.y - tip.y);
+    let length = (dx * dx + dy * dy).sqrt().max(f32::EPSILON);
+    Point::new(tip.x + dx / length * distance, tip.y + dy / length * distance)
+}
+
+/// A vector of `length` perpendicular to the line from `a` to `b`.
+fn normal(a: Point, b: Point, length: f32) -> (f32, f32) {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let norm = (dx * dx + dy * dy).sqrt().max(f32::EPSILON);
+    (-dy / norm * length, dx / norm * length)
+}
+
+/// A hollow triangle with its tip at `tip`, pointing away from `from`.
+fn triangle(tip: Point, from: Point) -> Shape {
+    let base = back_from(tip, from, ARROW_LENGTH);
+    let (nx, ny) = normal(from, tip, ARROW_HALF_WIDTH);
+    Shape::Polygon {
+        points: vec![tip, Point::new(base.x + nx, base.y + ny), Point::new(base.x - nx, base.y - ny)],
+        fill: Fill::Background,
+    }
 }

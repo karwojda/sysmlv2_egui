@@ -49,6 +49,8 @@ impl Rect {
 pub enum Fill {
     None,
     Background,
+    /// The stroke color, for solid markers such as a composition diamond.
+    Stroke,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +63,7 @@ pub enum TextAnchor {
 pub struct Font {
     pub size: f32,
     pub bold: bool,
+    pub italic: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,9 +71,12 @@ pub enum Shape {
     Rect {
         rect: Rect,
         fill: Fill,
+        /// Zero for square corners (definitions); rounded for usages.
+        corner_radius: f32,
     },
     Polyline {
         points: Vec<Point>,
+        dashed: bool,
     },
     Polygon {
         points: Vec<Point>,
@@ -93,6 +99,18 @@ pub enum Depicts {
         specific: QualifiedName,
         general: QualifiedName,
     },
+    /// A usage typed by a definition (`:`).
+    Typing {
+        usage: QualifiedName,
+        definition: QualifiedName,
+    },
+    /// A part usage owned by `owner`, drawn to the definition typing it.
+    Composition {
+        owner: QualifiedName,
+        usage: QualifiedName,
+    },
+    /// A connection or interface usage, by its qualified name.
+    Connection(QualifiedName),
 }
 
 #[derive(Clone, Debug, PartialEq)]
