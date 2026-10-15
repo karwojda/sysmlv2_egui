@@ -31,8 +31,16 @@ A Diagram the user creates by choosing a Diagram Kind and a root element.
 A Diagram derived from a SysML `view` usage in the Model, using what it exposes and renders.
 
 **Layout**:
-The user's adjustments to a Diagram's automatic arrangement (positions, sizes, edge routes, hidden and collapsed elements), stored outside the Model.
+The user's adjustments to a Diagram's automatic arrangement (positions, sizes, edge routes, port positions, hidden, collapsed and opened elements), stored outside the Model.
 _Avoid_: view, styling, diagram data
+
+**Frame**:
+In an Interconnection Diagram, the box of the root part that every other part is drawn inside; the root's own ports sit on its border.
+_Avoid_: container, boundary, root box
+
+**Opened Part**:
+A part in an Interconnection Diagram drawn with its own parts and connections inside its box; parts are closed (drawn as plain boxes with their ports) unless opened.
+_Avoid_: expanded part, drilled-down part (collapsing is about compartments, not parts)
 
 **Diagram File**:
 A saved Diagram: its Diagram Kind, its root element, and its Layout, in one file beside the Model. Diagrams that are opened but never saved leave no Diagram File.
