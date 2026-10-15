@@ -9,6 +9,8 @@
 //!      right-angled connectors
 //!   D: C, with gaps widened to fit port labels and stacked labels for
 //!      connections that share their ports
+//!   E: layered top-to-bottom, in ports on top and out ports at the bottom,
+//!      right-angled connectors, boxes widened to fit their port labels
 //!
 //! `cargo run -p viewer-core --example prototype_interconnection -- <out-dir>`
 
@@ -26,6 +28,7 @@ enum Variant {
     B,
     C,
     D,
+    E,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -150,10 +153,15 @@ fn layout(node: &mut Node, variant: Variant) {
         let per_side = node.ports.len().div_ceil(2).max(1) as f32;
         node.w = (text_w(&node.label, 13.0) + 2.0 * PAD).max(120.0);
         node.h = (per_side * PORT_GAP + 20.0).max(54.0);
+        if variant == Variant::E {
+            node.w = node.w.max(edge_room(&node.ports));
+            node.h = 54.0;
+        }
     } else {
         match variant {
             Variant::A | Variant::C => layered(node, false),
             Variant::D => layered(node, true),
+            Variant::E => layered_down(node),
             Variant::B => grid(node),
         }
         let right = node.children.iter().map(|c| c.x + c.w).fold(0.0, f32::max);
@@ -162,6 +170,9 @@ fn layout(node: &mut Node, variant: Variant) {
         node.h = bottom + HEADER + 2.0 * PAD;
         let ports = node.ports.len().div_ceil(2) as f32 * PORT_GAP + HEADER;
         node.h = node.h.max(ports);
+        if variant == Variant::E {
+            node.w = node.w.max(edge_room(&node.ports));
+        }
     }
     assign_ports(node, variant);
 }
@@ -219,6 +230,61 @@ fn layered(node: &mut Node, label_room: bool) {
             bottom = bottom.max(c.y + c.h);
         }
         offset_y = bottom + GAP;
+    }
+}
+
+/// Width a box needs so the labels of its in ports (top) and out ports
+/// (bottom) fit side by side along those edges.
+fn edge_room(ports: &[Port]) -> f32 {
+    let row = |d: Direction| {
+        let labels: Vec<f32> = ports.iter().filter(|p| p.direction == Some(d)).map(|p| text_w(&p.label, 10.0) + 24.0).collect();
+        let widest = labels.iter().copied().fold(0.0, f32::max);
+        widest * (labels.len() as f32 + 1.0)
+    };
+    row(Direction::In).max(row(Direction::Out))
+}
+
+/// Top-to-bottom layers, with a label line of room above and below each part.
+fn layered_down(node: &mut Node) {
+    const LABEL_ROOM: f32 = 18.0;
+    let vertices: Vec<(u32, (f64, f64))> = node
+        .children
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (i as u32, (c.w as f64, (c.h + 2.0 * LABEL_ROOM) as f64)))
+        .collect();
+    let mut edges = Vec::new();
+    for conn in &node.conns {
+        if let (Some(a), Some(b)) = (child_of(&conn.a), child_of(&conn.b))
+            && a != b
+        {
+            let reversed = port_direction(node, &conn.a) == Some(Direction::In)
+                || port_direction(node, &conn.b) == Some(Direction::Out);
+            edges.push(if reversed { (b as u32, a as u32) } else { (a as u32, b as u32) });
+        }
+    }
+    let config = Config { vertex_spacing: 50.0, ..Config::default() };
+    let mut components = rust_sugiyama::from_vertices_and_edges(&vertices, &edges, &config);
+    components.sort_by_key(|(p, _, _)| p.iter().map(|(id, _)| *id).min());
+    let mut offset_x = 0.0;
+    for (positions, _, _) in components {
+        let placed: Vec<(usize, f32, f32)> = positions
+            .iter()
+            .map(|&(id, (cx, cy))| {
+                let c = &node.children[id];
+                (id, cx as f32 - c.w / 2.0, cy as f32 - c.h / 2.0)
+            })
+            .collect();
+        let min_x = placed.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
+        let min_y = placed.iter().map(|p| p.2).fold(f32::INFINITY, f32::min);
+        let mut right: f32 = 0.0;
+        for (id, x, y) in placed {
+            let c = &mut node.children[id];
+            c.x = (x - min_x + offset_x).round();
+            c.y = (y - min_y + LABEL_ROOM).round();
+            right = right.max(c.x + c.w);
+        }
+        offset_x = right + GAP;
     }
 }
 
@@ -282,9 +348,11 @@ fn side_facing(from: Point, to: Point) -> Side {
 /// Puts each child's ports, and the container's own, on a side and spreads
 /// them along it.
 fn assign_ports(node: &mut Node, variant: Variant) {
-    let by_direction = |d: Option<Direction>| match d {
-        Some(Direction::In) => Some(Side::Left),
-        Some(Direction::Out) => Some(Side::Right),
+    let by_direction = |d: Option<Direction>| match (variant, d) {
+        (Variant::E, Some(Direction::In)) => Some(Side::Top),
+        (Variant::E, Some(Direction::Out)) => Some(Side::Bottom),
+        (_, Some(Direction::In)) => Some(Side::Left),
+        (_, Some(Direction::Out)) => Some(Side::Right),
         _ => None,
     };
     // Where each port's peer is, in this container's coordinates.
@@ -312,7 +380,7 @@ fn assign_ports(node: &mut Node, variant: Variant) {
     for port in &mut node.ports {
         let peer = peers.get(&(None, port.name.clone()));
         port.side = match (variant, by_direction(port.direction), peer) {
-            (Variant::C | Variant::D, Some(side), _) => side,
+            (Variant::C | Variant::D | Variant::E, Some(side), _) => side,
             (_, _, Some(p)) => side_facing(inner, *p),
             (_, Some(side), None) => side,
             _ => Side::Bottom,
@@ -324,7 +392,7 @@ fn assign_ports(node: &mut Node, variant: Variant) {
         for port in &mut child.ports {
             let peer = peers.get(&(Some(i), port.name.clone()));
             port.side = match (variant, by_direction(port.direction), peer) {
-                (Variant::C | Variant::D, Some(side), _) => side,
+                (Variant::C | Variant::D | Variant::E, Some(side), _) => side,
                 (_, _, Some(p)) => side_facing(c, *p),
                 (_, Some(side), None) => side,
                 _ => Side::Bottom,
@@ -445,7 +513,7 @@ fn paint(node: &Node, ox: f32, oy: f32, variant: Variant, out: &mut Painter) {
             let (dx, dy) = outward(side.unwrap_or(Side::Right));
             if child_of(end).is_none() { (-dx, -dy) } else { (dx, dy) }
         };
-        let points = if variant == Variant::C {
+        let points = if matches!(variant, Variant::C | Variant::D | Variant::E) {
             let (ax, ay) = inward(&conn.a, side_a);
             let (bx, by) = inward(&conn.b, side_b);
             let a1 = Point::new(a.x + ax * 16.0, a.y + ay * 16.0);
@@ -463,7 +531,7 @@ fn paint(node: &Node, ox: f32, oy: f32, variant: Variant, out: &mut Painter) {
         let mid = points[points.len() / 2 - 1];
         let mid2 = points[points.len() / 2];
         // Connections over the same pair of points stack their labels.
-        let stacked = if variant == Variant::D {
+        let stacked = if matches!(variant, Variant::D | Variant::E) {
             drawn.iter().filter(|(p, q)| (*p == a && *q == b) || (*p == b && *q == a)).count() as f32
         } else {
             0.0
@@ -615,7 +683,7 @@ fn main() {
     let drivetrain = drivetrain();
     let closed = |p: &str| p == "root";
     let opened = |p: &str| p == "root" || p == "root.rearAxleAssembly";
-    for variant in [Variant::A, Variant::B, Variant::C, Variant::D] {
+    for variant in [Variant::A, Variant::B, Variant::C, Variant::D, Variant::E] {
         let v = format!("{variant:?}");
         let files = [
             ("vehicle", render(&structure, "Structure::Vehicle", "Vehicle", &closed, variant)),
@@ -626,5 +694,5 @@ fn main() {
             std::fs::write(out.join(format!("{name}-{v}.svg")), svg).unwrap();
         }
     }
-    println!("wrote 12 SVGs to {}", out.display());
+    println!("wrote 15 SVGs to {}", out.display());
 }
