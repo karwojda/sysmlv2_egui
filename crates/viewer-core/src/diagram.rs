@@ -151,17 +151,49 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
         }));
     }
 
-    let mut items: Vec<Item> = Vec::new();
+    // Each edge's path: saved bends win; otherwise parallel edges fan out,
+    // and an edge that would cross another node detours around it.
+    let mut paths: Vec<Vec<Point>> = Vec::with_capacity(edges.len());
+    let mut routed_by_user = Vec::with_capacity(edges.len());
     for (edge, slot) in edges.iter().zip(&fan_slot) {
         let (depicts, from, to) = describe(edge, &nodes);
-        let bends: Vec<Point> = match (depicts.edge_key().and_then(|key| saved.edges.get(&key)), slot) {
+        let saved_bends = depicts.edge_key().and_then(|key| saved.edges.get(&key));
+        routed_by_user.push(saved_bends.is_some());
+        let bends: Vec<Point> = match (saved_bends, slot) {
             (Some(points), _) => points.iter().map(|&[x, y]| Point::new(x, y)).collect(),
-            (None, Some((pair, index))) => {
+            (None, Some((pair, index))) if parallel[pair] > 1 => {
                 notation::fan_bends(rects[pair.0], rects[pair.1], *index, parallel[pair])
             }
-            (None, None) => Vec::new(),
+            (None, _) => {
+                let obstacles: Vec<Rect> = (0..rects.len()).filter(|&i| i != from && i != to).map(|i| rects[i]).collect();
+                notation::detour(rects[from], rects[to], &obstacles)
+            }
         };
-        let path = notation::route(rects[from], rects[to], &bends);
+        paths.push(notation::route(rects[from], rects[to], &bends));
+    }
+    // Ends crowding the same spot on a node's border are spread along it;
+    // ends of routes the user set are left exactly where they are.
+    for (node, rect) in rects.iter().enumerate() {
+        let mut ends: Vec<&mut Point> = Vec::new();
+        for ((edge, path), user) in edges.iter().zip(paths.iter_mut()).zip(&routed_by_user) {
+            let (_, from, to) = describe(edge, &nodes);
+            if *user || from == to {
+                continue;
+            }
+            let last = path.len() - 1;
+            let (first, rest) = path.split_first_mut().expect("a route has two points");
+            if from == node {
+                ends.push(first);
+            } else if to == node {
+                ends.push(&mut rest[last - 1]);
+            }
+        }
+        notation::spread_ends(*rect, &mut ends);
+    }
+
+    let mut items: Vec<Item> = Vec::new();
+    for (edge, path) in edges.iter().zip(paths) {
+        let (depicts, _, _) = describe(edge, &nodes);
         items.extend(match *edge {
             Edge::Specialization { .. } => notation::specialization(depicts, path),
             Edge::Typing { .. } => notation::defined_by(depicts, path),

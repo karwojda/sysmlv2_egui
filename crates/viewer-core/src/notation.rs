@@ -19,6 +19,14 @@ const ARROW_HALF_WIDTH: f32 = 8.0;
 const DIAMOND_LENGTH: f32 = 18.0;
 const DIAMOND_HALF_WIDTH: f32 = 6.0;
 const LABEL_OFFSET: f32 = 6.0;
+/// How far apart edge ends on the same side of a node must be.
+const END_SEPARATION: f32 = 14.0;
+/// How far edges keep from nodes they pass, and how a detour searches.
+const OBSTACLE_CLEARANCE: f32 = 4.0;
+const DETOUR_STEP: f32 = 24.0;
+const DETOUR_STEPS: usize = 16;
+/// How far outside an obstacle's corner a corner bend sits.
+const CORNER_CLEARANCE: f32 = 14.0;
 /// Sideways distance between parallel edges joining the same two nodes.
 const PARALLEL_SPREAD: f32 = 36.0;
 const COLON_DOT_RADIUS: f32 = 1.8;
@@ -325,6 +333,136 @@ pub fn route(from: Rect, to: Rect, bends: &[Point]) -> Vec<Point> {
     path.extend_from_slice(bends);
     path.push(border_point(to, last_source));
     path
+}
+
+/// A bend that takes the straight edge from `from` to `to` around the
+/// rects in `obstacles` it would otherwise cross. Candidates are points
+/// sideways from the middle and points just off each obstacle's corners;
+/// the shortest that crosses nothing wins, else the one crossing fewest, as
+/// long as it improves on the straight edge. Empty if the straight edge is
+/// already clear or nothing improves on it.
+pub fn detour(from: Rect, to: Rect, obstacles: &[Rect]) -> Vec<Point> {
+    let crossings = |path: &[Point]| {
+        obstacles
+            .iter()
+            .filter(|r| path.windows(2).any(|s| crosses(s[0], s[1], **r)))
+            .count()
+    };
+    let length = |path: &[Point]| path.windows(2).map(|s| distance(s[0], s[1])).sum::<f32>();
+    let straight = crossings(&route(from, to, &[]));
+    if straight == 0 {
+        return Vec::new();
+    }
+
+    let (a, b) = (center(from), center(to));
+    let middle = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+    let mut candidates = Vec::new();
+    for step in 1..=DETOUR_STEPS {
+        for side in [1.0, -1.0] {
+            let (nx, ny) = normal(a, b, side * step as f32 * DETOUR_STEP);
+            candidates.push(Point::new(middle.x + nx, middle.y + ny));
+        }
+    }
+    let off = CORNER_CLEARANCE;
+    for r in obstacles {
+        candidates.extend([
+            Point::new(r.x - off, r.y - off),
+            Point::new(r.right() + off, r.y - off),
+            Point::new(r.x - off, r.bottom() + off),
+            Point::new(r.right() + off, r.bottom() + off),
+        ]);
+    }
+    // Bends inside the two end nodes would make no sense.
+    candidates.retain(|c| !from.contains(*c) && !to.contains(*c));
+
+    let best = |options: Vec<Vec<Point>>| {
+        options
+            .into_iter()
+            .map(|bends| {
+                let path = route(from, to, &bends);
+                (crossings(&path), length(&path), bends)
+            })
+            .filter(|(count, _, _)| *count < straight)
+            .min_by(|x, y| x.0.cmp(&y.0).then(x.1.total_cmp(&y.1)))
+    };
+    let single = best(candidates.iter().map(|c| vec![*c]).collect());
+    if let Some((0, _, bends)) = single {
+        return bends;
+    }
+    // A pocket can need two bends: out of it, then around what blocks it.
+    let pairs = candidates
+        .iter()
+        .flat_map(|a| candidates.iter().filter(move |b| *b != a).map(move |b| vec![*a, *b]))
+        .collect();
+    match (single, best(pairs)) {
+        (_, Some((0, _, bends))) => bends,
+        (Some((_, _, bends)), _) => bends,
+        (None, Some((_, _, bends))) => bends,
+        (None, None) => Vec::new(),
+    }
+}
+
+fn distance(a: Point, b: Point) -> f32 {
+    ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt()
+}
+
+/// Whether the segment from `a` to `b` passes through `rect`, kept a few
+/// units clear of its border (Liang–Barsky clipping).
+fn crosses(a: Point, b: Point, rect: Rect) -> bool {
+    let (x0, y0) = (rect.x - OBSTACLE_CLEARANCE, rect.y - OBSTACLE_CLEARANCE);
+    let (x1, y1) = (rect.right() + OBSTACLE_CLEARANCE, rect.bottom() + OBSTACLE_CLEARANCE);
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let (mut t0, mut t1) = (0.0_f32, 1.0_f32);
+    for (p, q) in [(-dx, a.x - x0), (dx, x1 - a.x), (-dy, a.y - y0), (dy, y1 - a.y)] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                t0 = t0.max(t);
+            } else {
+                t1 = t1.min(t);
+            }
+            if t0 > t1 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Spreads edge ends that land close together on the same side of `rect`,
+/// so their markers don't stack. `ends` are the points to adjust; each is
+/// moved along its side only.
+pub fn spread_ends(rect: Rect, ends: &mut [&mut Point]) {
+    let side_of = |p: &Point| {
+        if (p.y - rect.y).abs() < 0.5 {
+            0
+        } else if (p.y - rect.bottom()).abs() < 0.5 {
+            1
+        } else if (p.x - rect.x).abs() < 0.5 {
+            2
+        } else {
+            3
+        }
+    };
+    for side in 0..4 {
+        let horizontal = side < 2;
+        let along = |p: &Point| if horizontal { p.x } else { p.y };
+        let (low, high) = if horizontal { (rect.x, rect.right()) } else { (rect.y, rect.bottom()) };
+        let mut on_side: Vec<&mut &mut Point> = ends.iter_mut().filter(|p| side_of(p) == side).collect();
+        on_side.sort_by(|a, b| along(a).total_cmp(&along(b)));
+        for i in 1..on_side.len() {
+            let previous = along(on_side[i - 1]);
+            let point = &mut on_side[i];
+            if along(point) - previous < END_SEPARATION {
+                let moved = (previous + END_SEPARATION).min(high).max(low);
+                if horizontal { point.x = moved } else { point.y = moved }
+            }
+        }
+    }
 }
 
 fn last_segment(path: &[Point]) -> (Point, Point) {

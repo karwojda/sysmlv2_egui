@@ -390,3 +390,40 @@ fn the_page_holds_everything_drawn_including_labels_beside_edges() {
         }
     }
 }
+
+#[test]
+fn with_hand_placed_nodes_no_automatically_routed_edge_passes_through_a_node() {
+    // The arrangement that first showed edges running behind nodes: a
+    // usage tucked in a pocket, and a node between a usage and its
+    // definition.
+    let at = |x: f32, y: f32| viewer_core::NodePlacement { x, y, size: None };
+    let mut layout = viewer_core::Layout::default();
+    layout.nodes.insert(qn("Structure::Engine"), at(40.0, 300.0));
+    layout.nodes.insert(qn("Structure::Tank"), at(300.0, 300.0));
+    layout.nodes.insert(qn("Structure::Vehicle"), at(120.0, 20.0));
+    for hidden in ["Structure::Fuel", "Structure::Mass", "Structure::FuelLine"] {
+        layout.hidden.insert(qn(hidden));
+    }
+    layout.collapsed.insert(qn("Structure::Vehicle"));
+
+    let scene = viewer_core::build_scene_with_layout(&structure(), DiagramKind::General, &qn("Structure"), &layout).unwrap();
+
+    let nodes: Vec<(&QualifiedName, viewer_core::scene::Rect)> =
+        scene.elements().into_iter().map(|e| (e, scene.node_bounds(e).unwrap())).collect();
+    for item in &scene.items {
+        let Shape::Polyline { points, .. } = &item.shape else { continue };
+        if matches!(item.depicts, Depicts::Element(_)) {
+            continue; // compartment separators
+        }
+        for (element, rect) in &nodes {
+            let inside = points.windows(2).any(|s| {
+                (1..200).any(|i| {
+                    let t = i as f32 / 200.0;
+                    let (x, y) = (s[0].x + (s[1].x - s[0].x) * t, s[0].y + (s[1].y - s[0].y) * t);
+                    x > rect.x + 1.0 && x < rect.right() - 1.0 && y > rect.y + 1.0 && y < rect.bottom() - 1.0
+                })
+            });
+            assert!(!inside, "{:?} passes through {element}", item.depicts);
+        }
+    }
+}
