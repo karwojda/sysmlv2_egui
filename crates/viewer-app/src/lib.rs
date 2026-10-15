@@ -4,6 +4,7 @@
 
 pub mod canvas;
 pub mod loader;
+pub mod watcher;
 
 use std::path::{Path, PathBuf};
 
@@ -16,13 +17,24 @@ use viewer_core::{DiagramFile, DiagramKind, Model, ModelBackend, QualifiedName, 
 
 use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
 use loader::Loader;
+use viewer_core::watch::{Shown, accept};
+use watcher::Watcher;
 
 pub struct ViewerApp {
+    // Declared before `loader` so it is dropped first: it holds a handle to
+    // the loader's requests, which must close for the loader to stop.
+    watcher: Watcher,
     loader: Loader,
     folder_input: String,
     loading: Option<PathBuf>,
     folder: Option<PathBuf>,
     model: Option<Model>,
+    /// The latest load's diagnostics, which may belong to a broken Model
+    /// while `model` is still the last good one.
+    diagnostics: Vec<Diagnostic>,
+    /// Whether `model` is the last good Model, kept while the files on disk
+    /// have errors.
+    stale: bool,
     error: Option<String>,
     filter: String,
     selected: Option<QualifiedName>,
@@ -83,12 +95,19 @@ impl ViewerApp {
         root: Option<QualifiedName>,
     ) -> Self {
         let repaint = ctx.clone();
+        let loader = Loader::new(backend, move || repaint.request_repaint());
+        let requests = loader.requester().expect("a new loader takes requests");
         let mut app = Self {
-            loader: Loader::new(backend, move || repaint.request_repaint()),
+            watcher: Watcher::new(move |folder| {
+                let _ = requests.send(folder);
+            }),
+            loader,
             folder_input: folder.as_ref().map(|f| f.display().to_string()).unwrap_or_default(),
             loading: None,
             folder: None,
             model: None,
+            diagnostics: Vec::new(),
+            stale: false,
             error: None,
             filter: String::new(),
             selected: None,
@@ -125,17 +144,28 @@ impl ViewerApp {
             }
             match loaded.result {
                 Ok(model) => {
-                    if self.folder.as_ref() != Some(&loaded.folder) {
+                    let reload = self.folder.as_ref() == Some(&loaded.folder);
+                    if !reload {
                         self.diagrams.clear();
                         self.active = None;
                         self.selected = None;
+                        self.watcher.watch(loaded.folder.clone());
                     }
+                    let previous = match (reload, self.model.take()) {
+                        (true, Some(model)) => {
+                            Some(Shown { model, diagnostics: std::mem::take(&mut self.diagnostics), stale: self.stale })
+                        }
+                        _ => None,
+                    };
+                    let shown = accept(previous, model);
                     for diagram in &mut self.diagrams {
-                        diagram.refresh(&model);
+                        diagram.refresh(&shown.model);
                     }
                     self.saved_names = diagram_file::names_in(&loaded.folder).unwrap_or_default();
                     self.folder = Some(loaded.folder);
-                    self.model = Some(model);
+                    self.model = Some(shown.model);
+                    self.diagnostics = shown.diagnostics;
+                    self.stale = shown.stale;
                     if let Some(root) = self.pending_root.take() {
                         self.open_general(root.clone());
                         self.select_and_reveal(Some(root));
@@ -235,6 +265,12 @@ impl ViewerApp {
         });
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
+        }
+        if self.stale {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                "The Model files have errors (see Diagnostics); showing the last good Model until they're fixed.",
+            );
         }
     }
 
@@ -355,7 +391,7 @@ impl ViewerApp {
     }
 
     fn diagnostics(&self, ui: &mut egui::Ui) {
-        let diagnostics = self.model.as_ref().map(Model::diagnostics).unwrap_or_default();
+        let diagnostics = &self.diagnostics;
         ui.label(format!("Diagnostics ({})", diagnostics.len()));
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             for diagnostic in diagnostics {

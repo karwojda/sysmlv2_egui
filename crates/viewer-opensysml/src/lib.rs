@@ -22,8 +22,6 @@ use viewer_core::model::{
 };
 use viewer_core::{BackendError, ModelBackend};
 
-const MODEL_EXTENSIONS: [&str; 2] = ["sysml", "kerml"];
-
 /// Loads Models through a private `sysml-grpc` service, started on first use.
 #[derive(Default)]
 pub struct OpenSysmlBackend {
@@ -49,7 +47,7 @@ impl ModelBackend for OpenSysmlBackend {
         if !folder.is_dir() {
             return Err(BackendError::FolderNotFound(folder.to_path_buf()));
         }
-        let files = model_files(folder).map_err(|e| BackendError::Unavailable(e.to_string()))?;
+        let files = viewer_core::watch::model_files(folder).map_err(|e| BackendError::Unavailable(e.to_string()))?;
         if files.is_empty() {
             return Ok(Model::default());
         }
@@ -93,28 +91,6 @@ impl ModelBackend for OpenSysmlBackend {
         }
         Ok(Model::new(elements.into_values(), diagnostics))
     }
-}
-
-/// Every model file under `folder`, recursively, in a stable order.
-fn model_files(folder: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    let mut pending = vec![folder.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        for entry in std::fs::read_dir(&dir)? {
-            let path = entry?.path();
-            if path.is_dir() {
-                pending.push(path);
-            } else if path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| MODEL_EXTENSIONS.contains(&e))
-            {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
 }
 
 /// Converts `symbol` and its descendants. Each document's root namespace has

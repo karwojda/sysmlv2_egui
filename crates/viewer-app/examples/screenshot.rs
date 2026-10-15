@@ -11,7 +11,11 @@ use eframe::egui;
 use viewer_app::ViewerApp;
 use viewer_opensysml::OpenSysmlBackend;
 
-const SETTLE: Duration = Duration::from_secs(6);
+/// How long to wait before the screenshot; `SCREENSHOT_AFTER_SECS` overrides.
+fn settle() -> Duration {
+    let secs = std::env::var("SCREENSHOT_AFTER_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
+    Duration::from_secs(secs)
+}
 
 struct Screenshot {
     app: ViewerApp,
@@ -25,7 +29,7 @@ impl eframe::App for Screenshot {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.app.ui(ui, frame);
         let ctx = ui.ctx().clone();
-        if !self.requested && self.started.elapsed() > SETTLE {
+        if !self.requested && self.started.elapsed() > settle() {
             self.requested = true;
             let (out, saved, repaint) = (self.out.clone(), self.saved.clone(), ctx.clone());
             let callback = egui::ScreenshotCallback::new(move |image| {

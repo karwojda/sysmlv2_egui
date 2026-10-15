@@ -46,6 +46,11 @@ impl Loader {
         }
     }
 
+    /// A handle other threads can use to ask for loads.
+    pub fn requester(&self) -> Option<Sender<PathBuf>> {
+        self.requests.clone()
+    }
+
     /// The next finished load, if any.
     pub fn poll(&self) -> Option<Loaded> {
         self.results.try_recv().ok()

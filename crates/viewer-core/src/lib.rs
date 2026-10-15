@@ -15,6 +15,7 @@ pub mod properties;
 mod notation;
 pub mod scene;
 pub mod svg;
+pub mod watch;
 
 pub use backend::{BackendError, FakeBackend, ModelBackend};
 pub use diagram::{DiagramError, DiagramKind, build_scene, build_scene_with_layout};
