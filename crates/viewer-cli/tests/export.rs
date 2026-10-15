@@ -192,3 +192,38 @@ fn honours_the_diagram_files_layout() {
     assert!(svg.contains(r#"<rect x="412" y="300" width="177" height="66""#), "{svg}");
     assert!(!svg.contains(">Vehicle</text>"), "hidden elements are not drawn");
 }
+
+#[test]
+fn service_flags_are_read_before_the_backend_is_built_and_win_over_the_environment() {
+    let args: Vec<OsString> = ["sysml-viewer", "export", "m", "--all", "--out-dir", "o", "--sysml-binary", "/opt/sysml-grpc", "--sysml-service", "localhost:50051"]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+    let config = viewer_cli::service_config(&args);
+
+    assert_eq!(config.binary.as_deref(), Some(Path::new("/opt/sysml-grpc")));
+    assert_eq!(config.service.as_deref(), Some("localhost:50051"));
+}
+
+#[test]
+fn service_flags_are_accepted_by_the_command() {
+    let folder = model_folder(&[general("overview", "Vehicles")]);
+    let out = folder.path().join("overview.svg");
+    let args: Vec<OsString> = vec![
+        "sysml-viewer".into(),
+        "--sysml-service".into(),
+        "localhost:50051".into(),
+        "export".into(),
+        folder.path().into(),
+        "--diagram".into(),
+        "overview".into(),
+        "--out".into(),
+        out.clone().into(),
+    ];
+
+    let code = run(args, &mut FakeBackend::new(vehicles()), &mut Vec::new());
+
+    assert_eq!(code, EXIT_OK);
+    assert!(out.is_file());
+}

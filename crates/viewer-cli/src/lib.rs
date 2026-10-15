@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::{DiagramFile, Model, ModelBackend, build_scene_with_layout, diagram_file, svg};
+use viewer_opensysml::ServiceConfig;
 
 pub const EXIT_OK: u8 = 0;
 pub const EXIT_FAILURE: u8 = 1;
@@ -17,6 +18,39 @@ pub const EXIT_FAILURE: u8 = 1;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    #[command(flatten)]
+    service: ServiceArgs,
+}
+
+/// How to reach sysml-grpc; flags win over the environment variables.
+#[derive(clap::Args)]
+pub struct ServiceArgs {
+    /// The sysml-grpc binary to start (default: $OPENSYSML_GRPC_BINARY, else
+    /// a cached or downloaded release).
+    #[arg(long, global = true, value_name = "PATH")]
+    pub sysml_binary: Option<PathBuf>,
+    /// Use a sysml-grpc service already running at HOST:PORT instead of
+    /// starting one (default: $OPENSYSML_SERVICE).
+    #[arg(long, global = true, value_name = "HOST:PORT")]
+    pub sysml_service: Option<String>,
+}
+
+impl ServiceArgs {
+    /// These settings over the environment's.
+    pub fn config(&self) -> ServiceConfig {
+        let env = ServiceConfig::from_env();
+        ServiceConfig {
+            binary: self.sysml_binary.clone().or(env.binary),
+            service: self.sysml_service.clone().or(env.service),
+        }
+    }
+}
+
+/// The service settings in `args`, for building the backend before
+/// [`run`]; if `args` don't parse, the environment's (and `run` reports the
+/// problem).
+pub fn service_config(args: &[OsString]) -> ServiceConfig {
+    Cli::try_parse_from(args).map(|cli| cli.service.config()).unwrap_or_else(|_| ServiceConfig::from_env())
 }
 
 #[derive(Subcommand)]

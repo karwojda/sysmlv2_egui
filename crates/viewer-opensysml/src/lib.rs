@@ -22,21 +22,96 @@ use viewer_core::model::{
 };
 use viewer_core::{BackendError, ModelBackend};
 
-/// Loads Models through a private `sysml-grpc` service, started on first use.
-#[derive(Default)]
+/// The environment variables the `opensysml` client reads for a binary and
+/// a running service; flags set the same values.
+pub const BINARY_VARIABLE: &str = "OPENSYSML_GRPC_BINARY";
+pub const SERVICE_VARIABLE: &str = "OPENSYSML_SERVICE";
+
+/// How to reach `sysml-grpc`: a specific binary to start, or a service
+/// already running at `host:port` (which is never started or stopped). With
+/// neither, the client finds or downloads a binary itself.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ServiceConfig {
+    pub binary: Option<PathBuf>,
+    pub service: Option<String>,
+}
+
+impl ServiceConfig {
+    /// From [`BINARY_VARIABLE`] and [`SERVICE_VARIABLE`]; empty values count
+    /// as unset.
+    pub fn from_env() -> Self {
+        let var = |name| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+        Self { binary: var(BINARY_VARIABLE).map(PathBuf::from), service: var(SERVICE_VARIABLE) }
+    }
+
+    fn connect(&self) -> Result<Connection, BackendError> {
+        if let Some(service) = &self.service {
+            let (host, port) = service
+                .rsplit_once(':')
+                .and_then(|(host, port)| Some((host, port.parse::<u16>().ok()?)))
+                .filter(|(host, _)| !host.is_empty())
+                .ok_or_else(|| {
+                    BackendError::Unavailable(format!("the sysml-grpc service address `{service}` is not host:port"))
+                })?;
+            return Connection::external(host, port).map_err(|e| {
+                BackendError::Unavailable(format!("could not reach the sysml-grpc service at {service}: {e}"))
+            });
+        }
+        // The client skips a configured binary that doesn't exist and
+        // downloads one instead; a typo should fail, not surprise.
+        if let Some(binary) = &self.binary
+            && !binary.is_file()
+        {
+            return Err(BackendError::Unavailable(format!(
+                "the configured sysml-grpc binary {} does not exist",
+                binary.display()
+            )));
+        }
+        Connection::private().map_err(|e| BackendError::Unavailable(explain_start_failure(&e)))
+    }
+}
+
+/// What went wrong starting the private service, and what to do about it.
+fn explain_start_failure(error: &opensysml::Error) -> String {
+    let remedy = "Set a sysml-grpc binary with --sysml-binary <path> (or OPENSYSML_GRPC_BINARY), \
+                  or connect to a running service with --sysml-service <host:port> (or OPENSYSML_SERVICE).";
+    match error {
+        opensysml::Error::BinaryNotFound { .. }
+        | opensysml::Error::BinaryDownload(_)
+        | opensysml::Error::UnsupportedPlatform { .. }
+        | opensysml::Error::ChecksumMismatch(_) => format!("could not get the sysml-grpc service: {error}. {remedy}"),
+        opensysml::Error::ServiceStart(_) => format!("the sysml-grpc service did not start: {error}. {remedy}"),
+        other => format!("could not start the sysml-grpc service: {other}"),
+    }
+}
+
+/// Loads Models through `sysml-grpc`, connecting on first use: a private
+/// service the client starts (and stops when the backend is dropped), or a
+/// running one if configured.
 pub struct OpenSysmlBackend {
+    config: ServiceConfig,
     connection: Option<Connection>,
 }
 
+impl Default for OpenSysmlBackend {
+    fn default() -> Self {
+        Self::with_config(ServiceConfig::from_env())
+    }
+}
+
 impl OpenSysmlBackend {
+    /// Configured from the environment; see [`ServiceConfig::from_env`].
     pub fn new() -> Self {
         Self::default()
     }
 
+    pub fn with_config(config: ServiceConfig) -> Self {
+        Self { config, connection: None }
+    }
+
     fn connection(&mut self) -> Result<&Connection, BackendError> {
         if self.connection.is_none() {
-            let connection = Connection::private().map_err(unavailable)?;
-            self.connection = Some(connection);
+            self.connection = Some(self.config.connect()?);
         }
         Ok(self.connection.as_ref().expect("connection was just set"))
     }
@@ -196,6 +271,14 @@ fn unavailable(error: opensysml::Error) -> BackendError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_failures_say_how_to_configure_a_binary_or_service() {
+        let message = explain_start_failure(&opensysml::Error::BinaryDownload("offline".into()));
+
+        assert!(message.contains("offline"), "{message}");
+        assert!(message.contains("--sysml-binary") && message.contains("--sysml-service"), "{message}");
+    }
 
     #[test]
     fn service_kinds_become_our_kinds_or_sysml_keywords() {
