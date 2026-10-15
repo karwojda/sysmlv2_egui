@@ -74,13 +74,21 @@ impl ModelBackend for OpenSysmlBackend {
             collect(root, None, &mut elements)?;
         }
         let mut diagnostics: Vec<Diagnostic> = parsed.diagnostics().iter().map(diagnostic).collect();
-        if let Err(error) = api_json::enrich(&connection, &parsed, &mut elements) {
+        for (document, error) in api_json::enrich(&connection, &parsed, &mut elements) {
+            // A file with its own errors already says why; don't repeat it.
+            let file = PathBuf::from(&document);
+            let has_errors = diagnostics
+                .iter()
+                .any(|d| d.severity == Severity::Error && d.location.as_ref().is_some_and(|l| l.file == file));
+            if has_errors {
+                continue;
+            }
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 message: format!(
-                    "could not read connection ends, documentation and source lines from the service: {error}"
+                    "connection ends, documentation and source lines are missing for this file: {error}"
                 ),
-                location: None,
+                location: Some(SourceLocation { file, line: 0 }),
             });
         }
         Ok(Model::new(elements.into_values(), diagnostics))

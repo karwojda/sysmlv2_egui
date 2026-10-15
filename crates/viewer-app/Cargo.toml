@@ -1,0 +1,16 @@
+[package]
+name = "viewer-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.37.0"
+viewer-core = { version = "0.1.0", path = "../viewer-core" }
+viewer-opensysml = { version = "0.1.0", path = "../viewer-opensysml" }
+
+[[bin]]
+name = "sysml-viewer-gui"
+path = "src/main.rs"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -5,6 +5,7 @@
 //! parsing library (ADR-0001).
 
 pub mod backend;
+pub mod browser;
 pub mod diagram;
 pub mod diagram_file;
 mod layout;

@@ -11,18 +11,35 @@ use viewer_core::model::{ConnectionEnd, Element, QualifiedName, SourceLocation};
 
 /// Adds source locations, documentation, conjugation and connection ends
 /// to `elements`, converting one document at a time so each element's file
-/// is known.
+/// is known. A document that cannot be converted is skipped, and its
+/// failure returned, so one broken file does not cost the others.
 pub fn enrich(
     connection: &Connection,
     parsed: &opensysml::Model,
     elements: &mut BTreeMap<QualifiedName, Element>,
-) -> Result<(), opensysml::Error> {
+) -> Vec<(String, opensysml::Error)> {
     // Element JSON by id, and the file each came from, across all documents,
     // since references cross documents.
     let mut items: HashMap<String, (Value, PathBuf)> = HashMap::new();
+    let mut failures = Vec::new();
     for document in parsed.documents() {
         let options = ConvertOptions { documents: vec![document.clone()], ..ConvertOptions::default() };
-        let conversion = connection.convert("api-json", &ConvertSource::Model(parsed.hash().to_owned()), &options)?;
+        // The service refuses to convert any document of a Model with a
+        // syntax error anywhere; the file on its own may still convert,
+        // losing only ends that reach into other files.
+        let conversion = match connection
+            .convert("api-json", &ConvertSource::Model(parsed.hash().to_owned()), &options)
+            .or_else(|_| {
+                let alone = ConvertOptions { tolerate_syntax_errors: true, ..ConvertOptions::default() };
+                connection.convert("api-json", &ConvertSource::File(PathBuf::from(document)), &alone)
+            })
+        {
+            Ok(conversion) => conversion,
+            Err(error) => {
+                failures.push((document.clone(), error));
+                continue;
+            }
+        };
         let Ok(Value::Array(array)) = serde_json::from_str::<Value>(&conversion.content) else {
             continue;
         };
@@ -72,7 +89,7 @@ pub fn enrich(
                 .collect();
         }
     }
-    Ok(())
+    failures
 }
 
 /// The ids of the features a connector end reaches: the chain of a

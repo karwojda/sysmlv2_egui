@@ -228,3 +228,24 @@ fn an_empty_folder_is_an_empty_model_without_starting_the_service() {
     std::fs::remove_dir(&empty).unwrap();
     assert_eq!(model, Model::default());
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_broken_file_does_not_cost_other_files_their_source_lines() {
+    let folder = std::env::temp_dir().join(format!("viewer-opensysml-mixed-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::copy(fixture("broken").join("broken.sysml"), folder.join("broken.sysml")).unwrap();
+    std::fs::copy(fixture("vehicles").join("vehicles.sysml"), folder.join("vehicles.sysml")).unwrap();
+
+    let model = OpenSysmlBackend::new().load(&folder).unwrap();
+    std::fs::remove_dir_all(&folder).unwrap();
+
+    let car = model.element(&QualifiedName::from("Vehicles::Car")).unwrap();
+    assert_eq!(car.source.as_ref().map(|s| s.line), Some(3));
+    assert!(model.has_errors());
+    assert!(
+        model.diagnostics().iter().all(|d| d.severity == Severity::Error),
+        "no extra warning repeats the broken file's error: {:?}",
+        model.diagnostics()
+    );
+}
