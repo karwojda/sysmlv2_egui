@@ -25,4 +25,5 @@ Two directions, possibly both:
   - Dragging an automatically bent edge turns its bends into saved ones.
   - Core: `Edit::Route { edge, bends }` (empty = automatic). `Scene::edges()` gives each edge's path.
   - Grab priority (`canvas::grab_at`, unit-tested): resize handle, bend, node, edge line, pan.
-- **Not exercised by hand:** the bend dragging (the screenshot tool can't send input).
+- Bend dragging: see the user verification below.
+- **Verified by the user by hand (2026-10-15):** bending edges works.

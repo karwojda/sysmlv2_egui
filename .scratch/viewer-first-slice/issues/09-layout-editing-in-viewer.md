@@ -36,3 +36,4 @@
 - **Not exercised by hand:** drag, resize, context menus and the close dialogs. The screenshot tool can't send input. Checked by eye: the toolbar and Saved Diagrams list, plus the Export of a saved Layout (positions, hidden, collapsed).
 - Follow-up: ticket 14 (straight edges can run behind nodes; adding bends in the UI).
 - **Fix after user testing (resize panned instead):** the handle sits on the node's corner, half outside it. A drag was classified by "node under the pointer" first, so a press on the outer half panned, and the position used was where the drag was recognised, not where the press began. Now `canvas::grab_at` checks every node's handle first, then the node, then panning, using the press origin, and hovering the outer half keeps the handle visible. Unit tests cover presses just outside, on, and just inside the corner.
+- **Verified by the user by hand (2026-10-15):** resize via the corner handle works.
