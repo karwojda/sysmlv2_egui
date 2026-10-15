@@ -26,11 +26,16 @@ pub struct ViewerApp {
     error: Option<String>,
     filter: String,
     selected: Option<QualifiedName>,
+    /// The selected element and its owners, to open and scroll the Browser
+    /// to it once after it was selected somewhere else.
+    reveal: Vec<QualifiedName>,
     saved_names: Vec<String>,
     diagrams: Vec<OpenDiagram>,
     active: Option<usize>,
     /// A Diagram to open once the Model has loaded.
     pending_root: Option<QualifiedName>,
+    /// A General Diagram to open after the current panel is drawn.
+    pending_open: Option<QualifiedName>,
     export_path: String,
     save_name: String,
     status: Option<String>,
@@ -87,10 +92,12 @@ impl ViewerApp {
             error: None,
             filter: String::new(),
             selected: None,
+            reveal: Vec::new(),
             saved_names: Vec::new(),
             diagrams: Vec::new(),
             active: None,
             pending_root: root,
+            pending_open: None,
             export_path: String::new(),
             save_name: String::new(),
             status: None,
@@ -130,7 +137,8 @@ impl ViewerApp {
                     self.folder = Some(loaded.folder);
                     self.model = Some(model);
                     if let Some(root) = self.pending_root.take() {
-                        self.open_general(root);
+                        self.open_general(root.clone());
+                        self.select_and_reveal(Some(root));
                     }
                 }
                 Err(error) => self.error = Some(error.to_string()),
@@ -189,6 +197,20 @@ impl ViewerApp {
         if let Some(active) = self.active {
             self.activate(active);
         }
+    }
+
+    /// Selects `element` from outside the Browser (the canvas, a link),
+    /// so the Browser opens to it and scrolls it into view.
+    fn select_and_reveal(&mut self, element: Option<QualifiedName>) {
+        self.reveal.clear();
+        if let (Some(element), Some(model)) = (&element, &self.model) {
+            let mut current = Some(element.clone());
+            while let Some(name) = current {
+                current = model.element(&name).and_then(|e| e.owner.clone());
+                self.reveal.push(name);
+            }
+        }
+        self.selected = element;
     }
 
     fn edit_active(&mut self, edit: Edit) {
@@ -254,16 +276,81 @@ impl ViewerApp {
             if entries.is_empty() {
                 ui.weak(if filtering { "Nothing matches the filter." } else { "The Model is empty." });
             }
-            let context = EntryContext { model, selected: self.selected.as_ref(), filtering };
+            let context = EntryContext { model, selected: self.selected.as_ref(), reveal: &self.reveal, filtering };
             for entry in &entries {
                 browser_entry(ui, entry, 0, &context, &mut actions);
             }
         });
+        self.reveal.clear();
         for action in actions {
             match action {
                 BrowserAction::Select(element) => self.selected = Some(element),
                 BrowserAction::OpenGeneral(root) => self.open_general(root),
             }
+        }
+    }
+
+    /// The selected element's properties, with its type, owner and
+    /// generals as links that select them, and "Open in editor".
+    fn properties_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Properties");
+        ui.separator();
+        let (Some(model), Some(selected)) = (&self.model, &self.selected) else {
+            ui.weak("Select an element in the Browser or a Diagram.");
+            return;
+        };
+        let Some(properties) = viewer_core::properties::properties(model, selected) else {
+            ui.weak("The selected element is no longer in the Model.");
+            return;
+        };
+        let openable = model.element(selected).is_some_and(|e| DiagramKind::General.accepts_root(e));
+        let mut follow = None;
+        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            egui::Grid::new("properties").num_columns(2).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
+                for property in &properties.rows {
+                    ui.label(egui::RichText::new(property.label).strong());
+                    match &property.refers_to {
+                        Some(target) => {
+                            if ui.link(&property.value).on_hover_text("Select").clicked() {
+                                follow = Some(target.clone());
+                            }
+                        }
+                        None => {
+                            ui.add(egui::Label::new(&property.value).wrap());
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                let source = properties.source.clone();
+                let editor = ui
+                    .add_enabled(source.is_some(), egui::Button::new("Open in editor"))
+                    .on_hover_text("Runs `code -g <file>:<line>`")
+                    .on_disabled_hover_text("The service gave no source location for this element");
+                if editor.clicked()
+                    && let Some(source) = source
+                {
+                    self.status = Some(match open_in_editor(&source) {
+                        Ok(()) => format!("Opened {}:{} in the editor", source.file.display(), source.line),
+                        Err(error) => error,
+                    });
+                }
+                if openable && ui.button("Open General Diagram").clicked() {
+                    follow = None;
+                    self.pending_open = Some(selected.clone());
+                }
+            });
+            if let Some(status) = &self.status {
+                ui.weak(status);
+            }
+        });
+        if let Some(target) = follow {
+            self.select_and_reveal(Some(target));
+        }
+        if let Some(root) = self.pending_open.take() {
+            self.open_general(root);
         }
     }
 
@@ -419,6 +506,8 @@ impl ViewerApp {
                 .unwrap_or_default()
         };
         let mut edit = None;
+        // A click's new selection, applied once the Diagram is let go.
+        let mut select: Option<Option<QualifiedName>> = None;
 
         // Decide what a drag does from where the press began (not where
         // the pointer is once the drag is recognised).
@@ -489,7 +578,7 @@ impl ViewerApp {
             bends.remove(*index);
             edit = Some(Edit::Route { edge: edge.edge_key().expect("an edge has a key"), bends });
         } else if response.clicked() {
-            self.selected = hovered.clone();
+            select = Some(hovered.clone());
         }
         if response.secondary_clicked() {
             self.context_target = match &hover {
@@ -580,6 +669,9 @@ impl ViewerApp {
         if let Some(edit) = edit {
             self.edit_active(edit);
         }
+        if let Some(element) = select {
+            self.select_and_reveal(element);
+        }
     }
 
     /// Asks before discarding unsaved changes, when closing a tab or the
@@ -627,6 +719,7 @@ impl ViewerApp {
 struct EntryContext<'a> {
     model: &'a Model,
     selected: Option<&'a QualifiedName>,
+    reveal: &'a [QualifiedName],
     filtering: bool,
 }
 
@@ -658,7 +751,7 @@ fn browser_entry(
         egui::CollapsingHeader::new(label)
             .id_salt(entry.element.as_str())
             .default_open(depth == 0)
-            .open(context.filtering.then_some(true))
+            .open((context.filtering || context.reveal.iter().skip(1).any(|e| e == &entry.element)).then_some(true))
             .show(ui, |ui| {
                 for child in &entry.children {
                     browser_entry(ui, child, depth + 1, context, actions);
@@ -671,6 +764,9 @@ fn browser_entry(
         .model
         .element(&entry.element)
         .is_some_and(|e| DiagramKind::General.accepts_root(e));
+    if selected && context.reveal.first() == Some(&entry.element) {
+        response.scroll_to_me(Some(egui::Align::Center));
+    }
     if response.clicked() {
         actions.push(BrowserAction::Select(entry.element.clone()));
     }
@@ -685,6 +781,17 @@ fn browser_entry(
             }
         });
     }
+}
+
+/// Opens `source` in VS Code at its line.
+fn open_in_editor(source: &viewer_core::SourceLocation) -> Result<(), String> {
+    let target = format!("{}:{}", source.file.display(), source.line);
+    std::process::Command::new("code")
+        .arg("-g")
+        .arg(&target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open {target} with `code -g` ({e}). Is VS Code's `code` command on your PATH?"))
 }
 
 /// `file:line: severity: message`, with the file relative to the Model
@@ -722,6 +829,10 @@ impl eframe::App for ViewerApp {
             .resizable(true)
             .default_size(300.0)
             .show(ui, |ui| self.left_panel(ui));
+        egui::Panel::right("properties")
+            .resizable(true)
+            .default_size(280.0)
+            .show(ui, |ui| self.properties_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.diagram_area(ui));
     }
 }

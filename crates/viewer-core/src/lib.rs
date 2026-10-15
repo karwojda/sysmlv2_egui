@@ -11,6 +11,7 @@ pub mod diagram_file;
 pub mod editing;
 mod layout;
 pub mod model;
+pub mod properties;
 mod notation;
 pub mod scene;
 pub mod svg;
