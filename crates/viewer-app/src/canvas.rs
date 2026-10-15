@@ -90,10 +90,11 @@ impl View {
         self.pan = pointer - origin - Vec2::new(anchor.x, anchor.y) * self.zoom;
     }
 
-    /// Fits a scene of `size` into `available`, centered, never enlarging.
-    pub fn fit(size: Vec2, available: Vec2) -> Self {
+    /// Fits a page at `top_left` of `size` into `available`, centered,
+    /// never enlarging.
+    pub fn fit(top_left: Vec2, size: Vec2, available: Vec2) -> Self {
         let zoom = (available.x / size.x).min(available.y / size.y).clamp(MIN_ZOOM, 1.0);
-        Self { pan: (available - size * zoom) / 2.0, zoom }
+        Self { pan: (available - size * zoom) / 2.0 - top_left * zoom, zoom }
     }
 }
 
@@ -109,7 +110,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
         Fill::Stroke => STROKE,
     };
 
-    let page = egui::Rect::from_min_size(at(Point::new(0.0, 0.0)), Vec2::new(scene.width, scene.height) * z);
+    let page = egui::Rect::from_min_size(at(Point::new(scene.x, scene.y)), Vec2::new(scene.width, scene.height) * z);
     painter.rect_filled(page, 0.0, PAGE);
 
     for item in &scene.items {
@@ -139,6 +140,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
                 let align = match anchor {
                     TextAnchor::Start => Align2::LEFT_BOTTOM,
                     TextAnchor::Middle => Align2::CENTER_BOTTOM,
+                    TextAnchor::End => Align2::RIGHT_BOTTOM,
                 };
                 let mut job = egui::text::LayoutJob::single_section(
                     text.clone(),
@@ -192,13 +194,16 @@ mod tests {
 
     #[test]
     fn fitting_centers_the_scene_and_never_enlarges_it() {
-        let small = View::fit(Vec2::new(200.0, 100.0), Vec2::new(1000.0, 500.0));
+        let small = View::fit(Vec2::ZERO, Vec2::new(200.0, 100.0), Vec2::new(1000.0, 500.0));
         assert_eq!(small.zoom, 1.0);
         assert_eq!(small.pan, Vec2::new(400.0, 200.0));
 
-        let large = View::fit(Vec2::new(2000.0, 500.0), Vec2::new(1000.0, 500.0));
+        let large = View::fit(Vec2::ZERO, Vec2::new(2000.0, 500.0), Vec2::new(1000.0, 500.0));
         assert_eq!(large.zoom, 0.5);
         assert_eq!(large.pan, Vec2::new(0.0, 125.0));
+
+        let shifted = View::fit(Vec2::new(-40.0, -10.0), Vec2::new(200.0, 100.0), Vec2::new(1000.0, 500.0));
+        assert_eq!(shifted.pan, Vec2::new(440.0, 210.0), "the page's top-left lands where an unshifted one would");
     }
 
     #[test]

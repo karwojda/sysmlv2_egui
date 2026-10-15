@@ -61,6 +61,7 @@ pub enum Fill {
 pub enum TextAnchor {
     Start,
     Middle,
+    End,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -144,6 +145,10 @@ pub struct Item {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
+    /// Top-left of the page; negative when something is drawn left of or
+    /// above the nodes, such as a label beside an edge.
+    pub x: f32,
+    pub y: f32,
     pub width: f32,
     pub height: f32,
     /// Painted in order; later items are on top.

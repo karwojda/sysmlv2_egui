@@ -11,13 +11,13 @@ const FONT_FAMILY: &str = "sans-serif";
 
 pub fn render(scene: &Scene) -> String {
     let mut out = String::new();
-    let (w, h) = (num(scene.width), num(scene.height));
+    let (x, y, w, h) = (num(scene.x), num(scene.y), num(scene.width), num(scene.height));
     writeln!(
         out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="{FONT_FAMILY}">"#
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="{x} {y} {w} {h}" font-family="{FONT_FAMILY}">"#
     )
     .unwrap();
-    writeln!(out, r#"<rect x="0" y="0" width="{w}" height="{h}" fill="{BACKGROUND}"/>"#).unwrap();
+    writeln!(out, r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{BACKGROUND}"/>"#).unwrap();
     for item in &scene.items {
         shape(&mut out, &item.shape);
     }
@@ -65,6 +65,7 @@ fn shape(out: &mut String, shape: &Shape) {
             match anchor {
                 TextAnchor::Start => "start",
                 TextAnchor::Middle => "middle",
+                TextAnchor::End => "end",
             },
             num(font.size),
             if font.bold { r#" font-weight="bold""# } else { "" },

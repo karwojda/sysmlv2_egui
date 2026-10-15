@@ -1,5 +1,7 @@
 //! Building a Diagram's scene from the Model.
 
+use std::collections::BTreeMap;
+
 use crate::diagram_file::Layout;
 use crate::layout;
 use crate::model::{Element, ElementKind, Model, QualifiedName};
@@ -7,6 +9,8 @@ use crate::notation;
 use crate::scene::{Depicts, Item, Point, Rect, Scene};
 
 const MARGIN: f32 = 20.0;
+/// Space kept around anything drawn past the nodes' margin.
+const EDGE_PADDING: f32 = 4.0;
 /// Space between saved nodes and newly placed ones below them.
 const NEW_NODES_GAP: f32 = 60.0;
 
@@ -132,26 +136,31 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
         .collect();
     let rects = place(&nodes, &contents, &layering, saved);
 
-    let mut items: Vec<Item> = Vec::new();
+    // Edges without a saved route that join the same two nodes are fanned
+    // out, numbered from the lower node index so direction doesn't matter.
+    let mut parallel: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    let mut fan_slot = Vec::with_capacity(edges.len());
     for edge in &edges {
-        let name = |i: usize| nodes[i].qualified_name.clone();
-        let (depicts, from, to) = match *edge {
-            Edge::Specialization { specific, general } => {
-                (Depicts::Specialization { specific: name(specific), general: name(general) }, specific, general)
+        let (depicts, from, to) = describe(edge, &nodes);
+        let routed = depicts.edge_key().is_some_and(|key| saved.edges.contains_key(&key));
+        let pair = (from.min(to), from.max(to));
+        fan_slot.push((!routed && from != to).then(|| {
+            let slot = parallel.entry(pair).or_default();
+            *slot += 1;
+            (pair, *slot - 1)
+        }));
+    }
+
+    let mut items: Vec<Item> = Vec::new();
+    for (edge, slot) in edges.iter().zip(&fan_slot) {
+        let (depicts, from, to) = describe(edge, &nodes);
+        let bends: Vec<Point> = match (depicts.edge_key().and_then(|key| saved.edges.get(&key)), slot) {
+            (Some(points), _) => points.iter().map(|&[x, y]| Point::new(x, y)).collect(),
+            (None, Some((pair, index))) => {
+                notation::fan_bends(rects[pair.0], rects[pair.1], *index, parallel[pair])
             }
-            Edge::Typing { usage, definition } => {
-                (Depicts::Typing { usage: name(usage), definition: name(definition) }, usage, definition)
-            }
-            Edge::Composition { owner, part_type, usage } => {
-                (Depicts::Composition { owner: name(owner), usage: usage.qualified_name.clone() }, owner, part_type)
-            }
-            Edge::Connection { a, b, connection } => (Depicts::Connection(connection.qualified_name.clone()), a, b),
+            (None, None) => Vec::new(),
         };
-        let bends: Vec<Point> = depicts
-            .edge_key()
-            .and_then(|key| saved.edges.get(&key))
-            .map(|points| points.iter().map(|&[x, y]| Point::new(x, y)).collect())
-            .unwrap_or_default();
         let path = notation::route(rects[from], rects[to], &bends);
         items.extend(match *edge {
             Edge::Specialization { .. } => notation::specialization(depicts, path),
@@ -164,10 +173,36 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
         items.extend(notation::node(element, content, *rect));
     }
 
-    Scene {
-        width: rects.iter().map(Rect::right).fold(0.0, f32::max) + MARGIN,
-        height: rects.iter().map(Rect::bottom).fold(0.0, f32::max) + MARGIN,
-        items,
+    // The page holds every node with a margin, grown to anything drawn
+    // beyond that (such as labels beside edges).
+    let mut left: f32 = 0.0;
+    let mut top: f32 = 0.0;
+    let mut right = rects.iter().map(Rect::right).fold(0.0, f32::max) + MARGIN;
+    let mut bottom = rects.iter().map(Rect::bottom).fold(0.0, f32::max) + MARGIN;
+    for item in &items {
+        let e = notation::extent(&item.shape);
+        left = left.min((e.x - EDGE_PADDING).floor());
+        top = top.min((e.y - EDGE_PADDING).floor());
+        right = right.max((e.right() + EDGE_PADDING).ceil());
+        bottom = bottom.max((e.bottom() + EDGE_PADDING).ceil());
+    }
+    Scene { x: left, y: top, width: right - left, height: bottom - top, items }
+}
+
+/// What `edge` depicts, and the indices of the nodes it runs from and to.
+fn describe(edge: &Edge, nodes: &[&Element]) -> (Depicts, usize, usize) {
+    let name = |i: usize| nodes[i].qualified_name.clone();
+    match *edge {
+        Edge::Specialization { specific, general } => {
+            (Depicts::Specialization { specific: name(specific), general: name(general) }, specific, general)
+        }
+        Edge::Typing { usage, definition } => {
+            (Depicts::Typing { usage: name(usage), definition: name(definition) }, usage, definition)
+        }
+        Edge::Composition { owner, part_type, usage } => {
+            (Depicts::Composition { owner: name(owner), usage: usage.qualified_name.clone() }, owner, part_type)
+        }
+        Edge::Connection { a, b, connection } => (Depicts::Connection(connection.qualified_name.clone()), a, b),
     }
 }
 

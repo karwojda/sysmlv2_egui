@@ -313,3 +313,80 @@ fn export_matches_the_golden_file() {
         .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
     assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
 }
+
+/// Text box estimate matching the notation's font metrics, for overlap checks.
+fn label_box(shape: &Shape) -> viewer_core::scene::Rect {
+    let Shape::Text { position, text, anchor, font } = shape else { panic!("not a label") };
+    let width = text.chars().count() as f32 * font.size * 0.56;
+    let x = match anchor {
+        viewer_core::scene::TextAnchor::Start => position.x,
+        viewer_core::scene::TextAnchor::Middle => position.x - width / 2.0,
+        viewer_core::scene::TextAnchor::End => position.x - width,
+    };
+    viewer_core::scene::Rect { x, y: position.y - font.size, width, height: font.size }
+}
+
+#[test]
+fn parallel_connections_are_fanned_out_with_separate_labels() {
+    let scene = build_scene(&structure(), DiagramKind::General, &qn("Structure::Vehicle")).unwrap();
+    let edge = |name: &str| {
+        let depicts = Depicts::Connection(qn(name));
+        let shapes: Vec<Shape> = scene.items_depicting(&depicts).cloned().collect();
+        let line = shapes.iter().find_map(|s| match s {
+            Shape::Polyline { points, .. } => Some(points.clone()),
+            _ => None,
+        });
+        let label = shapes.iter().find(|s| matches!(s, Shape::Text { .. })).map(label_box);
+        (line.unwrap(), label.unwrap())
+    };
+
+    let (line_a, label_a) = edge("Structure::Vehicle::line");
+    let (line_b, label_b) = edge("Structure::Vehicle::iface");
+
+    assert_ne!(line_a, line_b, "the two connections are drawn apart");
+    assert_eq!(line_a.len(), 3, "each bends once");
+    assert!(!label_a.intersects(&label_b), "{label_a:?} overlaps {label_b:?}");
+}
+
+#[test]
+fn a_single_edge_between_two_nodes_stays_straight() {
+    let scene = scene();
+    let link = Depicts::Connection(qn("Structure::link"));
+
+    let points = scene
+        .items_depicting(&link)
+        .find_map(|s| match s {
+            Shape::Polyline { points, .. } => Some(points.len()),
+            _ => None,
+        })
+        .unwrap();
+
+    assert_eq!(points, 2);
+}
+
+#[test]
+fn vehicle_export_matches_the_golden_file() {
+    let scene = build_scene(&structure(), DiagramKind::General, &qn("Structure::Vehicle")).unwrap();
+    let svg = svg::render(&scene);
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/vehicle-general.svg");
+
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &svg).unwrap();
+    }
+    let expected = std::fs::read_to_string(&golden)
+        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
+    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+}
+
+#[test]
+fn the_page_holds_everything_drawn_including_labels_beside_edges() {
+    let scene = build_scene(&structure(), DiagramKind::General, &qn("Structure::Vehicle")).unwrap();
+    let page = viewer_core::scene::Rect { x: scene.x, y: scene.y, width: scene.width, height: scene.height };
+
+    for item in &scene.items {
+        if let Shape::Text { .. } = item.shape {
+            let label = label_box(&item.shape);
+            assert!(label.x >= page.x && label.right() <= page.right(), "{label:?} sticks out of {page:?}");
+        }
+    }
+}

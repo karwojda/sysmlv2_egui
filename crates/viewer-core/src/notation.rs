@@ -19,6 +19,8 @@ const ARROW_HALF_WIDTH: f32 = 8.0;
 const DIAMOND_LENGTH: f32 = 18.0;
 const DIAMOND_HALF_WIDTH: f32 = 6.0;
 const LABEL_OFFSET: f32 = 6.0;
+/// Sideways distance between parallel edges joining the same two nodes.
+const PARALLEL_SPREAD: f32 = 36.0;
 const COLON_DOT_RADIUS: f32 = 1.8;
 /// How far the defined-by colon sits before the triangle, and how far
 /// apart its two dots are.
@@ -30,6 +32,31 @@ const COLON_HALF_SPREAD: f32 = 4.0;
 fn text_width(text: &str, font: Font) -> f32 {
     let average = if font.bold { 0.62 } else { 0.56 };
     text.chars().count() as f32 * font.size * average
+}
+
+/// The area `shape` covers, with text estimated like node sizes are.
+pub fn extent(shape: &Shape) -> Rect {
+    let around = |points: &[Point], pad: f32| {
+        let min_x = points.iter().map(|p| p.x).fold(f32::INFINITY, f32::min) - pad;
+        let min_y = points.iter().map(|p| p.y).fold(f32::INFINITY, f32::min) - pad;
+        let max_x = points.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max) + pad;
+        let max_y = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max) + pad;
+        Rect { x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y }
+    };
+    match shape {
+        Shape::Rect { rect, .. } => *rect,
+        Shape::Polyline { points, .. } | Shape::Polygon { points, .. } => around(points, 0.0),
+        Shape::Circle { center, radius, .. } => around(&[*center], *radius),
+        Shape::Text { position, text, anchor, font } => {
+            let width = text_width(text, *font);
+            let x = match anchor {
+                TextAnchor::Start => position.x,
+                TextAnchor::Middle => position.x - width / 2.0,
+                TextAnchor::End => position.x - width,
+            };
+            Rect { x, y: position.y - font.size, width, height: font.size * 1.3 }
+        }
+    }
 }
 
 /// What a node shows: a header, then titled compartments of feature rows.
@@ -244,21 +271,48 @@ pub fn composition(depicts: Depicts, usage: &Element, path: Vec<Point>) -> Vec<I
 }
 
 /// A connection or interface: a plain solid line between the usages it
-/// joins, labelled with its name and type at the middle of its middle
-/// segment.
+/// joins, labelled with its name and type. A straight one is labelled above
+/// its middle; a bent one beside its middle bend, on the outer side, so
+/// fanned-out parallel connections keep their labels apart.
 pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<Item> {
-    let segment = (path.len() - 1) / 2;
-    let (a, b) = (path[segment], path[segment + 1]);
-    let middle = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+    let (first, last) = (path[0], path[path.len() - 1]);
+    let chord_middle = Point::new((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
+    let (position, anchor) = if path.len() % 2 == 1 {
+        let bend = path[path.len() / 2];
+        let (dx, dy) = (bend.x - chord_middle.x, bend.y - chord_middle.y);
+        if dx.abs() < 0.5 && dy.abs() < 0.5 {
+            (Point::new(bend.x, bend.y - LABEL_OFFSET), TextAnchor::Middle)
+        } else if dx.abs() >= dy.abs() {
+            let side = dx.signum() * LABEL_OFFSET;
+            let anchor = if dx > 0.0 { TextAnchor::Start } else { TextAnchor::End };
+            (Point::new(bend.x + side, bend.y + LABEL_FONT.size / 3.0), anchor)
+        } else if dy > 0.0 {
+            (Point::new(bend.x, bend.y + LABEL_OFFSET + LABEL_FONT.size), TextAnchor::Middle)
+        } else {
+            (Point::new(bend.x, bend.y - LABEL_OFFSET), TextAnchor::Middle)
+        }
+    } else {
+        let segment = (path.len() - 1) / 2;
+        let (a, b) = (path[segment], path[segment + 1]);
+        (Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0 - LABEL_OFFSET), TextAnchor::Middle)
+    };
     tag(depicts, vec![
         Shape::Polyline { points: path, dashed: false },
-        Shape::Text {
-            position: Point::new(middle.x, middle.y - LABEL_OFFSET),
-            text: usage_label(element),
-            anchor: TextAnchor::Middle,
-            font: LABEL_FONT,
-        },
+        Shape::Text { position, text: usage_label(element), anchor, font: LABEL_FONT },
     ])
+}
+
+/// Bends that fan out `count` parallel edges between `a` and `b`: edge
+/// `index` bends at the middle, offset sideways from the straight line.
+/// The middle edge of an odd count stays straight.
+pub fn fan_bends(a: Rect, b: Rect, index: usize, count: usize) -> Vec<Point> {
+    let offset = (index as f32 - (count as f32 - 1.0) / 2.0) * PARALLEL_SPREAD;
+    if offset == 0.0 {
+        return Vec::new();
+    }
+    let (ca, cb) = (center(a), center(b));
+    let (nx, ny) = normal(ca, cb, offset);
+    vec![Point::new((ca.x + cb.x) / 2.0 + nx, (ca.y + cb.y) / 2.0 + ny)]
 }
 
 /// The path of an edge from `from` to `to` through `bends`: it leaves

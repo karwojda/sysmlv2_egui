@@ -259,7 +259,8 @@ impl ViewerApp {
         let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
         let origin = response.rect.min;
         if diagram.needs_fit {
-            diagram.view = View::fit(egui::vec2(scene.width, scene.height), response.rect.size());
+            diagram.view =
+                View::fit(egui::vec2(scene.x, scene.y), egui::vec2(scene.width, scene.height), response.rect.size());
             diagram.needs_fit = false;
         }
         if response.dragged() {
