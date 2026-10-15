@@ -1,5 +1,6 @@
 //! The desktop viewer: opens a Model folder, shows its Browser Diagram and
-//! diagnostics, and opens General Diagrams on a canvas.
+//! diagnostics, and opens General Diagrams on a canvas where their Layout
+//! can be adjusted and saved.
 
 pub mod canvas;
 pub mod loader;
@@ -8,11 +9,15 @@ use std::path::{Path, PathBuf};
 
 use eframe::egui;
 use viewer_core::browser::{self, BrowserEntry};
+use viewer_core::editing::Edit;
 use viewer_core::model::{Diagnostic, Severity};
-use viewer_core::{DiagramKind, Model, ModelBackend, QualifiedName};
+use viewer_core::{DiagramFile, DiagramKind, Model, ModelBackend, QualifiedName, diagram_file};
 
 use canvas::{OpenDiagram, View};
 use loader::Loader;
+
+/// Screen size of the resize handle at a node's bottom-right corner.
+const RESIZE_HANDLE: f32 = 10.0;
 
 pub struct ViewerApp {
     loader: Loader,
@@ -23,12 +28,32 @@ pub struct ViewerApp {
     error: Option<String>,
     filter: String,
     selected: Option<QualifiedName>,
+    saved_names: Vec<String>,
     diagrams: Vec<OpenDiagram>,
     active: Option<usize>,
     /// A Diagram to open once the Model has loaded.
     pending_root: Option<QualifiedName>,
     export_path: String,
+    save_name: String,
     status: Option<String>,
+    drag: Option<Drag>,
+    /// The element a context menu on the canvas was opened for.
+    context_element: Option<QualifiedName>,
+    confirm: Option<Confirm>,
+    quit_confirmed: bool,
+}
+
+/// What a drag on the canvas is doing, decided when it starts.
+enum Drag {
+    Pan,
+    Move(QualifiedName),
+    Resize(QualifiedName),
+}
+
+/// A question about discarding unsaved changes.
+enum Confirm {
+    CloseTab(usize),
+    Quit,
 }
 
 enum BrowserAction {
@@ -55,11 +80,17 @@ impl ViewerApp {
             error: None,
             filter: String::new(),
             selected: None,
+            saved_names: Vec::new(),
             diagrams: Vec::new(),
             active: None,
             pending_root: root,
             export_path: String::new(),
+            save_name: String::new(),
             status: None,
+            drag: None,
+            context_element: None,
+            confirm: None,
+            quit_confirmed: false,
         };
         if let Some(folder) = folder {
             app.open(folder);
@@ -88,6 +119,7 @@ impl ViewerApp {
                     for diagram in &mut self.diagrams {
                         diagram.refresh(&model);
                     }
+                    self.saved_names = diagram_file::names_in(&loaded.folder).unwrap_or_default();
                     self.folder = Some(loaded.folder);
                     self.model = Some(model);
                     if let Some(root) = self.pending_root.take() {
@@ -99,7 +131,7 @@ impl ViewerApp {
         }
     }
 
-    /// Opens a General Diagram of `root`, or switches to it if already open.
+    /// Opens a General Diagram of `root`, or switches to one already open.
     fn open_general(&mut self, root: QualifiedName) {
         let Some(model) = &self.model else { return };
         if let Some(index) = self.diagrams.iter().position(|d| d.root == root) {
@@ -110,11 +142,33 @@ impl ViewerApp {
         self.activate(self.diagrams.len() - 1);
     }
 
+    /// Opens the saved Diagram File `name`, or switches to it if open.
+    fn open_saved(&mut self, name: &str) {
+        if let Some(index) = self.diagrams.iter().position(|d| d.name.as_deref() == Some(name)) {
+            self.activate(index);
+            return;
+        }
+        let (Some(model), Some(folder)) = (&self.model, &self.folder) else { return };
+        let path = diagram_file::path_for(folder, name);
+        let file = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| DiagramFile::parse(&text).map_err(|e| e.to_string()));
+        match file {
+            Ok(file) => {
+                self.diagrams.push(OpenDiagram::open_saved(model, file));
+                self.activate(self.diagrams.len() - 1);
+            }
+            Err(error) => self.status = Some(format!("Cannot open {}: {error}", path.display())),
+        }
+    }
+
     fn activate(&mut self, index: usize) {
         self.active = Some(index);
-        let name = self.diagrams[index].root.simple_name().to_owned();
+        let diagram = &self.diagrams[index];
+        let file_name = diagram.name.clone().unwrap_or_else(|| diagram.root.simple_name().to_owned());
         let folder = self.folder.clone().unwrap_or_default();
-        self.export_path = folder.join(format!("{name}.svg")).display().to_string();
+        self.export_path = folder.join(format!("{file_name}.svg")).display().to_string();
+        self.save_name = diagram.name.clone().unwrap_or_else(|| diagram.root.simple_name().to_lowercase());
         self.status = None;
     }
 
@@ -128,6 +182,11 @@ impl ViewerApp {
         if let Some(active) = self.active {
             self.activate(active);
         }
+    }
+
+    fn edit_active(&mut self, edit: Edit) {
+        let (Some(active), Some(model)) = (self.active, &self.model) else { return };
+        self.diagrams[active].edit(model, &edit);
     }
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
@@ -148,6 +207,29 @@ impl ViewerApp {
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
         }
+    }
+
+    fn left_panel(&mut self, ui: &mut egui::Ui) {
+        if self.model.is_some() {
+            let mut open = None;
+            egui::CollapsingHeader::new(format!("Saved Diagrams ({})", self.saved_names.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    if self.saved_names.is_empty() {
+                        ui.weak("None yet. Use “Save as” on an open Diagram.");
+                    }
+                    for name in &self.saved_names {
+                        if ui.selectable_label(false, name).on_hover_text("Open").clicked() {
+                            open = Some(name.clone());
+                        }
+                    }
+                });
+            if let Some(name) = open {
+                self.open_saved(&name);
+            }
+            ui.separator();
+        }
+        self.browser(ui);
     }
 
     fn browser(&mut self, ui: &mut egui::Ui) {
@@ -189,16 +271,14 @@ impl ViewerApp {
     }
 
     fn diagram_area(&mut self, ui: &mut egui::Ui) {
-        let Some(active) = self.active else {
+        if self.active.is_none() {
             ui.centered_and_justified(|ui| {
                 ui.weak("Double-click a package or definition in the Browser to open its General Diagram.");
             });
             return;
-        };
-        self.tabs(ui);
-        if self.active != Some(active) {
-            return;
         }
+        self.tabs(ui);
+        let Some(active) = self.active else { return };
         self.toolbar(ui, active);
         ui.separator();
         self.canvas(ui, active);
@@ -209,7 +289,9 @@ impl ViewerApp {
         let mut close = None;
         ui.horizontal_wrapped(|ui| {
             for (index, diagram) in self.diagrams.iter().enumerate() {
-                if ui.selectable_label(self.active == Some(index), diagram.title()).clicked() {
+                let tab = ui.selectable_label(self.active == Some(index), diagram.title());
+                let tab = if diagram.dirty { tab.on_hover_text("Unsaved changes") } else { tab };
+                if tab.clicked() {
                     activate = Some(index);
                 }
                 if ui.small_button("×").on_hover_text("Close").clicked() {
@@ -222,18 +304,55 @@ impl ViewerApp {
             self.activate(index);
         }
         if let Some(index) = close {
-            self.close(index);
+            if self.diagrams[index].dirty {
+                self.confirm = Some(Confirm::CloseTab(index));
+            } else {
+                self.close(index);
+            }
         }
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui, active: usize) {
+        let mut edits = Vec::new();
         ui.horizontal(|ui| {
             if ui.button("Fit").clicked() {
                 self.diagrams[active].needs_fit = true;
             }
             ui.label(format!("{:.0}%", self.diagrams[active].view.zoom * 100.0));
             ui.separator();
-            ui.add(egui::TextEdit::singleline(&mut self.export_path).desired_width(360.0));
+
+            let diagram = &self.diagrams[active];
+            if diagram.name.is_some() && ui.add_enabled(diagram.dirty, egui::Button::new("Save")).clicked() {
+                let name = diagram.name.clone().expect("checked above");
+                self.save_active(active, &name);
+            }
+            ui.add(egui::TextEdit::singleline(&mut self.save_name).desired_width(120.0).hint_text("name"));
+            if ui.button("Save as").clicked() {
+                let name = self.save_name.trim().to_owned();
+                self.save_active(active, &name);
+            }
+            ui.separator();
+
+            let hidden: Vec<QualifiedName> = self.diagrams[active].layout.hidden.iter().cloned().collect();
+            ui.add_enabled_ui(!hidden.is_empty(), |ui| {
+                ui.menu_button(format!("Hidden ({})", hidden.len()), |ui| {
+                    for element in &hidden {
+                        if ui.button(format!("Show {}", element.simple_name())).clicked() {
+                            edits.push(Edit::Show(element.clone()));
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Show all").clicked() {
+                        edits.push(Edit::ShowAll);
+                    }
+                });
+            });
+            if ui.button("Reset layout").on_hover_text("Back to the automatic arrangement").clicked() {
+                edits.push(Edit::Reset);
+            }
+            ui.separator();
+
+            ui.add(egui::TextEdit::singleline(&mut self.export_path).desired_width(260.0));
             if ui.button("Export SVG").clicked() {
                 let path = PathBuf::from(self.export_path.trim());
                 self.status = Some(match self.diagrams[active].export_svg(&path) {
@@ -241,30 +360,84 @@ impl ViewerApp {
                     Err(error) => format!("Export failed: {error}"),
                 });
             }
-            if let Some(status) = &self.status {
-                ui.weak(status);
+        });
+        if let Some(status) = &self.status {
+            ui.weak(status);
+        }
+        for edit in edits {
+            self.edit_active(edit);
+        }
+    }
+
+    fn save_active(&mut self, active: usize, name: &str) {
+        let Some(folder) = self.folder.clone() else { return };
+        self.status = Some(match self.diagrams[active].save_as(&folder, name) {
+            Ok(()) => {
+                self.saved_names = diagram_file::names_in(&folder).unwrap_or_default();
+                format!("Saved {}", diagram_file::path_for(&folder, name).display())
             }
+            Err(error) => format!("Not saved: {error}"),
         });
     }
 
     fn canvas(&mut self, ui: &mut egui::Ui, active: usize) {
+        let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
+        let origin = response.rect.min;
         let diagram = &mut self.diagrams[active];
         let scene = match &diagram.scene {
             Ok(scene) => scene,
             Err(error) => {
-                ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+                painter.text(origin + egui::vec2(8.0, 8.0), egui::Align2::LEFT_TOP, error.to_string(), egui::FontId::default(), ui.visuals().error_fg_color);
                 return;
             }
         };
-        let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
-        let origin = response.rect.min;
         if diagram.needs_fit {
             diagram.view =
                 View::fit(egui::vec2(scene.x, scene.y), egui::vec2(scene.width, scene.height), response.rect.size());
             diagram.needs_fit = false;
         }
+        let view = diagram.view;
+        let to_scene = |p: egui::Pos2| view.to_scene(origin, p);
+        let under = |p: egui::Pos2| scene.element_at(to_scene(p)).cloned();
+        let on_handle = |p: egui::Pos2, element: &QualifiedName| {
+            scene.node_bounds(element).is_some_and(|b| {
+                let corner = view.to_screen(origin, viewer_core::scene::Point::new(b.right(), b.bottom()));
+                (p - corner).x.abs() <= RESIZE_HANDLE && (p - corner).y.abs() <= RESIZE_HANDLE
+            })
+        };
+
+        // Decide what a drag does when it starts: resize from a node's
+        // corner handle, move a node, or pan the view.
+        if response.drag_started_by(egui::PointerButton::Primary)
+            && let Some(start) = response.interact_pointer_pos()
+        {
+            self.drag = Some(match under(start) {
+                Some(element) if on_handle(start, &element) => Drag::Resize(element),
+                Some(element) => Drag::Move(element),
+                None => Drag::Pan,
+            });
+        }
+        let mut edit = None;
         if response.dragged() {
-            diagram.view.pan += response.drag_delta();
+            let delta = response.drag_delta();
+            match &self.drag {
+                Some(Drag::Move(element)) => {
+                    edit = Some(Edit::Move { element: element.clone(), dx: delta.x / view.zoom, dy: delta.y / view.zoom });
+                }
+                Some(Drag::Resize(element)) => {
+                    if let Some(b) = scene.node_bounds(element) {
+                        edit = Some(Edit::Resize {
+                            element: element.clone(),
+                            width: b.width + delta.x / view.zoom,
+                            height: b.height + delta.y / view.zoom,
+                        });
+                    }
+                }
+                Some(Drag::Pan) | None => diagram.view.pan += delta,
+            }
+        }
+        if response.drag_stopped() {
+            self.drag = None;
         }
         if let Some(pointer) = response.hover_pos() {
             let (zoom, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
@@ -274,17 +447,109 @@ impl ViewerApp {
                 diagram.view.pan += scroll;
             }
         }
-        let hovered = response
-            .hover_pos()
-            .and_then(|p| scene.element_at(diagram.view.to_scene(origin, p)))
-            .cloned();
+
+        let hovered = response.hover_pos().and_then(under);
         if response.clicked() {
             self.selected = hovered.clone();
         }
+        if response.secondary_clicked() {
+            self.context_element = response.interact_pointer_pos().and_then(under);
+        }
         let highlight = hovered.as_ref().or(self.selected.as_ref());
-        canvas::paint(&painter.with_clip_rect(response.rect), scene, diagram.view, origin, highlight);
-        if let Some(element) = &hovered {
+        let clipped = painter.with_clip_rect(response.rect);
+        canvas::paint(&clipped, scene, view, origin, highlight);
+        if let Some(bounds) = highlight.and_then(|e| scene.node_bounds(e)) {
+            let corner = view.to_screen(origin, viewer_core::scene::Point::new(bounds.right(), bounds.bottom()));
+            let handle = egui::Rect::from_center_size(corner, egui::vec2(RESIZE_HANDLE, RESIZE_HANDLE) * 0.8);
+            clipped.rect_filled(handle, 1.0, egui::Color32::from_rgb(0x1f, 0x6f, 0xeb));
+        }
+        if let Some(pointer) = response.hover_pos() {
+            let cursor = match (&self.drag, &hovered) {
+                (Some(Drag::Resize(_)), _) => egui::CursorIcon::ResizeNwSe,
+                (Some(Drag::Move(_)), _) => egui::CursorIcon::Grabbing,
+                (_, Some(element)) if on_handle(pointer, element) => egui::CursorIcon::ResizeNwSe,
+                (_, Some(_)) => egui::CursorIcon::Grab,
+                _ => egui::CursorIcon::Default,
+            };
+            ui.ctx().set_cursor_icon(cursor);
+        }
+
+        let collapsed = self.context_element.as_ref().is_some_and(|e| diagram.layout.collapsed.contains(e));
+        let context_element = self.context_element.clone();
+        response.context_menu(|ui| match &context_element {
+            Some(element) => {
+                ui.label(egui::RichText::new(element.as_str()).weak());
+                if ui.button("Hide").clicked() {
+                    edit = Some(Edit::Hide(element.clone()));
+                    ui.close();
+                }
+                let (label, toggle) = if collapsed {
+                    ("Expand", Edit::Expand(element.clone()))
+                } else {
+                    ("Collapse", Edit::Collapse(element.clone()))
+                };
+                if ui.button(label).clicked() {
+                    edit = Some(toggle);
+                    ui.close();
+                }
+            }
+            None => {
+                if ui.button("Show all hidden").clicked() {
+                    edit = Some(Edit::ShowAll);
+                    ui.close();
+                }
+                if ui.button("Reset layout").clicked() {
+                    edit = Some(Edit::Reset);
+                    ui.close();
+                }
+            }
+        });
+        if let Some(element) = hovered.filter(|_| self.drag.is_none()) {
             response.on_hover_text_at_pointer(element.as_str());
+        }
+        if let Some(edit) = edit {
+            self.edit_active(edit);
+        }
+    }
+
+    /// Asks before discarding unsaved changes, when closing a tab or the
+    /// window.
+    fn confirmations(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.viewport().close_requested())
+            && !self.quit_confirmed
+            && self.diagrams.iter().any(|d| d.dirty)
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.confirm = Some(Confirm::Quit);
+        }
+        let Some(confirm) = &self.confirm else { return };
+        let question = match confirm {
+            Confirm::CloseTab(index) => format!("Discard unsaved changes to “{}”?", self.diagrams[*index].title()),
+            Confirm::Quit => {
+                let names: Vec<String> = self.diagrams.iter().filter(|d| d.dirty).map(|d| d.title()).collect();
+                format!("Discard unsaved changes to {} and quit?", names.join(", "))
+            }
+        };
+        let mut answer = None;
+        egui::Modal::new(egui::Id::unique("confirm-discard")).show(ctx, |ui| {
+            ui.label(question);
+            ui.horizontal(|ui| {
+                if ui.button("Discard").clicked() {
+                    answer = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    answer = Some(false);
+                }
+            });
+        });
+        match (answer, self.confirm.take()) {
+            (Some(true), Some(Confirm::CloseTab(index))) => self.close(index),
+            (Some(true), Some(Confirm::Quit)) => {
+                self.quit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            (Some(_), _) => {}
+            (None, pending) => self.confirm = pending,
         }
     }
 }
@@ -376,6 +641,8 @@ fn diagnostic_line(ui: &mut egui::Ui, diagnostic: &Diagnostic, folder: Option<&P
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.collect_loads();
+        let ctx = ui.ctx().clone();
+        self.confirmations(&ctx);
         egui::Panel::top("top-bar").show(ui, |ui| self.top_bar(ui));
         egui::Panel::bottom("diagnostics")
             .resizable(true)
@@ -384,7 +651,7 @@ impl eframe::App for ViewerApp {
         egui::Panel::left("browser")
             .resizable(true)
             .default_size(300.0)
-            .show(ui, |ui| self.browser(ui));
+            .show(ui, |ui| self.left_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.diagram_area(ui));
     }
 }

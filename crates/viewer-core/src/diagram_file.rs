@@ -42,13 +42,14 @@ pub struct Layout {
     pub collapsed: BTreeSet<QualifiedName>,
 }
 
-/// Where a node sits and how big it is, in scene coordinates.
+/// Where a node sits, in scene coordinates, and its size if the user set
+/// one; without a size the node keeps its natural size.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NodePlacement {
     pub x: f32,
     pub y: f32,
-    pub width: f32,
-    pub height: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<[f32; 2]>,
 }
 
 impl Layout {

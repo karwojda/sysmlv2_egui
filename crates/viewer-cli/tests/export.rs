@@ -179,7 +179,7 @@ fn honours_the_diagram_files_layout() {
     let mut diagram = general("overview", "Vehicles");
     diagram.layout.nodes.insert(
         QualifiedName::from("Vehicles::Car"),
-        viewer_core::NodePlacement { x: 412.0, y: 300.0, width: 177.0, height: 66.0 },
+        viewer_core::NodePlacement { x: 412.0, y: 300.0, size: Some([177.0, 66.0]) },
     );
     diagram.layout.hidden.insert(QualifiedName::from("Vehicles::Vehicle"));
     let folder = model_folder(&[diagram]);

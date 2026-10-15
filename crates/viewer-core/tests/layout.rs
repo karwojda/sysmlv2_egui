@@ -29,7 +29,7 @@ fn build(layout: &Layout) -> Scene {
 }
 
 fn placed(x: f32, y: f32, width: f32, height: f32) -> NodePlacement {
-    NodePlacement { x, y, width, height }
+    NodePlacement { x, y, size: Some([width, height]) }
 }
 
 fn bounds(scene: &Scene, name: &str) -> Rect {
@@ -70,6 +70,19 @@ fn new_nodes_are_placed_below_saved_ones_without_moving_or_overlapping_them() {
         assert!(saved.iter().all(|s| !s.intersects(&rect)), "{new} overlaps a saved node");
     }
     assert!(!bounds(&scene, "P::Car").intersects(&bounds(&scene, "P::Truck")));
+}
+
+#[test]
+fn a_node_saved_without_a_size_keeps_its_natural_size() {
+    let automatic = build_scene(&model(), DiagramKind::General, &qn("P")).unwrap();
+    let natural = bounds(&automatic, "P::Vehicle");
+    let mut layout = Layout::default();
+    layout.nodes.insert(qn("P::Vehicle"), NodePlacement { x: 500.0, y: 30.0, size: None });
+
+    let moved = bounds(&build(&layout), "P::Vehicle");
+
+    assert_eq!((moved.x, moved.y), (500.0, 30.0));
+    assert_eq!((moved.width, moved.height), (natural.width, natural.height));
 }
 
 #[test]
@@ -175,7 +188,7 @@ fn edges_without_a_saved_route_stay_straight() {
 fn a_layout_is_stored_one_sorted_entry_per_element() {
     let mut file = DiagramFile::new("p", DiagramKind::General, qn("P"));
     file.layout.nodes.insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
-    file.layout.nodes.insert(qn("P::Engine"), placed(40.5, 60.0, 150.0, 60.0));
+    file.layout.nodes.insert(qn("P::Engine"), NodePlacement { x: 40.5, y: 60.0, size: None });
     file.layout.hidden.insert(qn("P::Truck"));
 
     assert_eq!(
@@ -189,15 +202,15 @@ fn a_layout_is_stored_one_sorted_entry_per_element() {
     "nodes": {
       "P::Engine": {
         "x": 40.5,
-        "y": 60.0,
-        "width": 150.0,
-        "height": 60.0
+        "y": 60.0
       },
       "P::Vehicle": {
         "x": 300.0,
         "y": 40.0,
-        "width": 260.0,
-        "height": 140.0
+        "size": [
+          260.0,
+          140.0
+        ]
       }
     },
     "hidden": [

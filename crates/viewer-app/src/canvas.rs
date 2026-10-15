@@ -6,7 +6,11 @@ use std::path::Path;
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2};
 use viewer_core::scene::{Fill, Point, Shape, TextAnchor};
-use viewer_core::{DiagramError, DiagramKind, Model, QualifiedName, Scene, build_scene, svg};
+use viewer_core::editing::{self, Edit};
+use viewer_core::{
+    DiagramError, DiagramFile, DiagramKind, Layout, Model, QualifiedName, Scene, build_scene_with_layout, diagram_file,
+    svg,
+};
 
 const STROKE: Color32 = Color32::BLACK;
 const PAGE: Color32 = Color32::WHITE;
@@ -17,10 +21,16 @@ const MAX_ZOOM: f32 = 8.0;
 /// font's descent.
 const DESCENT: f32 = 0.22;
 
-/// A Diagram open in the viewer: what it shows and how it is viewed.
+/// A Diagram open in the viewer: what it shows, the user's Layout, and how
+/// it is viewed. `name` is set once it has been saved as a Diagram File;
+/// until then it is an ad hoc Diagram that leaves no file behind.
 pub struct OpenDiagram {
     pub kind: DiagramKind,
     pub root: QualifiedName,
+    pub layout: Layout,
+    pub name: Option<String>,
+    /// Layout changes not yet saved.
+    pub dirty: bool,
     pub scene: Result<Scene, DiagramError>,
     pub view: View,
     /// Fit the Diagram to the canvas on the next paint.
@@ -29,24 +39,69 @@ pub struct OpenDiagram {
 
 impl OpenDiagram {
     pub fn open(model: &Model, kind: DiagramKind, root: QualifiedName) -> Self {
+        Self::with_layout(model, kind, root, Layout::default(), None)
+    }
+
+    /// Opens a saved Diagram File.
+    pub fn open_saved(model: &Model, file: DiagramFile) -> Self {
+        Self::with_layout(model, file.kind, file.root, file.layout, Some(file.name))
+    }
+
+    fn with_layout(model: &Model, kind: DiagramKind, root: QualifiedName, layout: Layout, name: Option<String>) -> Self {
         Self {
-            scene: build_scene(model, kind, &root),
+            scene: build_scene_with_layout(model, kind, &root, &layout),
             kind,
             root,
+            layout,
+            name,
+            dirty: false,
             view: View::default(),
             needs_fit: true,
         }
     }
 
-    /// Rebuilds the scene from a newly loaded Model, keeping the view.
+    /// Rebuilds the scene from a newly loaded Model, keeping the Layout
+    /// and the view.
     pub fn refresh(&mut self, model: &Model) {
-        self.scene = build_scene(model, self.kind, &self.root);
+        self.scene = build_scene_with_layout(model, self.kind, &self.root, &self.layout);
     }
 
-    pub fn title(&self) -> String {
-        match self.kind {
-            DiagramKind::General => format!("{} (General)", self.root.simple_name()),
+    /// Applies a Layout edit and redraws.
+    pub fn edit(&mut self, model: &Model, edit: &Edit) {
+        let Ok(scene) = &self.scene else { return };
+        let before = self.layout.clone();
+        editing::apply(&mut self.layout, model, scene, edit);
+        if self.layout != before {
+            self.dirty = true;
+            self.refresh(model);
         }
+    }
+
+    /// The tab title: the saved name, or the root for an ad hoc Diagram,
+    /// marked while there are unsaved changes.
+    pub fn title(&self) -> String {
+        let title = match (&self.name, self.kind) {
+            (Some(name), _) => name.clone(),
+            (None, DiagramKind::General) => format!("{} (General)", self.root.simple_name()),
+        };
+        if self.dirty { format!("{title} •") } else { title }
+    }
+
+    /// Saves as the Diagram File `name` in `model_folder`, refusing to
+    /// overwrite a different saved Diagram of that name.
+    pub fn save_as(&mut self, model_folder: &Path, name: &str) -> Result<(), String> {
+        check_name(name)?;
+        let path = diagram_file::path_for(model_folder, name);
+        if path.exists() && self.name.as_deref() != Some(name) {
+            return Err(format!("a Diagram named `{name}` already exists"));
+        }
+        let mut file = DiagramFile::new(name, self.kind, self.root.clone());
+        file.layout = self.layout.clone();
+        std::fs::create_dir_all(path.parent().expect("a Diagram File is in a folder")).map_err(|e| e.to_string())?;
+        std::fs::write(&path, file.to_text()).map_err(|e| e.to_string())?;
+        self.name = Some(name.to_owned());
+        self.dirty = false;
+        Ok(())
     }
 
     /// Writes the Export: the same SVG the command line writes for this
@@ -58,6 +113,16 @@ impl OpenDiagram {
         }
         std::fs::write(path, svg::render(scene)).map_err(|e| e.to_string())
     }
+}
+
+/// Diagram names become file names, so they are limited to letters, digits,
+/// `-`, `_` and `.`, and may not start with `.`.
+pub fn check_name(name: &str) -> Result<(), String> {
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.');
+    if name.is_empty() || name.starts_with('.') || !name.chars().all(allowed) {
+        return Err(format!("`{name}` is not a valid Diagram name: use letters, digits, `-`, `_` and `.`"));
+    }
+    Ok(())
 }
 
 /// Pan and zoom: a scene point `p` is drawn at `origin + pan + p * zoom`.

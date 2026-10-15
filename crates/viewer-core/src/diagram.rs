@@ -216,7 +216,13 @@ fn place(
     saved: &Layout,
 ) -> Vec<Rect> {
     let saved_rect = |i: usize| {
-        saved.nodes.get(&nodes[i].qualified_name).map(|p| Rect { x: p.x, y: p.y, width: p.width, height: p.height })
+        saved.nodes.get(&nodes[i].qualified_name).map(|p| {
+            let [width, height] = p.size.unwrap_or_else(|| {
+                let (w, h) = notation::node_size(&contents[i]);
+                [w, h]
+            });
+            Rect { x: p.x, y: p.y, width, height }
+        })
     };
     let unplaced: Vec<usize> = (0..nodes.len()).filter(|&i| saved_rect(i).is_none()).collect();
     let local = |i: usize| unplaced.iter().position(|&u| u == i);
