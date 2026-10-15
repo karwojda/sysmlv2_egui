@@ -23,3 +23,4 @@
 - Double-clicking a part on the canvas does nothing (the Interconnection Diagram comes later). Double-click on the canvas only removes bends.
 - `sysml-viewer-gui <folder> <root>` also selects the root, so its properties show on start.
 - **Unverified on screen:** from 23:02 on, every Wayland launch made the WSLg compositor (Weston) segfault (`/mnt/wslg/stderr.log`, "terminated with signal 11"). Every crash since 22:12 lines up with a viewer launch. The workaround is X11 via XWayland, which needs `libxkbcommon-x11-0`.
+- **Verified on screen (2026-10-15)** over X11 (`WAYLAND_DISPLAY=`): the Properties panel with the Owner link, documentation, source, and both buttons; the Browser selection revealed. Confirmed by the user too.
