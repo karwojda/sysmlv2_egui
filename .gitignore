@@ -1,1 +1,4 @@
 target/
+# Diagram Files and Exports made while trying the viewer on test fixtures
+crates/*/tests/fixtures/**/diagrams/
+crates/*/tests/fixtures/**/*.svg
