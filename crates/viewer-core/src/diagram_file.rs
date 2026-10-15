@@ -63,6 +63,24 @@ impl DiagramFile {
     }
 }
 
+/// The names of every Diagram File in `model_folder`, sorted. A Model
+/// without a Diagram File folder has none.
+pub fn names_in(model_folder: &Path) -> std::io::Result<Vec<String>> {
+    let folder = model_folder.join(FOLDER);
+    if !folder.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(folder)? {
+        let file_name = entry?.file_name();
+        if let Some(name) = file_name.to_str().and_then(|n| n.strip_suffix(EXTENSION)) {
+            names.push(name.to_owned());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
 /// Where the Diagram File named `name` lives in `model_folder`.
 pub fn path_for(model_folder: &Path, name: &str) -> PathBuf {
     model_folder.join(FOLDER).join(format!("{name}{EXTENSION}"))
