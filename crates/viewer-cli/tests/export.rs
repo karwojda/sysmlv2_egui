@@ -173,3 +173,22 @@ fn the_real_binary_exports_a_real_model() {
     assert!(svg.contains(">ElectricCar</text>"));
     assert!(!svg.contains(">Wheel</text>"), "nested package contents are not drawn");
 }
+
+#[test]
+fn honours_the_diagram_files_layout() {
+    let mut diagram = general("overview", "Vehicles");
+    diagram.layout.nodes.insert(
+        QualifiedName::from("Vehicles::Car"),
+        viewer_core::NodePlacement { x: 412.0, y: 300.0, width: 177.0, height: 66.0 },
+    );
+    diagram.layout.hidden.insert(QualifiedName::from("Vehicles::Vehicle"));
+    let folder = model_folder(&[diagram]);
+    let out = folder.path().join("overview.svg");
+
+    let outcome = export(vehicles(), folder.path(), "overview", &out);
+
+    assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
+    let svg = std::fs::read_to_string(&out).unwrap();
+    assert!(svg.contains(r#"<rect x="412" y="300" width="177" height="66""#), "{svg}");
+    assert!(!svg.contains(">Vehicle</text>"), "hidden elements are not drawn");
+}

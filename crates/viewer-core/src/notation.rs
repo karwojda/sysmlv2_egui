@@ -49,10 +49,13 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
     ("connections", &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage]),
 ];
 
-pub fn node_content(element: &Element, model: &Model) -> NodeContent {
+/// What `element`'s node shows; without `compartments` (collapsed), only
+/// its header.
+pub fn node_content(element: &Element, model: &Model, compartments: bool) -> NodeContent {
     let usage = !element.kind.is_definition();
     let compartments = COMPARTMENTS
         .iter()
+        .filter(|_| compartments)
         .filter_map(|(title, kinds)| {
             let rows: Vec<String> = model
                 .owned_members(&element.qualified_name)
@@ -180,50 +183,48 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
 
 /// Specialization: a solid line from the specific node ending in a hollow
 /// triangle on the general node.
-pub fn specialization(depicts: Depicts, specific: Rect, general: Rect) -> Vec<Item> {
-    let (start, end) = connect(specific, general);
-    let base = back_from(end, start, ARROW_LENGTH);
-    tag(depicts, vec![
-        Shape::Polyline { points: vec![start, base], dashed: false },
-        triangle(end, start),
-    ])
+pub fn specialization(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
+    let (before, end) = last_segment(&path);
+    let mut line = path.clone();
+    *line.last_mut().expect("a route has two points") = back_from(end, before, ARROW_LENGTH);
+    tag(depicts, vec![Shape::Polyline { points: line, dashed: false }, triangle(end, before)])
 }
 
 /// Defined by: a solid line from the usage ending in a hollow triangle on
 /// its definition, with a colon across the line just before the triangle.
-pub fn defined_by(depicts: Depicts, usage: Rect, definition: Rect) -> Vec<Item> {
-    let (start, end) = connect(usage, definition);
-    let base = back_from(end, start, ARROW_LENGTH);
-    let colon = back_from(base, start, COLON_GAP);
-    let (nx, ny) = normal(start, end, COLON_HALF_SPREAD);
+pub fn defined_by(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
+    let (before, end) = last_segment(&path);
+    let base = back_from(end, before, ARROW_LENGTH);
+    let colon = back_from(base, before, COLON_GAP);
+    let (nx, ny) = normal(before, end, COLON_HALF_SPREAD);
     let dot = |sign: f32| Shape::Circle {
         center: Point::new(colon.x + sign * nx, colon.y + sign * ny),
         radius: COLON_DOT_RADIUS,
         fill: Fill::Stroke,
     };
-    tag(depicts, vec![
-        Shape::Polyline { points: vec![start, base], dashed: false },
-        triangle(end, start),
-        dot(1.0),
-        dot(-1.0),
-    ])
+    let mut line = path.clone();
+    *line.last_mut().expect("a route has two points") = base;
+    tag(depicts, vec![Shape::Polyline { points: line, dashed: false }, triangle(end, before), dot(1.0), dot(-1.0)])
 }
 
 /// Composition: a solid line from the owner, starting in a filled diamond,
 /// to the part's definition, labelled with the part's name and multiplicity
 /// near the definition.
-pub fn composition(depicts: Depicts, usage: &Element, owner: Rect, part_type: Rect) -> Vec<Item> {
-    let (start, end) = connect(owner, part_type);
-    let diamond_back = back_from(start, end, DIAMOND_LENGTH);
-    let middle = back_from(start, end, DIAMOND_LENGTH / 2.0);
-    let (nx, ny) = normal(start, end, DIAMOND_HALF_WIDTH);
+pub fn composition(depicts: Depicts, usage: &Element, path: Vec<Point>) -> Vec<Item> {
+    let (start, after) = (path[0], path[1]);
+    let diamond_back = back_from(start, after, DIAMOND_LENGTH);
+    let middle = back_from(start, after, DIAMOND_LENGTH / 2.0);
+    let (nx, ny) = normal(start, after, DIAMOND_HALF_WIDTH);
     let mut label = usage.name.clone();
     if let Some(multiplicity) = &usage.multiplicity {
         label.push_str(&format!(" {multiplicity}"));
     }
-    let near_end = back_from(end, start, 2.0 * LABEL_OFFSET + LABEL_FONT.size);
+    let (before, end) = last_segment(&path);
+    let near_end = back_from(end, before, 2.0 * LABEL_OFFSET + LABEL_FONT.size);
+    let mut line = path.clone();
+    line[0] = diamond_back;
     tag(depicts, vec![
-        Shape::Polyline { points: vec![diamond_back, end], dashed: false },
+        Shape::Polyline { points: line, dashed: false },
         Shape::Polygon {
             points: vec![
                 start,
@@ -243,12 +244,14 @@ pub fn composition(depicts: Depicts, usage: &Element, owner: Rect, part_type: Re
 }
 
 /// A connection or interface: a plain solid line between the usages it
-/// joins, labelled with its name and type at the middle.
-pub fn connection(depicts: Depicts, element: &Element, a: Rect, b: Rect) -> Vec<Item> {
-    let (start, end) = connect(a, b);
-    let middle = Point::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+/// joins, labelled with its name and type at the middle of its middle
+/// segment.
+pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<Item> {
+    let segment = (path.len() - 1) / 2;
+    let (a, b) = (path[segment], path[segment + 1]);
+    let middle = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
     tag(depicts, vec![
-        Shape::Polyline { points: vec![start, end], dashed: false },
+        Shape::Polyline { points: path, dashed: false },
         Shape::Text {
             position: Point::new(middle.x, middle.y - LABEL_OFFSET),
             text: usage_label(element),
@@ -258,18 +261,27 @@ pub fn connection(depicts: Depicts, element: &Element, a: Rect, b: Rect) -> Vec<
     ])
 }
 
+/// The path of an edge from `from` to `to` through `bends`: it leaves
+/// `from`'s border heading for the first bend (or `to`'s center) and enters
+/// `to`'s border from the last bend (or `from`'s center).
+pub fn route(from: Rect, to: Rect, bends: &[Point]) -> Vec<Point> {
+    let first_target = bends.first().copied().unwrap_or(center(to));
+    let last_source = bends.last().copied().unwrap_or(center(from));
+    let mut path = vec![border_point(from, first_target)];
+    path.extend_from_slice(bends);
+    path.push(border_point(to, last_source));
+    path
+}
+
+fn last_segment(path: &[Point]) -> (Point, Point) {
+    (path[path.len() - 2], path[path.len() - 1])
+}
+
 fn tag(depicts: Depicts, shapes: Vec<Shape>) -> Vec<Item> {
     shapes
         .into_iter()
         .map(|shape| Item { depicts: depicts.clone(), shape })
         .collect()
-}
-
-/// The points where the line between the centers of `from` and `to`
-/// leaves `from` and enters `to`.
-fn connect(from: Rect, to: Rect) -> (Point, Point) {
-    let (a, b) = (center(from), center(to));
-    (border_point(from, b), border_point(to, a))
 }
 
 fn center(rect: Rect) -> Point {

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::model::{Diagnostic, Severity};
-use viewer_core::{DiagramFile, Model, ModelBackend, build_scene, diagram_file, svg};
+use viewer_core::{DiagramFile, Model, ModelBackend, build_scene_with_layout, diagram_file, svg};
 
 pub const EXIT_OK: u8 = 0;
 pub const EXIT_FAILURE: u8 = 1;
@@ -136,7 +136,7 @@ fn load_model(model_folder: &Path, backend: &mut dyn ModelBackend, stderr: &mut 
 }
 
 fn render_to(model: &Model, diagram: &DiagramFile, out: &Path) -> Result<(), Failure> {
-    let scene = build_scene(model, diagram.kind, &diagram.root)
+    let scene = build_scene_with_layout(model, diagram.kind, &diagram.root, &diagram.layout)
         .map_err(|e| Failure(format!("Diagram `{}`: {e}", diagram.name)))?;
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| Failure(format!("cannot create {}: {e}", parent.display())))?;

@@ -3,19 +3,20 @@
 //! The format is pretty-printed JSON with a fixed key order, so diffs stay
 //! reviewable.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::diagram::DiagramKind;
-use crate::model::QualifiedName;
+use crate::model::{Model, QualifiedName};
 
 /// The folder inside a Model folder that holds its Diagram Files.
 pub const FOLDER: &str = "diagrams";
 const EXTENSION: &str = ".diagram.json";
 const FORMAT_VERSION: u32 = 1;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DiagramFile {
     pub format_version: u32,
     pub name: String,
@@ -24,10 +25,45 @@ pub struct DiagramFile {
     pub layout: Layout,
 }
 
-/// The user's adjustments to the automatic arrangement. Empty until Layout
-/// editing exists.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Layout {}
+/// The user's adjustments to the automatic arrangement, keyed by element
+/// qualified name (edges by their edge key). Entries that match nothing in
+/// the Model are Orphaned Layout Entries: ignored when drawing, but kept.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Layout {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nodes: BTreeMap<QualifiedName, NodePlacement>,
+    /// Bend points of edges, in scene coordinates, from source to target.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub edges: BTreeMap<String, Vec<[f32; 2]>>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub hidden: BTreeSet<QualifiedName>,
+    /// Elements drawn without their compartments.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub collapsed: BTreeSet<QualifiedName>,
+}
+
+/// Where a node sits and how big it is, in scene coordinates.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NodePlacement {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl Layout {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.edges.is_empty() && self.hidden.is_empty() && self.collapsed.is_empty()
+    }
+
+    /// The Orphaned Layout Entries: elements the Layout mentions that the
+    /// Model no longer has, in order.
+    pub fn orphaned(&self, model: &Model) -> Vec<&QualifiedName> {
+        let mentioned: BTreeSet<&QualifiedName> =
+            self.nodes.keys().chain(&self.hidden).chain(&self.collapsed).collect();
+        mentioned.into_iter().filter(|e| model.element(e).is_none()).collect()
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum DiagramFileError {

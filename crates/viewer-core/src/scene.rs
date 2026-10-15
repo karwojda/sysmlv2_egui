@@ -122,6 +122,20 @@ pub enum Depicts {
     Connection(QualifiedName),
 }
 
+impl Depicts {
+    /// A stable key for an edge, under which a Layout stores its route.
+    /// Nodes have none: they are keyed by their element.
+    pub fn edge_key(&self) -> Option<String> {
+        match self {
+            Depicts::Element(_) => None,
+            Depicts::Specialization { specific, general } => Some(format!("specialization {specific} {general}")),
+            Depicts::Typing { usage, definition } => Some(format!("defined-by {usage} {definition}")),
+            Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),
+            Depicts::Connection(connection) => Some(format!("connection {connection}")),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Item {
     pub depicts: Depicts,

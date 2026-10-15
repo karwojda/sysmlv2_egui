@@ -1,11 +1,14 @@
 //! Building a Diagram's scene from the Model.
 
+use crate::diagram_file::Layout;
 use crate::layout;
 use crate::model::{Element, ElementKind, Model, QualifiedName};
 use crate::notation;
-use crate::scene::{Depicts, Item, Rect, Scene};
+use crate::scene::{Depicts, Item, Point, Rect, Scene};
 
 const MARGIN: f32 = 20.0;
+/// Space between saved nodes and newly placed ones below them.
+const NEW_NODES_GAP: f32 = 60.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -32,11 +35,25 @@ pub enum DiagramError {
 /// Builds the scene for a Diagram of `kind` rooted at `root`, arranged
 /// automatically.
 pub fn build_scene(model: &Model, kind: DiagramKind, root: &QualifiedName) -> Result<Scene, DiagramError> {
+    build_scene_with_layout(model, kind, root, &Layout::default())
+}
+
+/// Builds the scene for a Diagram with the user's `layout` applied: saved
+/// nodes keep their place and size, the rest are arranged automatically
+/// below them, hidden elements are left out and collapsed ones drawn
+/// without compartments. Entries for elements not in the Diagram are
+/// ignored.
+pub fn build_scene_with_layout(
+    model: &Model,
+    kind: DiagramKind,
+    root: &QualifiedName,
+    layout: &Layout,
+) -> Result<Scene, DiagramError> {
     if model.element(root).is_none() {
         return Err(DiagramError::RootNotFound(root.clone()));
     }
     match kind {
-        DiagramKind::General => Ok(general(model, root)),
+        DiagramKind::General => Ok(general(model, root, layout)),
     }
 }
 
@@ -60,10 +77,10 @@ enum Edge<'a> {
 /// A General Diagram: the definitions and usages owned by `root`, each
 /// listing its features in compartments, with specialization, typing,
 /// composition and connection edges between them.
-fn general(model: &Model, root: &QualifiedName) -> Scene {
+fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
     let nodes: Vec<&Element> = model
         .owned_members(root)
-        .filter(|e| is_node_in_general(e))
+        .filter(|e| is_node_in_general(e) && !saved.hidden.contains(&e.qualified_name))
         .collect();
     let index_of = |name: &QualifiedName| nodes.iter().position(|e| &e.qualified_name == name);
 
@@ -109,39 +126,38 @@ fn general(model: &Model, root: &QualifiedName) -> Scene {
         })
         .collect();
 
-    let contents: Vec<notation::NodeContent> = nodes.iter().map(|e| notation::node_content(e, model)).collect();
-    let sizes: Vec<(f32, f32)> = contents.iter().map(notation::node_size).collect();
-    let rects: Vec<Rect> = layout::layered(&sizes, &layering)
-        .into_iter()
-        .map(|r| Rect { x: r.x + MARGIN, y: r.y + MARGIN, ..r })
+    let contents: Vec<notation::NodeContent> = nodes
+        .iter()
+        .map(|e| notation::node_content(e, model, !saved.collapsed.contains(&e.qualified_name)))
         .collect();
+    let rects = place(&nodes, &contents, &layering, saved);
 
     let mut items: Vec<Item> = Vec::new();
     for edge in &edges {
         let name = |i: usize| nodes[i].qualified_name.clone();
+        let (depicts, from, to) = match *edge {
+            Edge::Specialization { specific, general } => {
+                (Depicts::Specialization { specific: name(specific), general: name(general) }, specific, general)
+            }
+            Edge::Typing { usage, definition } => {
+                (Depicts::Typing { usage: name(usage), definition: name(definition) }, usage, definition)
+            }
+            Edge::Composition { owner, part_type, usage } => {
+                (Depicts::Composition { owner: name(owner), usage: usage.qualified_name.clone() }, owner, part_type)
+            }
+            Edge::Connection { a, b, connection } => (Depicts::Connection(connection.qualified_name.clone()), a, b),
+        };
+        let bends: Vec<Point> = depicts
+            .edge_key()
+            .and_then(|key| saved.edges.get(&key))
+            .map(|points| points.iter().map(|&[x, y]| Point::new(x, y)).collect())
+            .unwrap_or_default();
+        let path = notation::route(rects[from], rects[to], &bends);
         items.extend(match *edge {
-            Edge::Specialization { specific, general } => notation::specialization(
-                Depicts::Specialization { specific: name(specific), general: name(general) },
-                rects[specific],
-                rects[general],
-            ),
-            Edge::Typing { usage, definition } => notation::defined_by(
-                Depicts::Typing { usage: name(usage), definition: name(definition) },
-                rects[usage],
-                rects[definition],
-            ),
-            Edge::Composition { owner, part_type, usage } => notation::composition(
-                Depicts::Composition { owner: name(owner), usage: usage.qualified_name.clone() },
-                usage,
-                rects[owner],
-                rects[part_type],
-            ),
-            Edge::Connection { a, b, connection } => notation::connection(
-                Depicts::Connection(connection.qualified_name.clone()),
-                connection,
-                rects[a],
-                rects[b],
-            ),
+            Edge::Specialization { .. } => notation::specialization(depicts, path),
+            Edge::Typing { .. } => notation::defined_by(depicts, path),
+            Edge::Composition { usage, .. } => notation::composition(depicts, usage, path),
+            Edge::Connection { connection, .. } => notation::connection(depicts, connection, path),
         });
     }
     for ((element, content), rect) in nodes.iter().zip(&contents).zip(&rects) {
@@ -153,4 +169,44 @@ fn general(model: &Model, root: &QualifiedName) -> Scene {
         height: rects.iter().map(Rect::bottom).fold(0.0, f32::max) + MARGIN,
         items,
     }
+}
+
+/// Node rects: saved placements as they are; every other node arranged
+/// automatically (with the edges among them) and set below the saved ones,
+/// so nothing saved moves and nothing new overlaps it.
+fn place(
+    nodes: &[&Element],
+    contents: &[notation::NodeContent],
+    layering: &[(usize, usize)],
+    saved: &Layout,
+) -> Vec<Rect> {
+    let saved_rect = |i: usize| {
+        saved.nodes.get(&nodes[i].qualified_name).map(|p| Rect { x: p.x, y: p.y, width: p.width, height: p.height })
+    };
+    let unplaced: Vec<usize> = (0..nodes.len()).filter(|&i| saved_rect(i).is_none()).collect();
+    let local = |i: usize| unplaced.iter().position(|&u| u == i);
+    let sizes: Vec<(f32, f32)> = unplaced.iter().map(|&i| notation::node_size(&contents[i])).collect();
+    let edges: Vec<(usize, usize)> = layering
+        .iter()
+        .filter_map(|&(a, b)| Some((local(a)?, local(b)?)))
+        .collect();
+    let auto = layout::layered(&sizes, &edges);
+
+    let saved_rects: Vec<Rect> = (0..nodes.len()).filter_map(saved_rect).collect();
+    let (left, top) = if saved_rects.is_empty() {
+        (MARGIN, MARGIN)
+    } else {
+        let left = saved_rects.iter().map(|r| r.x).fold(f32::INFINITY, f32::min).max(0.0);
+        let bottom = saved_rects.iter().map(Rect::bottom).fold(0.0, f32::max);
+        (left, bottom + NEW_NODES_GAP)
+    };
+    (0..nodes.len())
+        .map(|i| match saved_rect(i) {
+            Some(rect) => rect,
+            None => {
+                let r = auto[local(i).expect("an unplaced node has an automatic place")];
+                Rect { x: r.x + left, y: r.y + top, ..r }
+            }
+        })
+        .collect()
 }
