@@ -185,3 +185,34 @@ fn reset_keeps_orphaned_layout_entries() {
     assert_eq!(diagram.layout.orphaned(&diagram.model), [&qn("P::Gone"), &qn("P::Renamed")]);
     assert!(!diagram.layout.nodes.contains_key(&qn("P::Car")));
 }
+
+#[test]
+fn routing_an_edge_bends_it_and_clearing_the_route_straightens_it_again() {
+    let mut diagram = Editing::new();
+    let edge = Depicts::Specialization { specific: qn("P::Car"), general: qn("P::Vehicle") };
+    let key = edge.edge_key().unwrap();
+    let path = |diagram: &Editing| -> Vec<viewer_core::scene::Point> {
+        diagram.scene.edges().into_iter().find(|(d, _)| **d == edge).unwrap().1.to_vec()
+    };
+    let straight = path(&diagram);
+
+    diagram.edit(Edit::Route { edge: key.clone(), bends: vec![[400.0, 300.0]] });
+    assert_eq!(path(&diagram)[1], viewer_core::scene::Point::new(400.0, 300.0));
+    assert_eq!(diagram.saved().layout.edges[&key], vec![[400.0, 300.0]]);
+
+    diagram.edit(Edit::Route { edge: key.clone(), bends: Vec::new() });
+    assert_eq!(path(&diagram), straight);
+    assert!(diagram.saved().layout.edges.is_empty());
+}
+
+#[test]
+fn routing_an_edge_keeps_every_node_where_it_was() {
+    let mut diagram = Editing::new();
+    let before: Vec<Rect> = ["P::Vehicle", "P::Car", "P::Truck"].iter().map(|n| diagram.bounds(n)).collect();
+    let key = Depicts::Specialization { specific: qn("P::Car"), general: qn("P::Vehicle") }.edge_key().unwrap();
+
+    diagram.edit(Edit::Route { edge: key, bends: vec![[900.0, 900.0]] });
+
+    let after: Vec<Rect> = ["P::Vehicle", "P::Car", "P::Truck"].iter().map(|n| diagram.bounds(n)).collect();
+    assert_eq!(before, after);
+}

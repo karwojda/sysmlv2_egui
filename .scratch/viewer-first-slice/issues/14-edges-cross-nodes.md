@@ -8,8 +8,21 @@ Two directions, possibly both:
 
 **Blocked by:** None (can start immediately)
 
-**Status:** needs-triage
+**Status:** done
 
-- [ ] Decide: manual bends, automatic avoidance, or both
-- [ ] (if manual) A bend can be added, moved and removed on the canvas, is saved in the Diagram File, and is honoured by the CLI Export
-- [ ] (if automatic) No edge passes through a node rect in the golden diagrams, and saved bends still take precedence
+- [x] Decide: manual bends, automatic avoidance, or both (user: both)
+- [x] (if manual) A bend can be added, moved and removed on the canvas, is saved in the Diagram File, and is honoured by the CLI Export
+- [x] (if automatic) No edge passes through a node rect in the golden diagrams, and saved bends still take precedence
+
+## Comments
+
+- Done, both.
+- **Automatic (core, `notation::detour` and `spread_ends`):** an edge that would cross a node gets one bend, or two to get out of a pocket. Candidates are sideways offsets from the middle and points just off obstacle corners. The shortest route that crosses nothing wins, else the one crossing fewest (only if that beats the straight line). Ends crowding the same spot on a node's side are spread 14px apart. Saved routes skip both. No existing golden changed, because automatic layouts never needed it. A test places nodes by hand in the arrangement that showed the problem and asserts no edge passes through any node.
+- **Manual (viewer):**
+  - Drag an edge's line to add a bend there and move it. Drag a bend to move it. Double-click a bend to remove it.
+  - Right-click an edge: "Reset route" (back to automatic).
+  - The hovered edge is highlighted with its bend handles.
+  - Dragging an automatically bent edge turns its bends into saved ones.
+  - Core: `Edit::Route { edge, bends }` (empty = automatic). `Scene::edges()` gives each edge's path.
+  - Grab priority (`canvas::grab_at`, unit-tested): resize handle, bend, node, edge line, pan.
+- **Not exercised by hand:** the bend dragging (the screenshot tool can't send input).

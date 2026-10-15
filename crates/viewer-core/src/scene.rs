@@ -185,6 +185,20 @@ impl Scene {
         elements
     }
 
+    /// Every edge with the path of its line, in paint order. A path's inner
+    /// points are the edge's bends.
+    pub fn edges(&self) -> Vec<(&Depicts, &[Point])> {
+        let mut edges: Vec<(&Depicts, &[Point])> = Vec::new();
+        for item in &self.items {
+            if let (Some(_), Shape::Polyline { points, .. }) = (item.depicts.edge_key(), &item.shape)
+                && !edges.iter().any(|(d, _)| *d == &item.depicts)
+            {
+                edges.push((&item.depicts, points));
+            }
+        }
+        edges
+    }
+
     /// The items drawn for `depicts`, in paint order.
     pub fn items_depicting<'a>(&'a self, depicts: &'a Depicts) -> impl Iterator<Item = &'a Shape> {
         self.items

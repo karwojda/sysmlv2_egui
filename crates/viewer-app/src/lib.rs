@@ -11,6 +11,7 @@ use eframe::egui;
 use viewer_core::browser::{self, BrowserEntry};
 use viewer_core::editing::Edit;
 use viewer_core::model::{Diagnostic, Severity};
+use viewer_core::scene::Depicts;
 use viewer_core::{DiagramFile, DiagramKind, Model, ModelBackend, QualifiedName, diagram_file};
 
 use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
@@ -33,11 +34,27 @@ pub struct ViewerApp {
     export_path: String,
     save_name: String,
     status: Option<String>,
-    drag: Option<Grab>,
-    /// The element a context menu on the canvas was opened for.
-    context_element: Option<QualifiedName>,
+    drag: Option<Drag>,
+    /// What a context menu on the canvas was opened for.
+    context_target: ContextTarget,
     confirm: Option<Confirm>,
     quit_confirmed: bool,
+}
+
+/// What a drag on the canvas is doing, decided when it starts. A bend
+/// drag carries the edge's bends being edited.
+enum Drag {
+    Pan,
+    Move(QualifiedName),
+    Resize(QualifiedName),
+    Bend { key: String, index: usize, bends: Vec<[f32; 2]> },
+}
+
+#[derive(Clone)]
+enum ContextTarget {
+    Node(QualifiedName),
+    Edge(Depicts),
+    Canvas,
 }
 
 /// A question about discarding unsaved changes.
@@ -78,7 +95,7 @@ impl ViewerApp {
             save_name: String::new(),
             status: None,
             drag: None,
-            context_element: None,
+            context_target: ContextTarget::Canvas,
             confirm: None,
             quit_confirmed: false,
         };
@@ -377,7 +394,13 @@ impl ViewerApp {
         let scene = match &diagram.scene {
             Ok(scene) => scene,
             Err(error) => {
-                painter.text(origin + egui::vec2(8.0, 8.0), egui::Align2::LEFT_TOP, error.to_string(), egui::FontId::default(), ui.visuals().error_fg_color);
+                painter.text(
+                    origin + egui::vec2(8.0, 8.0),
+                    egui::Align2::LEFT_TOP,
+                    error.to_string(),
+                    egui::FontId::default(),
+                    ui.visuals().error_fg_color,
+                );
                 return;
             }
         };
@@ -387,33 +410,57 @@ impl ViewerApp {
             diagram.needs_fit = false;
         }
         let view = diagram.view;
-        let under = |p: egui::Pos2| scene.element_at(view.to_scene(origin, p)).cloned();
+        let bends_of = |edge: &Depicts| -> Vec<[f32; 2]> {
+            scene
+                .edges()
+                .into_iter()
+                .find(|(d, _)| *d == edge)
+                .map(|(_, path)| path[1..path.len() - 1].iter().map(|p| [p.x, p.y]).collect())
+                .unwrap_or_default()
+        };
+        let mut edit = None;
 
         // Decide what a drag does from where the press began (not where
-        // the pointer is once the drag is recognised): resize from a
-        // node's corner handle, move a node, or pan the view.
+        // the pointer is once the drag is recognised).
         if response.drag_started_by(egui::PointerButton::Primary)
             && let Some(start) = ui.input(|i| i.pointer.press_origin()).or(response.interact_pointer_pos())
         {
-            self.drag = Some(grab_at(scene, view, origin, start));
-        }
-        let mut edit = None;
-        if response.dragged() {
-            let delta = response.drag_delta();
-            match &self.drag {
-                Some(Grab::Move(element)) => {
-                    edit = Some(Edit::Move { element: element.clone(), dx: delta.x / view.zoom, dy: delta.y / view.zoom });
+            self.drag = Some(match grab_at(scene, view, origin, start) {
+                Grab::Resize(element) => Drag::Resize(element),
+                Grab::Move(element) => Drag::Move(element),
+                Grab::Pan => Drag::Pan,
+                Grab::Bend { edge, index } => {
+                    Drag::Bend { key: edge.edge_key().expect("an edge has a key"), index, bends: bends_of(&edge) }
                 }
-                Some(Grab::Resize(element)) => {
+                // Dragging a line puts a new bend where it was grabbed.
+                Grab::Segment { edge, segment, at } => {
+                    let mut bends = bends_of(&edge);
+                    bends.insert(segment, [at.x, at.y]);
+                    Drag::Bend { key: edge.edge_key().expect("an edge has a key"), index: segment, bends }
+                }
+            });
+        }
+        if response.dragged() {
+            let delta = response.drag_delta() / view.zoom;
+            match &mut self.drag {
+                Some(Drag::Move(element)) => {
+                    edit = Some(Edit::Move { element: element.clone(), dx: delta.x, dy: delta.y });
+                }
+                Some(Drag::Resize(element)) => {
                     if let Some(b) = scene.node_bounds(element) {
                         edit = Some(Edit::Resize {
                             element: element.clone(),
-                            width: b.width + delta.x / view.zoom,
-                            height: b.height + delta.y / view.zoom,
+                            width: b.width + delta.x,
+                            height: b.height + delta.y,
                         });
                     }
                 }
-                Some(Grab::Pan) | None => diagram.view.pan += delta,
+                Some(Drag::Bend { key, index, bends }) => {
+                    bends[*index][0] += delta.x;
+                    bends[*index][1] += delta.y;
+                    edit = Some(Edit::Route { edge: key.clone(), bends: bends.clone() });
+                }
+                Some(Drag::Pan) | None => diagram.view.pan += response.drag_delta(),
             }
         }
         if response.drag_stopped() {
@@ -428,39 +475,67 @@ impl ViewerApp {
             }
         }
 
-        // Over a node, or over the part of its handle outside it.
-        let hovered = response.hover_pos().and_then(|p| match grab_at(scene, view, origin, p) {
-            Grab::Resize(element) | Grab::Move(element) => Some(element),
-            Grab::Pan => None,
-        });
-        if response.clicked() {
+        let hover = response.hover_pos().map(|p| grab_at(scene, view, origin, p));
+        let (hovered, hovered_edge) = match &hover {
+            Some(Grab::Resize(e) | Grab::Move(e)) => (Some(e.clone()), None),
+            Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => (None, Some(edge.clone())),
+            _ => (None, None),
+        };
+        // Double-clicking a bend removes it.
+        if response.double_clicked()
+            && let Some(Grab::Bend { edge, index }) = &hover
+        {
+            let mut bends = bends_of(edge);
+            bends.remove(*index);
+            edit = Some(Edit::Route { edge: edge.edge_key().expect("an edge has a key"), bends });
+        } else if response.clicked() {
             self.selected = hovered.clone();
         }
         if response.secondary_clicked() {
-            self.context_element = response.interact_pointer_pos().and_then(under);
+            self.context_target = match &hover {
+                Some(Grab::Resize(e) | Grab::Move(e)) => ContextTarget::Node(e.clone()),
+                Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => ContextTarget::Edge(edge.clone()),
+                _ => ContextTarget::Canvas,
+            };
         }
+
         let highlight = hovered.as_ref().or(self.selected.as_ref());
         let clipped = painter.with_clip_rect(response.rect);
         canvas::paint(&clipped, scene, view, origin, highlight);
+        let accent = egui::Color32::from_rgb(0x1f, 0x6f, 0xeb);
         if let Some(bounds) = highlight.and_then(|e| scene.node_bounds(e)) {
             let corner = view.to_screen(origin, viewer_core::scene::Point::new(bounds.right(), bounds.bottom()));
             let handle = egui::Rect::from_center_size(corner, egui::vec2(RESIZE_HANDLE, RESIZE_HANDLE) * 0.8);
-            clipped.rect_filled(handle, 1.0, egui::Color32::from_rgb(0x1f, 0x6f, 0xeb));
+            clipped.rect_filled(handle, 1.0, accent);
         }
-        if let Some(pointer) = response.hover_pos() {
-            let cursor = match (&self.drag, grab_at(scene, view, origin, pointer)) {
-                (Some(Grab::Resize(_)), _) | (None, Grab::Resize(_)) => egui::CursorIcon::ResizeNwSe,
-                (Some(Grab::Move(_)), _) => egui::CursorIcon::Grabbing,
-                (None, Grab::Move(_)) => egui::CursorIcon::Grab,
+        let dragged_edge = match &self.drag {
+            Some(Drag::Bend { key, .. }) => scene.edges().into_iter().find(|(d, _)| d.edge_key().as_ref() == Some(key)).map(|(d, _)| d.clone()),
+            _ => None,
+        };
+        if let Some(edge) = dragged_edge.as_ref().or(hovered_edge.as_ref())
+            && let Some((_, path)) = scene.edges().into_iter().find(|(d, _)| *d == edge)
+        {
+            let points: Vec<egui::Pos2> = path.iter().map(|p| view.to_screen(origin, *p)).collect();
+            clipped.line(points.clone(), egui::Stroke::new(2.0, accent));
+            for bend in &points[1..points.len() - 1] {
+                clipped.circle(*bend, 4.0, egui::Color32::WHITE, egui::Stroke::new(1.5, accent));
+            }
+        }
+        if response.hover_pos().is_some() {
+            let cursor = match (&self.drag, &hover) {
+                (Some(Drag::Resize(_)), _) | (None, Some(Grab::Resize(_))) => egui::CursorIcon::ResizeNwSe,
+                (Some(Drag::Move(_) | Drag::Bend { .. }), _) => egui::CursorIcon::Grabbing,
+                (None, Some(Grab::Move(_) | Grab::Bend { .. })) => egui::CursorIcon::Grab,
+                (None, Some(Grab::Segment { .. })) => egui::CursorIcon::PointingHand,
                 _ => egui::CursorIcon::Default,
             };
             ui.ctx().set_cursor_icon(cursor);
         }
 
-        let collapsed = self.context_element.as_ref().is_some_and(|e| diagram.layout.collapsed.contains(e));
-        let context_element = self.context_element.clone();
-        response.context_menu(|ui| match &context_element {
-            Some(element) => {
+        let target = self.context_target.clone();
+        let collapsed = matches!(&target, ContextTarget::Node(e) if diagram.layout.collapsed.contains(e));
+        response.context_menu(|ui| match &target {
+            ContextTarget::Node(element) => {
                 ui.label(egui::RichText::new(element.as_str()).weak());
                 if ui.button("Hide").clicked() {
                     edit = Some(Edit::Hide(element.clone()));
@@ -476,7 +551,15 @@ impl ViewerApp {
                     ui.close();
                 }
             }
-            None => {
+            ContextTarget::Edge(edge) => {
+                let key = edge.edge_key().expect("an edge has a key");
+                ui.label(egui::RichText::new(&key).weak());
+                if ui.button("Reset route").on_hover_text("Back to automatic routing").clicked() {
+                    edit = Some(Edit::Route { edge: key, bends: Vec::new() });
+                    ui.close();
+                }
+            }
+            ContextTarget::Canvas => {
                 if ui.button("Show all hidden").clicked() {
                     edit = Some(Edit::ShowAll);
                     ui.close();
@@ -487,8 +570,12 @@ impl ViewerApp {
                 }
             }
         });
-        if let Some(element) = hovered.filter(|_| self.drag.is_none()) {
-            response.on_hover_text_at_pointer(element.as_str());
+        if self.drag.is_none() {
+            if let Some(element) = &hovered {
+                response.on_hover_text_at_pointer(element.as_str());
+            } else if hovered_edge.is_some() {
+                response.on_hover_text_at_pointer("Drag to bend · double-click a bend to remove it");
+            }
         }
         if let Some(edit) = edit {
             self.edit_active(edit);

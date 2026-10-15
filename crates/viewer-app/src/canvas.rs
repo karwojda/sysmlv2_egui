@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2};
-use viewer_core::scene::{Fill, Point, Shape, TextAnchor};
+use viewer_core::scene::{Depicts, Fill, Point, Shape, TextAnchor};
 use viewer_core::editing::{self, Edit};
 use viewer_core::{
     DiagramError, DiagramFile, DiagramKind, Layout, Model, QualifiedName, Scene, build_scene_with_layout, diagram_file,
@@ -129,30 +129,63 @@ pub fn check_name(name: &str) -> Result<(), String> {
 /// grabs its resize handle.
 pub const RESIZE_HANDLE: f32 = 10.0;
 
+/// Screen distance within which a press grabs an edge's bend, or its line.
+pub const BEND_HANDLE: f32 = 6.0;
+pub const EDGE_TOLERANCE: f32 = 5.0;
+
 /// What pressing the pointer at a screen position grabs.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Grab {
     /// A node's resize handle, which sits on its corner, half outside it.
     Resize(QualifiedName),
+    /// An existing bend of an edge, by its index among the edge's bends.
+    Bend { edge: Depicts, index: usize },
     Move(QualifiedName),
+    /// An edge's line between bends: segment `segment` runs from point
+    /// `segment` to point `segment + 1` of its path. `at` is the press, in
+    /// scene coordinates, where a new bend would go.
+    Segment { edge: Depicts, segment: usize, at: Point },
     /// Empty canvas.
     Pan,
 }
 
-/// Decides what a press at `pos` grabs: resize handles first, since they
-/// overhang their node, then the topmost node, else the canvas.
+/// Decides what a press at `pos` grabs, most specific first: resize
+/// handles (they overhang their node), bends, nodes, edge lines, else the
+/// canvas. Edges hidden behind a node lose to the node.
 pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
+    let screen = |p: Point| view.to_screen(origin, p);
     let handle = scene.elements().into_iter().rev().find(|element| {
         scene.node_bounds(element).is_some_and(|b| {
-            let corner = view.to_screen(origin, Point::new(b.right(), b.bottom()));
+            let corner = screen(Point::new(b.right(), b.bottom()));
             (pos - corner).x.abs() <= RESIZE_HANDLE && (pos - corner).y.abs() <= RESIZE_HANDLE
         })
     });
-    match (handle, scene.element_at(view.to_scene(origin, pos))) {
-        (Some(element), _) => Grab::Resize(element.clone()),
-        (None, Some(element)) => Grab::Move(element.clone()),
-        (None, None) => Grab::Pan,
+    if let Some(element) = handle {
+        return Grab::Resize(element.clone());
     }
+    let edges = scene.edges();
+    for (edge, path) in edges.iter().rev() {
+        let inner = &path[1..path.len() - 1];
+        if let Some(index) = inner.iter().position(|p| screen(*p).distance(pos) <= BEND_HANDLE) {
+            return Grab::Bend { edge: (*edge).clone(), index };
+        }
+    }
+    if let Some(element) = scene.element_at(view.to_scene(origin, pos)) {
+        return Grab::Move(element.clone());
+    }
+    for (edge, path) in edges.iter().rev() {
+        let near = path.windows(2).position(|s| distance_to_segment(pos, screen(s[0]), screen(s[1])) <= EDGE_TOLERANCE);
+        if let Some(segment) = near {
+            return Grab::Segment { edge: (*edge).clone(), segment, at: view.to_scene(origin, pos) };
+        }
+    }
+    Grab::Pan
+}
+
+fn distance_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+    let ab = b - a;
+    let t = if ab.length_sq() == 0.0 { 0.0 } else { ((p - a).dot(ab) / ab.length_sq()).clamp(0.0, 1.0) };
+    p.distance(a + ab * t)
 }
 
 /// Pan and zoom: a scene point `p` is drawn at `origin + pan + p * zoom`.
@@ -332,6 +365,59 @@ mod tests {
 
         assert_eq!(grab_at(&scene, view, Pos2::ZERO, inside), Grab::Move(a));
         assert_eq!(grab_at(&scene, view, Pos2::ZERO, outside), Grab::Pan);
+    }
+
+    fn scene_with_edge() -> (Scene, Depicts) {
+        let model = viewer_core::Model::builder()
+            .package("P")
+            .part_def("P::A")
+            .part_def("P::B")
+            .specializes("P::A")
+            .build();
+        let edge = Depicts::Specialization { specific: QualifiedName::from("P::B"), general: QualifiedName::from("P::A") };
+        let mut layout = Layout::default();
+        layout.edges.insert(edge.edge_key().unwrap(), vec![[300.0, 120.0]]);
+        let scene = build_scene_with_layout(&model, DiagramKind::General, &QualifiedName::from("P"), &layout).unwrap();
+        (scene, edge)
+    }
+
+    #[test]
+    fn a_press_on_a_bend_grabs_that_bend() {
+        let (scene, edge) = scene_with_edge();
+
+        let grab = grab_at(&scene, View::default(), Pos2::ZERO, Pos2::new(303.0, 118.0));
+
+        assert_eq!(grab, Grab::Bend { edge, index: 0 });
+    }
+
+    #[test]
+    fn a_press_on_an_edge_line_grabs_that_segment_at_the_press() {
+        let (scene, edge) = scene_with_edge();
+        let path = scene.edges()[0].1.to_vec();
+        let on_line = Pos2::new((path[0].x + path[1].x) / 2.0, (path[0].y + path[1].y) / 2.0);
+
+        let grab = grab_at(&scene, View::default(), Pos2::ZERO, on_line + Vec2::new(2.0, 0.0));
+
+        match grab {
+            Grab::Segment { edge: grabbed, segment: 0, at } => {
+                assert_eq!(grabbed, edge);
+                assert!((at.x - on_line.x - 2.0).abs() < 1e-3 && (at.y - on_line.y).abs() < 1e-3);
+            }
+            other => panic!("expected the first segment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_node_wins_over_an_edge_running_behind_it() {
+        let (scene, _) = scene_with_edge();
+        let a = QualifiedName::from("P::A");
+        let b = scene.node_bounds(&a).unwrap();
+        // The edge enters A's border; a press just inside A grabs A.
+        let path = scene.edges()[0].1.to_vec();
+        let end = *path.last().unwrap();
+        let inside = Pos2::new(end.x.clamp(b.x + 3.0, b.right() - RESIZE_HANDLE - 3.0), b.bottom() - 3.0);
+
+        assert_eq!(grab_at(&scene, View::default(), Pos2::ZERO, inside), Grab::Move(a));
     }
 
     #[test]

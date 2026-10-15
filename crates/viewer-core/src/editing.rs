@@ -21,6 +21,10 @@ pub enum Edit {
     /// Draws a node without its compartments, at its natural size.
     Collapse(QualifiedName),
     Expand(QualifiedName),
+    /// Sets the bend points of the edge with key `edge` (see
+    /// [`crate::scene::Depicts::edge_key`]), in scene coordinates from
+    /// source to target. No bends returns it to automatic routing.
+    Route { edge: String, bends: Vec<[f32; 2]> },
     /// Back to the automatic arrangement: the Layout is emptied, apart from
     /// Orphaned Layout Entries, which are never dropped silently.
     Reset,
@@ -69,6 +73,13 @@ fn change(layout: &mut Layout, model: &Model, edit: &Edit) {
         Edit::Expand(element) => {
             layout.collapsed.remove(element);
             natural_size(layout, element);
+        }
+        Edit::Route { edge, bends } => {
+            if bends.is_empty() {
+                layout.edges.remove(edge);
+            } else {
+                layout.edges.insert(edge.clone(), bends.clone());
+            }
         }
         Edit::Reset => {
             let orphaned = |e: &QualifiedName| model.element(e).is_none();
