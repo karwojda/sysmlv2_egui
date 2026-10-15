@@ -13,11 +13,8 @@ use viewer_core::editing::Edit;
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::{DiagramFile, DiagramKind, Model, ModelBackend, QualifiedName, diagram_file};
 
-use canvas::{OpenDiagram, View};
+use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
 use loader::Loader;
-
-/// Screen size of the resize handle at a node's bottom-right corner.
-const RESIZE_HANDLE: f32 = 10.0;
 
 pub struct ViewerApp {
     loader: Loader,
@@ -36,18 +33,11 @@ pub struct ViewerApp {
     export_path: String,
     save_name: String,
     status: Option<String>,
-    drag: Option<Drag>,
+    drag: Option<Grab>,
     /// The element a context menu on the canvas was opened for.
     context_element: Option<QualifiedName>,
     confirm: Option<Confirm>,
     quit_confirmed: bool,
-}
-
-/// What a drag on the canvas is doing, decided when it starts.
-enum Drag {
-    Pan,
-    Move(QualifiedName),
-    Resize(QualifiedName),
 }
 
 /// A question about discarding unsaved changes.
@@ -397,34 +387,24 @@ impl ViewerApp {
             diagram.needs_fit = false;
         }
         let view = diagram.view;
-        let to_scene = |p: egui::Pos2| view.to_scene(origin, p);
-        let under = |p: egui::Pos2| scene.element_at(to_scene(p)).cloned();
-        let on_handle = |p: egui::Pos2, element: &QualifiedName| {
-            scene.node_bounds(element).is_some_and(|b| {
-                let corner = view.to_screen(origin, viewer_core::scene::Point::new(b.right(), b.bottom()));
-                (p - corner).x.abs() <= RESIZE_HANDLE && (p - corner).y.abs() <= RESIZE_HANDLE
-            })
-        };
+        let under = |p: egui::Pos2| scene.element_at(view.to_scene(origin, p)).cloned();
 
-        // Decide what a drag does when it starts: resize from a node's
-        // corner handle, move a node, or pan the view.
+        // Decide what a drag does from where the press began (not where
+        // the pointer is once the drag is recognised): resize from a
+        // node's corner handle, move a node, or pan the view.
         if response.drag_started_by(egui::PointerButton::Primary)
-            && let Some(start) = response.interact_pointer_pos()
+            && let Some(start) = ui.input(|i| i.pointer.press_origin()).or(response.interact_pointer_pos())
         {
-            self.drag = Some(match under(start) {
-                Some(element) if on_handle(start, &element) => Drag::Resize(element),
-                Some(element) => Drag::Move(element),
-                None => Drag::Pan,
-            });
+            self.drag = Some(grab_at(scene, view, origin, start));
         }
         let mut edit = None;
         if response.dragged() {
             let delta = response.drag_delta();
             match &self.drag {
-                Some(Drag::Move(element)) => {
+                Some(Grab::Move(element)) => {
                     edit = Some(Edit::Move { element: element.clone(), dx: delta.x / view.zoom, dy: delta.y / view.zoom });
                 }
-                Some(Drag::Resize(element)) => {
+                Some(Grab::Resize(element)) => {
                     if let Some(b) = scene.node_bounds(element) {
                         edit = Some(Edit::Resize {
                             element: element.clone(),
@@ -433,7 +413,7 @@ impl ViewerApp {
                         });
                     }
                 }
-                Some(Drag::Pan) | None => diagram.view.pan += delta,
+                Some(Grab::Pan) | None => diagram.view.pan += delta,
             }
         }
         if response.drag_stopped() {
@@ -448,7 +428,11 @@ impl ViewerApp {
             }
         }
 
-        let hovered = response.hover_pos().and_then(under);
+        // Over a node, or over the part of its handle outside it.
+        let hovered = response.hover_pos().and_then(|p| match grab_at(scene, view, origin, p) {
+            Grab::Resize(element) | Grab::Move(element) => Some(element),
+            Grab::Pan => None,
+        });
         if response.clicked() {
             self.selected = hovered.clone();
         }
@@ -464,11 +448,10 @@ impl ViewerApp {
             clipped.rect_filled(handle, 1.0, egui::Color32::from_rgb(0x1f, 0x6f, 0xeb));
         }
         if let Some(pointer) = response.hover_pos() {
-            let cursor = match (&self.drag, &hovered) {
-                (Some(Drag::Resize(_)), _) => egui::CursorIcon::ResizeNwSe,
-                (Some(Drag::Move(_)), _) => egui::CursorIcon::Grabbing,
-                (_, Some(element)) if on_handle(pointer, element) => egui::CursorIcon::ResizeNwSe,
-                (_, Some(_)) => egui::CursorIcon::Grab,
+            let cursor = match (&self.drag, grab_at(scene, view, origin, pointer)) {
+                (Some(Grab::Resize(_)), _) | (None, Grab::Resize(_)) => egui::CursorIcon::ResizeNwSe,
+                (Some(Grab::Move(_)), _) => egui::CursorIcon::Grabbing,
+                (None, Grab::Move(_)) => egui::CursorIcon::Grab,
                 _ => egui::CursorIcon::Default,
             };
             ui.ctx().set_cursor_icon(cursor);

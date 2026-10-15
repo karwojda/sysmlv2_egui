@@ -125,6 +125,36 @@ pub fn check_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Screen distance from a node's bottom-right corner within which a press
+/// grabs its resize handle.
+pub const RESIZE_HANDLE: f32 = 10.0;
+
+/// What pressing the pointer at a screen position grabs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Grab {
+    /// A node's resize handle, which sits on its corner, half outside it.
+    Resize(QualifiedName),
+    Move(QualifiedName),
+    /// Empty canvas.
+    Pan,
+}
+
+/// Decides what a press at `pos` grabs: resize handles first, since they
+/// overhang their node, then the topmost node, else the canvas.
+pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
+    let handle = scene.elements().into_iter().rev().find(|element| {
+        scene.node_bounds(element).is_some_and(|b| {
+            let corner = view.to_screen(origin, Point::new(b.right(), b.bottom()));
+            (pos - corner).x.abs() <= RESIZE_HANDLE && (pos - corner).y.abs() <= RESIZE_HANDLE
+        })
+    });
+    match (handle, scene.element_at(view.to_scene(origin, pos))) {
+        (Some(element), _) => Grab::Resize(element.clone()),
+        (None, Some(element)) => Grab::Move(element.clone()),
+        (None, None) => Grab::Pan,
+    }
+}
+
 /// Pan and zoom: a scene point `p` is drawn at `origin + pan + p * zoom`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct View {
@@ -269,6 +299,39 @@ mod tests {
 
         let shifted = View::fit(Vec2::new(-40.0, -10.0), Vec2::new(200.0, 100.0), Vec2::new(1000.0, 500.0));
         assert_eq!(shifted.pan, Vec2::new(440.0, 210.0), "the page's top-left lands where an unshifted one would");
+    }
+
+    fn scene_with_node() -> Scene {
+        let model = viewer_core::Model::builder().package("P").part_def("P::A").build();
+        viewer_core::build_scene(&model, DiagramKind::General, &QualifiedName::from("P")).unwrap()
+    }
+
+    #[test]
+    fn a_press_on_a_corner_handle_grabs_it_even_just_outside_the_node() {
+        let scene = scene_with_node();
+        let a = QualifiedName::from("P::A");
+        let b = scene.node_bounds(&a).unwrap();
+        let view = View { pan: Vec2::new(30.0, 10.0), zoom: 2.0 };
+        let origin = Pos2::new(100.0, 50.0);
+        let corner = view.to_screen(origin, Point::new(b.right(), b.bottom()));
+
+        for offset in [Vec2::ZERO, Vec2::new(6.0, 6.0), Vec2::new(-6.0, -6.0)] {
+            assert_eq!(grab_at(&scene, view, origin, corner + offset), Grab::Resize(a.clone()), "{offset:?}");
+        }
+    }
+
+    #[test]
+    fn a_press_inside_a_node_moves_it_and_elsewhere_pans() {
+        let scene = scene_with_node();
+        let a = QualifiedName::from("P::A");
+        let b = scene.node_bounds(&a).unwrap();
+        let view = View::default();
+
+        let inside = view.to_screen(Pos2::ZERO, Point::new(b.x + 5.0, b.y + 5.0));
+        let outside = view.to_screen(Pos2::ZERO, Point::new(b.right() + 50.0, b.bottom() + 50.0));
+
+        assert_eq!(grab_at(&scene, view, Pos2::ZERO, inside), Grab::Move(a));
+        assert_eq!(grab_at(&scene, view, Pos2::ZERO, outside), Grab::Pan);
     }
 
     #[test]
