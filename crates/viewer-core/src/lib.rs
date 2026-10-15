@@ -6,6 +6,7 @@
 
 pub mod backend;
 pub mod diagram;
+pub mod diagram_file;
 mod layout;
 pub mod model;
 mod notation;
@@ -14,5 +15,6 @@ pub mod svg;
 
 pub use backend::{BackendError, FakeBackend, ModelBackend};
 pub use diagram::{DiagramError, DiagramKind, build_scene};
+pub use diagram_file::{DiagramFile, DiagramFileError};
 pub use model::{Diagnostic, Element, ElementKind, Model, QualifiedName, Severity, SourceLocation};
 pub use scene::Scene;

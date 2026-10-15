@@ -6,7 +6,8 @@ use std::fmt;
 use std::path::PathBuf;
 
 /// A `::`-separated element path such as `Vehicles::Car`.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct QualifiedName(String);
 
 impl QualifiedName {
