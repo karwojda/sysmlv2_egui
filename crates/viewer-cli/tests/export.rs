@@ -227,3 +227,45 @@ fn service_flags_are_accepted_by_the_command() {
     assert_eq!(code, EXIT_OK);
     assert!(out.is_file());
 }
+
+#[test]
+fn exports_an_interconnection_diagram() {
+    let model = Model::builder()
+        .package("P")
+        .port_def("P::Flow")
+        .part_def("P::Source")
+        .port("P::Source::out")
+        .typed_by("P::Flow")
+        .direction(viewer_core::model::Direction::Out)
+        .part_def("P::Sink")
+        .port("P::Sink::in")
+        .typed_by("P::Flow")
+        .direction(viewer_core::model::Direction::In)
+        .part_def("P::System")
+        .part("P::System::source")
+        .typed_by("P::Source")
+        .part("P::System::sink")
+        .typed_by("P::Sink")
+        .connection("P::System::link")
+        .end(&["P::System::source", "P::Source::out"])
+        .end(&["P::System::sink", "P::Sink::in"])
+        .build();
+    let folder = model_folder(&[DiagramFile::new("wiring", DiagramKind::Interconnection, QualifiedName::from("P::System"))]);
+    let out = folder.path().join("wiring.svg");
+
+    let outcome = export(model, folder.path(), "wiring", &out);
+
+    assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
+    let svg = std::fs::read_to_string(&out).unwrap();
+    assert!(svg.contains(">source:Source</text>") && svg.contains(">link</text>"), "{svg}");
+}
+
+#[test]
+fn fails_and_names_the_diagram_when_an_interconnection_root_is_not_a_part() {
+    let folder = model_folder(&[DiagramFile::new("wiring", DiagramKind::Interconnection, QualifiedName::from("Vehicles"))]);
+
+    let outcome = export(vehicles(), folder.path(), "wiring", &folder.path().join("wiring.svg"));
+
+    assert_eq!(outcome.code, EXIT_FAILURE);
+    assert!(outcome.stderr.contains("Diagram `wiring`") && outcome.stderr.contains("part"), "{}", outcome.stderr);
+}

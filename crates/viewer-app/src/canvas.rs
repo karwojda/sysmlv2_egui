@@ -83,6 +83,7 @@ impl OpenDiagram {
         let title = match (&self.name, self.kind) {
             (Some(name), _) => name.clone(),
             (None, DiagramKind::General) => format!("{} (General)", self.root.simple_name()),
+            (None, DiagramKind::Interconnection) => format!("{} (Interconnection)", self.root.simple_name()),
         };
         if self.dirty { format!("{title} •") } else { title }
     }

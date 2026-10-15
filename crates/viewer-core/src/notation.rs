@@ -3,22 +3,22 @@
 use crate::model::{Element, ElementKind, Model};
 use crate::scene::{Depicts, Fill, Font, Item, Point, Rect, Shape, TextAnchor};
 
-const KEYWORD_FONT: Font = Font { size: 12.0, bold: false, italic: false };
-const NAME_FONT: Font = Font { size: 14.0, bold: true, italic: false };
+pub(crate) const KEYWORD_FONT: Font = Font { size: 12.0, bold: false, italic: false };
+pub(crate) const NAME_FONT: Font = Font { size: 14.0, bold: true, italic: false };
 /// Usage titles are not bold, unlike definition names.
-const USAGE_NAME_FONT: Font = Font { size: 14.0, bold: false, italic: false };
+pub(crate) const USAGE_NAME_FONT: Font = Font { size: 14.0, bold: false, italic: false };
 const COMPARTMENT_TITLE_FONT: Font = Font { size: 11.0, bold: false, italic: true };
 const ROW_FONT: Font = Font { size: 12.0, bold: false, italic: false };
-const LABEL_FONT: Font = Font { size: 11.0, bold: false, italic: false };
-const PADDING: f32 = 10.0;
-const LINE_GAP: f32 = 4.0;
-const MIN_NODE_WIDTH: f32 = 120.0;
-const USAGE_CORNER_RADIUS: f32 = 10.0;
+pub(crate) const LABEL_FONT: Font = Font { size: 11.0, bold: false, italic: false };
+pub(crate) const PADDING: f32 = 10.0;
+pub(crate) const LINE_GAP: f32 = 4.0;
+pub(crate) const MIN_NODE_WIDTH: f32 = 120.0;
+pub(crate) const USAGE_CORNER_RADIUS: f32 = 10.0;
 const ARROW_LENGTH: f32 = 14.0;
 const ARROW_HALF_WIDTH: f32 = 8.0;
 const DIAMOND_LENGTH: f32 = 18.0;
 const DIAMOND_HALF_WIDTH: f32 = 6.0;
-const LABEL_OFFSET: f32 = 6.0;
+pub(crate) const LABEL_OFFSET: f32 = 6.0;
 /// How far apart edge ends on the same side of a node must be.
 const END_SEPARATION: f32 = 14.0;
 /// How far edges keep from nodes they pass, and how a detour searches.
@@ -37,7 +37,7 @@ const COLON_HALF_SPREAD: f32 = 4.0;
 
 /// Text width estimated from character count, so layout never depends on
 /// the fonts installed on the machine doing the Export.
-fn text_width(text: &str, font: Font) -> f32 {
+pub(crate) fn text_width(text: &str, font: Font) -> f32 {
     let average = if font.bold { 0.62 } else { 0.56 };
     text.chars().count() as f32 * font.size * average
 }
@@ -109,7 +109,7 @@ pub fn node_content(element: &Element, model: &Model, compartments: bool) -> Nod
 }
 
 /// `name:Type [multiplicity]`, with `~` for a conjugated type.
-fn usage_label(element: &Element) -> String {
+pub(crate) fn usage_label(element: &Element) -> String {
     let mut label = element.name.clone();
     if let Some(definition) = &element.typed_by {
         let conjugate = if element.conjugated { "~" } else { "" };

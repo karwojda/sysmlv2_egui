@@ -121,6 +121,10 @@ pub enum Depicts {
     },
     /// A connection or interface usage, by its qualified name.
     Connection(QualifiedName),
+    /// A port drawn on a part's border in an Interconnection Diagram: the
+    /// part (usage, or the root for the Frame) and the port. Parts of the
+    /// same type share port names, so the port alone isn't unique.
+    Port { part: QualifiedName, port: QualifiedName },
 }
 
 impl Depicts {
@@ -128,7 +132,7 @@ impl Depicts {
     /// Nodes have none: they are keyed by their element.
     pub fn edge_key(&self) -> Option<String> {
         match self {
-            Depicts::Element(_) => None,
+            Depicts::Element(_) | Depicts::Port { .. } => None,
             Depicts::Specialization { specific, general } => Some(format!("specialization {specific} {general}")),
             Depicts::Typing { usage, definition } => Some(format!("defined-by {usage} {definition}")),
             Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),

@@ -8,7 +8,7 @@ use crate::model::{Element, ElementKind, Model, QualifiedName};
 use crate::notation;
 use crate::scene::{Depicts, Item, Point, Rect, Scene};
 
-const MARGIN: f32 = 20.0;
+pub(crate) const MARGIN: f32 = 20.0;
 /// Space kept around anything drawn past the nodes' margin.
 const EDGE_PADDING: f32 = 4.0;
 /// Space between saved nodes and newly placed ones below them.
@@ -18,14 +18,26 @@ const NEW_NODES_GAP: f32 = 60.0;
 #[serde(rename_all = "lowercase")]
 pub enum DiagramKind {
     General,
+    Interconnection,
 }
 
 impl DiagramKind {
+    /// How the kind reads in a sentence, e.g. "an Interconnection Diagram".
+    pub fn description(self) -> &'static str {
+        match self {
+            DiagramKind::General => "a General Diagram",
+            DiagramKind::Interconnection => "an Interconnection Diagram (it must be a part or part def)",
+        }
+    }
+
     /// Whether a Diagram of this kind can be rooted at `element`: a General
     /// Diagram shows the members of a package or definition.
     pub fn accepts_root(self, element: &Element) -> bool {
         match self {
             DiagramKind::General => element.kind == ElementKind::Package || element.kind.is_definition(),
+            DiagramKind::Interconnection => {
+                element.kind == ElementKind::PartDefinition || element.kind == ElementKind::PartUsage
+            }
         }
     }
 }
@@ -34,6 +46,8 @@ impl DiagramKind {
 pub enum DiagramError {
     #[error("root element `{0}` does not exist in the Model")]
     RootNotFound(QualifiedName),
+    #[error("`{root}` can't be the root of {kind}")]
+    UnsuitableRoot { root: QualifiedName, kind: &'static str },
 }
 
 /// Builds the scene for a Diagram of `kind` rooted at `root`, arranged
@@ -53,11 +67,15 @@ pub fn build_scene_with_layout(
     root: &QualifiedName,
     layout: &Layout,
 ) -> Result<Scene, DiagramError> {
-    if model.element(root).is_none() {
+    let Some(element) = model.element(root) else {
         return Err(DiagramError::RootNotFound(root.clone()));
+    };
+    if !kind.accepts_root(element) {
+        return Err(DiagramError::UnsuitableRoot { root: root.clone(), kind: kind.description() });
     }
     match kind {
         DiagramKind::General => Ok(general(model, root, layout)),
+        DiagramKind::Interconnection => crate::interconnection::build(model, root, layout),
     }
 }
 
@@ -205,8 +223,12 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
         items.extend(notation::node(element, content, *rect));
     }
 
-    // The page holds every node with a margin, grown to anything drawn
-    // beyond that (such as labels beside edges).
+    page(items, &rects)
+}
+
+/// A scene whose page holds every node rect with a margin, grown to
+/// anything drawn beyond that (such as labels beside edges).
+pub(crate) fn page(items: Vec<Item>, rects: &[Rect]) -> Scene {
     let mut left: f32 = 0.0;
     let mut top: f32 = 0.0;
     let mut right = rects.iter().map(Rect::right).fold(0.0, f32::max) + MARGIN;

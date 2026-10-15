@@ -9,6 +9,7 @@ pub mod browser;
 pub mod diagram;
 pub mod diagram_file;
 pub mod editing;
+mod interconnection;
 mod layout;
 pub mod model;
 pub mod properties;
