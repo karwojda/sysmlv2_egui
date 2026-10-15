@@ -1,0 +1,141 @@
+//! A drawn Diagram as renderer-neutral primitives. Renderers (egui, SVG)
+//! paint these items in order and add no notation of their own, so every
+//! renderer produces the same picture.
+
+use crate::model::QualifiedName;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Point {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Point {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl Rect {
+    pub fn right(&self) -> f32 {
+        self.x + self.width
+    }
+
+    pub fn bottom(&self) -> f32 {
+        self.y + self.height
+    }
+
+    pub fn center_x(&self) -> f32 {
+        self.x + self.width / 2.0
+    }
+
+    pub fn intersects(&self, other: &Rect) -> bool {
+        self.x < other.right()
+            && other.x < self.right()
+            && self.y < other.bottom()
+            && other.y < self.bottom()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fill {
+    None,
+    Background,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextAnchor {
+    Start,
+    Middle,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Font {
+    pub size: f32,
+    pub bold: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Shape {
+    Rect {
+        rect: Rect,
+        fill: Fill,
+    },
+    Polyline {
+        points: Vec<Point>,
+    },
+    Polygon {
+        points: Vec<Point>,
+        fill: Fill,
+    },
+    /// `position` is the text baseline at the anchor.
+    Text {
+        position: Point,
+        text: String,
+        anchor: TextAnchor,
+        font: Font,
+    },
+}
+
+/// What a scene item depicts, for hit-testing and selection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Depicts {
+    Element(QualifiedName),
+    Specialization {
+        specific: QualifiedName,
+        general: QualifiedName,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Item {
+    pub depicts: Depicts,
+    pub shape: Shape,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Scene {
+    pub width: f32,
+    pub height: f32,
+    /// Painted in order; later items are on top.
+    pub items: Vec<Item>,
+}
+
+impl Scene {
+    /// The frame of the node drawn for `element`, if it is in the Diagram.
+    pub fn node_bounds(&self, element: &QualifiedName) -> Option<Rect> {
+        self.items.iter().find_map(|item| match (&item.depicts, &item.shape) {
+            (Depicts::Element(e), Shape::Rect { rect, .. }) if e == element => Some(*rect),
+            _ => None,
+        })
+    }
+
+    /// Every element that has a node in the Diagram, in paint order.
+    pub fn elements(&self) -> Vec<&QualifiedName> {
+        let mut elements = Vec::new();
+        for item in &self.items {
+            if let Depicts::Element(e) = &item.depicts
+                && !elements.contains(&e)
+            {
+                elements.push(e);
+            }
+        }
+        elements
+    }
+
+    /// The items drawn for `depicts`, in paint order.
+    pub fn items_depicting<'a>(&'a self, depicts: &'a Depicts) -> impl Iterator<Item = &'a Shape> {
+        self.items
+            .iter()
+            .filter(move |item| &item.depicts == depicts)
+            .map(|item| &item.shape)
+    }
+}

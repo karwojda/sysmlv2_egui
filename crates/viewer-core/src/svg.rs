@@ -1,0 +1,95 @@
+//! Serialises a scene as SVG. Output is deterministic: the same scene always
+//! produces byte-identical text.
+
+use std::fmt::Write;
+
+use crate::scene::{Fill, Point, Scene, Shape, TextAnchor};
+
+const STROKE: &str = "#000000";
+const BACKGROUND: &str = "#ffffff";
+const FONT_FAMILY: &str = "sans-serif";
+
+pub fn render(scene: &Scene) -> String {
+    let mut out = String::new();
+    let (w, h) = (num(scene.width), num(scene.height));
+    writeln!(
+        out,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="{FONT_FAMILY}">"#
+    )
+    .unwrap();
+    writeln!(out, r#"<rect x="0" y="0" width="{w}" height="{h}" fill="{BACKGROUND}"/>"#).unwrap();
+    for item in &scene.items {
+        shape(&mut out, &item.shape);
+    }
+    out.push_str("</svg>\n");
+    out
+}
+
+fn shape(out: &mut String, shape: &Shape) {
+    match shape {
+        Shape::Rect { rect, fill } => writeln!(
+            out,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{STROKE}"/>"#,
+            num(rect.x),
+            num(rect.y),
+            num(rect.width),
+            num(rect.height),
+            fill_color(*fill),
+        ),
+        Shape::Polyline { points } => writeln!(
+            out,
+            r#"<polyline points="{}" fill="none" stroke="{STROKE}"/>"#,
+            point_list(points)
+        ),
+        Shape::Polygon { points, fill } => writeln!(
+            out,
+            r#"<polygon points="{}" fill="{}" stroke="{STROKE}"/>"#,
+            point_list(points),
+            fill_color(*fill),
+        ),
+        Shape::Text { position, text, anchor, font } => writeln!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}>{}</text>"#,
+            num(position.x),
+            num(position.y),
+            match anchor {
+                TextAnchor::Start => "start",
+                TextAnchor::Middle => "middle",
+            },
+            num(font.size),
+            if font.bold { r#" font-weight="bold""# } else { "" },
+            escape(text),
+        ),
+    }
+    .unwrap();
+}
+
+fn fill_color(fill: Fill) -> &'static str {
+    match fill {
+        Fill::None => "none",
+        Fill::Background => BACKGROUND,
+    }
+}
+
+fn point_list(points: &[Point]) -> String {
+    points
+        .iter()
+        .map(|p| format!("{},{}", num(p.x), num(p.y)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Fixed two-decimal formatting with trailing zeros trimmed, so tiny
+/// floating-point differences never reach the output.
+fn num(value: f32) -> String {
+    let text = format!("{:.2}", value);
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    if text == "-0" { "0".to_owned() } else { text.to_owned() }
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}

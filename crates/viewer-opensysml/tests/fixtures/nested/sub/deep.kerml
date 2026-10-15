@@ -1,0 +1,3 @@
+package Deep {
+    classifier Thing;
+}
