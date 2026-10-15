@@ -149,8 +149,8 @@ fn each_kind_shows_its_keyword() {
 fn usages_show_their_type_and_multiplicity() {
     let scene = scene();
 
-    assert_eq!(node_texts(&scene, "Structure::spare")[1], "spare : Engine [0..*]");
-    assert_eq!(node_texts(&scene, "Structure::vehicle")[1], "vehicle : Vehicle");
+    assert_eq!(node_texts(&scene, "Structure::spare")[1], "spare:Engine [0..*]");
+    assert_eq!(node_texts(&scene, "Structure::vehicle")[1], "vehicle:Vehicle");
 }
 
 #[test]
@@ -163,13 +163,13 @@ fn definitions_list_their_features_in_compartments() {
             "«part def»",
             "Vehicle",
             "attributes",
-            "mass : Mass",
+            "mass:Mass",
             "parts",
-            "engine : Engine [1]",
-            "tanks : Tank [1..2]",
+            "engine:Engine [1]",
+            "tanks:Tank [1..2]",
             "connections",
-            "iface : FuelInterface (tanks.fuelOut → engine.fuelIn)",
-            "line : FuelLine (tanks.fuelOut → engine.fuelIn)",
+            "iface:FuelInterface (tanks.fuelOut → engine.fuelIn)",
+            "line:FuelLine (tanks.fuelOut → engine.fuelIn)",
         ]
     );
 }
@@ -178,9 +178,9 @@ fn definitions_list_their_features_in_compartments() {
 fn ports_show_their_direction_and_conjugation() {
     let scene = scene();
 
-    assert!(node_texts(&scene, "Structure::Engine").contains(&"in fuelIn : ~FuelPort".to_owned()));
-    assert!(node_texts(&scene, "Structure::Tank").contains(&"out fuelOut : FuelPort".to_owned()));
-    assert!(node_texts(&scene, "Structure::FuelPort").contains(&"out fuel : Fuel".to_owned()));
+    assert!(node_texts(&scene, "Structure::Engine").contains(&"in fuelIn:~FuelPort".to_owned()));
+    assert!(node_texts(&scene, "Structure::Tank").contains(&"out fuelOut:FuelPort".to_owned()));
+    assert!(node_texts(&scene, "Structure::FuelPort").contains(&"out fuel:Fuel".to_owned()));
 }
 
 #[test]
@@ -214,14 +214,34 @@ fn owners_sit_above_the_definitions_of_their_parts() {
 }
 
 #[test]
-fn a_usage_node_is_joined_to_its_definition_by_a_dashed_typing_edge() {
+fn a_usage_node_is_joined_to_its_definition_by_a_defined_by_edge() {
     let scene = scene();
     let edge = Depicts::Typing { usage: qn("Structure::spare"), definition: qn("Structure::Engine") };
 
     let shapes: Vec<&Shape> = scene.items_depicting(&edge).collect();
 
-    assert!(shapes.iter().any(|s| matches!(s, Shape::Polyline { dashed: true, .. })));
+    // A solid line, a hollow triangle, and a colon of two filled dots.
+    assert!(shapes.iter().any(|s| matches!(s, Shape::Polyline { dashed: false, .. })));
     assert!(shapes.iter().any(|s| matches!(s, Shape::Polygon { fill: Fill::Background, .. })));
+    assert_eq!(shapes.iter().filter(|s| matches!(s, Shape::Circle { fill: Fill::Stroke, .. })).count(), 2);
+}
+
+#[test]
+fn usage_titles_are_not_bold_but_definition_names_are() {
+    let scene = scene();
+    let title_bold = |element: &str| {
+        scene
+            .items_depicting(&Depicts::Element(qn(element)))
+            .filter_map(|shape| match shape {
+                Shape::Text { font, .. } => Some(font.bold),
+                _ => None,
+            })
+            .nth(1)
+            .unwrap()
+    };
+
+    assert!(!title_bold("Structure::spare"));
+    assert!(title_bold("Structure::Engine"));
 }
 
 #[test]

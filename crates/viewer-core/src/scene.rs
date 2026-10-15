@@ -82,6 +82,11 @@ pub enum Shape {
         points: Vec<Point>,
         fill: Fill,
     },
+    Circle {
+        center: Point,
+        radius: f32,
+        fill: Fill,
+    },
     /// `position` is the text baseline at the anchor.
     Text {
         position: Point,
@@ -99,7 +104,7 @@ pub enum Depicts {
         specific: QualifiedName,
         general: QualifiedName,
     },
-    /// A usage typed by a definition (`:`).
+    /// A usage defined by a definition (`:`).
     Typing {
         usage: QualifiedName,
         definition: QualifiedName,

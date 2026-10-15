@@ -5,6 +5,8 @@ use crate::scene::{Depicts, Fill, Font, Item, Point, Rect, Shape, TextAnchor};
 
 const KEYWORD_FONT: Font = Font { size: 12.0, bold: false, italic: false };
 const NAME_FONT: Font = Font { size: 14.0, bold: true, italic: false };
+/// Usage titles are not bold, unlike definition names.
+const USAGE_NAME_FONT: Font = Font { size: 14.0, bold: false, italic: false };
 const COMPARTMENT_TITLE_FONT: Font = Font { size: 11.0, bold: false, italic: true };
 const ROW_FONT: Font = Font { size: 12.0, bold: false, italic: false };
 const LABEL_FONT: Font = Font { size: 11.0, bold: false, italic: false };
@@ -17,6 +19,11 @@ const ARROW_HALF_WIDTH: f32 = 8.0;
 const DIAMOND_LENGTH: f32 = 18.0;
 const DIAMOND_HALF_WIDTH: f32 = 6.0;
 const LABEL_OFFSET: f32 = 6.0;
+const COLON_DOT_RADIUS: f32 = 1.8;
+/// How far the defined-by colon sits before the triangle, and how far
+/// apart its two dots are.
+const COLON_GAP: f32 = 5.0;
+const COLON_HALF_SPREAD: f32 = 4.0;
 
 /// Text width estimated from character count, so layout never depends on
 /// the fonts installed on the machine doing the Export.
@@ -63,12 +70,12 @@ pub fn node_content(element: &Element, model: &Model) -> NodeContent {
     }
 }
 
-/// `name : Type [multiplicity]`, with `~` for a conjugated type.
+/// `name:Type [multiplicity]`, with `~` for a conjugated type.
 fn usage_label(element: &Element) -> String {
     let mut label = element.name.clone();
     if let Some(definition) = &element.typed_by {
         let conjugate = if element.conjugated { "~" } else { "" };
-        label.push_str(&format!(" : {conjugate}{}", definition.simple_name()));
+        label.push_str(&format!(":{conjugate}{}", definition.simple_name()));
     }
     if let Some(multiplicity) = &element.multiplicity {
         label.push_str(&format!(" {multiplicity}"));
@@ -92,6 +99,10 @@ fn feature_row(feature: &Element) -> String {
     row
 }
 
+fn title_font(content: &NodeContent) -> Font {
+    if content.usage { USAGE_NAME_FONT } else { NAME_FONT }
+}
+
 fn header_height() -> f32 {
     2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + NAME_FONT.size
 }
@@ -101,7 +112,7 @@ fn compartment_height(rows: usize) -> f32 {
 }
 
 pub fn node_size(content: &NodeContent) -> (f32, f32) {
-    let mut widest = text_width(&content.keyword, KEYWORD_FONT).max(text_width(&content.title, NAME_FONT));
+    let mut widest = text_width(&content.keyword, KEYWORD_FONT).max(text_width(&content.title, title_font(content)));
     for (title, rows) in &content.compartments {
         widest = widest.max(text_width(title, COMPARTMENT_TITLE_FONT));
         for row in rows {
@@ -137,7 +148,7 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
             position: Point::new(rect.center_x(), keyword_baseline + LINE_GAP + NAME_FONT.size),
             text: content.title.clone(),
             anchor: TextAnchor::Middle,
-            font: NAME_FONT,
+            font: title_font(content),
         },
     ];
     let mut top = rect.y + header_height();
@@ -178,14 +189,23 @@ pub fn specialization(depicts: Depicts, specific: Rect, general: Rect) -> Vec<It
     ])
 }
 
-/// Definition (typing): a dashed line from the usage ending in a hollow
-/// triangle on its definition.
-pub fn typing(depicts: Depicts, usage: Rect, definition: Rect) -> Vec<Item> {
+/// Defined by: a solid line from the usage ending in a hollow triangle on
+/// its definition, with a colon across the line just before the triangle.
+pub fn defined_by(depicts: Depicts, usage: Rect, definition: Rect) -> Vec<Item> {
     let (start, end) = connect(usage, definition);
     let base = back_from(end, start, ARROW_LENGTH);
+    let colon = back_from(base, start, COLON_GAP);
+    let (nx, ny) = normal(start, end, COLON_HALF_SPREAD);
+    let dot = |sign: f32| Shape::Circle {
+        center: Point::new(colon.x + sign * nx, colon.y + sign * ny),
+        radius: COLON_DOT_RADIUS,
+        fill: Fill::Stroke,
+    };
     tag(depicts, vec![
-        Shape::Polyline { points: vec![start, base], dashed: true },
+        Shape::Polyline { points: vec![start, base], dashed: false },
         triangle(end, start),
+        dot(1.0),
+        dot(-1.0),
     ])
 }
 

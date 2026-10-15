@@ -115,7 +115,7 @@ fn general(model: &Model, root: &QualifiedName) -> Scene {
                 rects[specific],
                 rects[general],
             ),
-            Edge::Typing { usage, definition } => notation::typing(
+            Edge::Typing { usage, definition } => notation::defined_by(
                 Depicts::Typing { usage: name(usage), definition: name(definition) },
                 rects[usage],
                 rects[definition],

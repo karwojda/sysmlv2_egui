@@ -49,6 +49,14 @@ fn shape(out: &mut String, shape: &Shape) {
             point_list(points),
             fill_color(*fill),
         ),
+        Shape::Circle { center, radius, fill } => writeln!(
+            out,
+            r#"<circle cx="{}" cy="{}" r="{}" fill="{}"/>"#,
+            num(center.x),
+            num(center.y),
+            num(*radius),
+            fill_color(*fill),
+        ),
         Shape::Text { position, text, anchor, font } => writeln!(
             out,
             r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}{}>{}</text>"#,

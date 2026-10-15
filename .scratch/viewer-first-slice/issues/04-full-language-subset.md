@@ -22,12 +22,12 @@
 - Done. Element facts come from the symbol tree plus the API JSON conversion (see ADR-0001's consequences). That also fills in element **source lines**, closing the gap ticket 02 recorded, so ticket 10 is unblocked on that front.
 - Notation choices (Standard Notation, simplified):
   - Definitions have square corners and usages rounded ones.
-  - Compartments, in this order: `attributes`, `ports`, `parts`, `connections`. Each row reads `[direction] name : [~]Type [multiplicity]`, and connection rows add `(a.b → c.d)`.
+  - Compartments, in this order: `attributes`, `ports`, `parts`, `connections`. Each row reads `[direction] name:[~]Type [multiplicity]`, and connection rows add `(a.b → c.d)`.
   - Composition is a filled diamond at the owner, labelled `name [mult]` near the part's definition.
-  - Typing (usage node to its definition) is a dashed line with a hollow triangle.
+  - Defined-by (usage node to its definition) is a solid line, a hollow triangle and a colon `:`.
   - Package-level connections between usage nodes are plain labelled lines.
   - Connections owned by definitions are listed in the `connections` compartment, not drawn. Drawing them belongs to the Interconnection Diagram.
-- **Please review: typing edge style.** I'm not certain the spec draws feature typing as a dashed line with a hollow triangle. It's a one-line change in the notation module if it's wrong.
+- Typing edge style was resolved against the user's notation reference (Intro to the SysML v2 Language — Graphical Notation, slides 12 and 32). Defined-by is a **solid** line with a hollow triangle and a colon across the line before it. Usage labels are `name:Type`, without spaces and not bold.
 - `end x : PortDef` inside a `connection def` is a *reference* end (an Unsupported Element), not a port. Interface-def ends are ports.
 - Layout: connections now take part in layering, so connected usages sit together. Unconnected groups wrap into rows at 900px.
 - Edges now run center to center and are clipped to node borders. This changed the vehicles golden file (diagonal edges only).
