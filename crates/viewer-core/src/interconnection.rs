@@ -781,8 +781,9 @@ fn route(from: Point, to: Point, blocked: &[Rect]) -> Option<Vec<Point>> {
     let point = |(i, j): (usize, usize)| Point::new(xs[i], ys[j]);
 
     // Dijkstra over (grid point, heading); headings: 0 horizontal, 1 vertical.
-    let mut best: BTreeMap<((usize, usize), u8), f32> = BTreeMap::new();
-    let mut previous: BTreeMap<((usize, usize), u8), ((usize, usize), u8)> = BTreeMap::new();
+    type State = ((usize, usize), u8);
+    let mut best: BTreeMap<State, f32> = BTreeMap::new();
+    let mut previous: BTreeMap<State, State> = BTreeMap::new();
     let mut frontier: Vec<(f32, (usize, usize), u8)> = vec![(0.0, start, 0), (0.0, start, 1)];
     best.insert((start, 0), 0.0);
     best.insert((start, 1), 0.0);
