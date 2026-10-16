@@ -91,7 +91,7 @@ pub fn build_scene_with_layout(
 
 /// Definitions, and part, attribute and port usages, are nodes. Connections
 /// are edges; Unsupported Elements are never drawn.
-fn is_node_in_general(element: &Element) -> bool {
+pub(crate) fn is_node_in_general(element: &Element) -> bool {
     element.kind.is_definition()
         || matches!(
             element.kind,

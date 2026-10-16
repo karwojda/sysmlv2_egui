@@ -1,7 +1,9 @@
 //! What the properties panel shows for an element: labelled values, some of
 //! which refer to other elements and can be followed.
 
-use crate::model::{Model, QualifiedName, SourceLocation};
+use crate::diagram::DiagramKind;
+use crate::model::{ElementKind, Model, QualifiedName, SourceLocation};
+use crate::view::ViewError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Property {
@@ -59,6 +61,15 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     }
     if let Some(rendering) = &e.rendering {
         rows.push(text("Renders", rendering.simple_name().to_owned()));
+    }
+    if e.kind == ElementKind::ViewUsage {
+        let diagram = match crate::view::kind(model, element) {
+            Ok(DiagramKind::General) => "General Diagram".to_owned(),
+            Ok(DiagramKind::Interconnection) => "Interconnection Diagram".to_owned(),
+            Err(ViewError::Unsupported { reason, .. }) => format!("unsupported: {reason}"),
+            Err(error) => error.to_string(),
+        };
+        rows.push(text("Drawn as", diagram));
     }
     for expose in &e.exposes {
         rows.push(link("Exposes", &expose.target, expose.to_string()));

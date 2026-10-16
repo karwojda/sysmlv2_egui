@@ -121,3 +121,16 @@ fn a_view_shows_its_rendering_and_exposes_in_order() {
     assert!(values.contains(&("Renders", "asTreeDiagram".to_owned())));
     assert!(values.contains(&("Exposes", "V::vehicle::**".to_owned())));
 }
+
+#[test]
+fn a_view_says_how_it_is_drawn_or_why_it_cant_be() {
+    let drawn_as = |view: &str| {
+        let props = properties(&common::views(), &qn(view)).unwrap();
+        props.rows.into_iter().find(|p| p.label == "Drawn as").map(|p| p.value)
+    };
+
+    assert_eq!(drawn_as("V::vehicle tree").as_deref(), Some("General Diagram"));
+    assert_eq!(drawn_as("V::wiring").as_deref(), Some("Interconnection Diagram"));
+    assert_eq!(drawn_as("V::table").as_deref(), Some("unsupported: it renders as `asElementTable`"));
+    assert_eq!(drawn_as("V::TreeView"), None, "a view definition isn't drawn");
+}

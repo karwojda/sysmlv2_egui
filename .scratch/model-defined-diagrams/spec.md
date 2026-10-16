@@ -55,7 +55,7 @@ The viewer draws a `view` usage as a Model-defined Diagram:
 
 - New element kinds `ViewUsage` (keyword `view`) and `ViewDefinition` (keyword `view def`), from the symbol tree like other kinds. A view's typing and specializations come from the symbol tree as usual, including library types such as `StandardViewDefinitions::GeneralView`.
 - New element facts:
-  - `exposes`: an ordered list of `{ target, scope }`, where the scope is `Element` (`expose X`), `Members` (`X::*`) or `Descendants` (`X::**`). Read from the API JSON: a `MembershipExpose` with `isRecursive` false is `Element`, true is `Descendants`; a `NamespaceExpose` with `isRecursive` false is `Members`, true is `Descendants`.
+  - `exposes`: an ordered list of `{ target, scope }`, where the scope is `Element` (`expose X`), `Members` (`X::*`), `ElementAndDescendants` (`X::**`, which by KerML includes X) or `Descendants` (`X::*::**`). Read from the API JSON: a `MembershipExpose` is `Element`, or `ElementAndDescendants` when `isRecursive`; a `NamespaceExpose` is `Members`, or `Descendants` when `isRecursive`.
   - `rendering`: the qualified name of the library rendering the element references (`Views::asTreeDiagram`), read from its owned `RenderingUsage`'s reference. Held on views and view definitions alike.
 - ADR-0001 still holds: the symbol tree gives views and typing, the API JSON adds exposes and renderings.
 
@@ -63,7 +63,7 @@ The viewer draws a `view` usage as a Model-defined Diagram:
 
 - A pure function maps a view to either a Diagram Kind with its contents, or an unsupported reason.
 - **Kind.** The view's own rendering wins. Otherwise use the first rendering found by walking its type and then that type's specializations, breadth first. `asTreeDiagram` → General, `asInterconnectionDiagram` → Interconnection, any other rendering → unsupported ("renders as `asElementTable`"). With no rendering anywhere, the definition chain decides: reaching `GeneralView` → General, reaching `InterconnectionView` → Interconnection, but `ActionFlowView` and `StateTransitionView` (which specialize `InterconnectionView`) → unsupported. Anything else → unsupported ("no rendering").
-- **General contents.** The union of every expose's elements: `Element` adds the target, or the target's members when it's a package; `Members` adds owned members; `Descendants` adds all owned descendants. Keep only elements a General Diagram draws as nodes; Unsupported Elements and connection-likes become edges or drop out.
+- **General contents.** The union of every expose's elements: `Element` adds the target, or the target's members when it's a package; `Members` adds owned members; `ElementAndDescendants` adds the target (unless a package) and all its descendants; `Descendants` adds the descendants alone. Keep only elements a General Diagram draws as nodes; Unsupported Elements and connection-likes become edges or drop out.
 - **Interconnection root.** The distinct targets of the exposes, whatever their scope. There must be exactly one, and it must be a part or part def; otherwise the view resolves to an error that names the problem.
 - **Unsupported** is distinct from **erroneous**. Unsupported Views are listed and skipped by `--all`. Erroneous supported views (a bad Interconnection root) open with their message and fail export.
 

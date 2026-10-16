@@ -16,6 +16,7 @@ pub mod properties;
 mod notation;
 pub mod scene;
 pub mod svg;
+pub mod view;
 pub mod watch;
 
 pub use backend::{BackendError, FakeBackend, ModelBackend};
