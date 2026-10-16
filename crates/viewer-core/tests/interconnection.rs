@@ -243,3 +243,14 @@ fn diagram_files_name_the_kind_interconnection() {
     assert!(file.to_text().contains(r#""kind": "interconnection""#));
     assert_eq!(DiagramFile::parse(&file.to_text()).unwrap(), file);
 }
+
+#[test]
+fn finds_the_port_under_a_point() {
+    let scene = interconnection("S::Vehicle");
+    let square = port_square(&scene, "S::Vehicle::engine", "S::Engine::fuelIn");
+
+    let found = scene.port_at(centre(square));
+
+    assert_eq!(found, Some((&qn("S::Vehicle::engine"), &qn("S::Engine::fuelIn"))));
+    assert_eq!(scene.port_at(Point::new(square.x - 20.0, square.y - 20.0)), None);
+}

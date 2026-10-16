@@ -44,10 +44,11 @@ pub struct ViewerApp {
     saved_names: Vec<String>,
     diagrams: Vec<OpenDiagram>,
     active: Option<usize>,
-    /// A Diagram to open once the Model has loaded.
-    pending_root: Option<QualifiedName>,
-    /// A General Diagram to open after the current panel is drawn.
-    pending_open: Option<QualifiedName>,
+    /// A Diagram to open once the Model has loaded: its root, and whether
+    /// an Interconnection Diagram was asked for.
+    pending_root: Option<(QualifiedName, bool)>,
+    /// A Diagram to open after the current panel is drawn.
+    pending_open: Option<(DiagramKind, QualifiedName)>,
     export_path: String,
     save_name: String,
     status: Option<String>,
@@ -82,7 +83,7 @@ enum Confirm {
 
 enum BrowserAction {
     Select(QualifiedName),
-    OpenGeneral(QualifiedName),
+    Open(DiagramKind, QualifiedName),
 }
 
 impl ViewerApp {
@@ -115,7 +116,7 @@ impl ViewerApp {
             saved_names: Vec::new(),
             diagrams: Vec::new(),
             active: None,
-            pending_root: root,
+            pending_root: root.map(|root| (root, false)),
             pending_open: None,
             export_path: String::new(),
             save_name: String::new(),
@@ -166,8 +167,11 @@ impl ViewerApp {
                     self.model = Some(shown.model);
                     self.diagnostics = shown.diagnostics;
                     self.stale = shown.stale;
-                    if let Some(root) = self.pending_root.take() {
-                        self.open_general(root.clone());
+                    if let Some((root, interconnection)) = self.pending_root.take() {
+                        match self.model.as_ref().and_then(|m| startup_kind(m, &root, interconnection)) {
+                            Some(kind) => self.open_diagram(kind, root.clone()),
+                            None => self.status = Some(format!("`{root}` can't be the root of a Diagram")),
+                        }
                         self.select_and_reveal(Some(root));
                     }
                 }
@@ -176,15 +180,25 @@ impl ViewerApp {
         }
     }
 
-    /// Opens a General Diagram of `root`, or switches to one already open.
-    fn open_general(&mut self, root: QualifiedName) {
+    /// Opens the Diagram of `kind` rooted at `root`, or switches to one
+    /// already open.
+    fn open_diagram(&mut self, kind: DiagramKind, root: QualifiedName) {
         let Some(model) = &self.model else { return };
-        if let Some(index) = self.diagrams.iter().position(|d| d.root == root) {
+        if let Some(index) = self.diagrams.iter().position(|d| d.kind == kind && d.root == root) {
             self.activate(index);
             return;
         }
-        self.diagrams.push(OpenDiagram::open(model, DiagramKind::General, root));
+        self.diagrams.push(OpenDiagram::open(model, kind, root));
         self.activate(self.diagrams.len() - 1);
+    }
+
+    /// With a root given on the command line, open an Interconnection
+    /// Diagram of it even if a General Diagram would also fit.
+    pub fn prefer_interconnection(mut self) -> Self {
+        if let Some((_, interconnection)) = &mut self.pending_root {
+            *interconnection = true;
+        }
+        self
     }
 
     /// Opens the saved Diagram File `name`, or switches to it if open.
@@ -321,7 +335,7 @@ impl ViewerApp {
         for action in actions {
             match action {
                 BrowserAction::Select(element) => self.selected = Some(element),
-                BrowserAction::OpenGeneral(root) => self.open_general(root),
+                BrowserAction::Open(kind, root) => self.open_diagram(kind, root),
             }
         }
     }
@@ -339,7 +353,8 @@ impl ViewerApp {
             ui.weak("The selected element is no longer in the Model.");
             return;
         };
-        let openable = model.element(selected).is_some_and(|e| DiagramKind::General.accepts_root(e));
+        let accepts = |kind: DiagramKind| model.element(selected).is_some_and(|e| kind.accepts_root(e));
+        let (general, interconnection) = (accepts(DiagramKind::General), accepts(DiagramKind::Interconnection));
         let mut follow = None;
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             egui::Grid::new("properties").num_columns(2).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
@@ -359,7 +374,7 @@ impl ViewerApp {
                 }
             });
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let source = properties.source.clone();
                 let editor = ui
                     .add_enabled(source.is_some(), egui::Button::new("Open in editor"))
@@ -373,9 +388,13 @@ impl ViewerApp {
                         Err(error) => error,
                     });
                 }
-                if openable && ui.button("Open General Diagram").clicked() {
+                if general && ui.button("Open General Diagram").clicked() {
                     follow = None;
-                    self.pending_open = Some(selected.clone());
+                    self.pending_open = Some((DiagramKind::General, selected.clone()));
+                }
+                if interconnection && ui.button("Open Interconnection Diagram").clicked() {
+                    follow = None;
+                    self.pending_open = Some((DiagramKind::Interconnection, selected.clone()));
                 }
             });
             if let Some(status) = &self.status {
@@ -385,8 +404,8 @@ impl ViewerApp {
         if let Some(target) = follow {
             self.select_and_reveal(Some(target));
         }
-        if let Some(root) = self.pending_open.take() {
-            self.open_general(root);
+        if let Some((kind, root)) = self.pending_open.take() {
+            self.open_diagram(kind, root);
         }
     }
 
@@ -550,7 +569,9 @@ impl ViewerApp {
         if response.drag_started_by(egui::PointerButton::Primary)
             && let Some(start) = ui.input(|i| i.pointer.press_origin()).or(response.interact_pointer_pos())
         {
-            self.drag = Some(match grab_at(scene, view, origin, start) {
+            // Interconnection Layouts can't be edited yet: drags only pan.
+            let grab = if diagram.kind == DiagramKind::Interconnection { Grab::Pan } else { grab_at(scene, view, origin, start) };
+            self.drag = Some(match grab {
                 Grab::Resize(element) => Drag::Resize(element),
                 Grab::Move(element) => Drag::Move(element),
                 Grab::Pan => Drag::Pan,
@@ -606,15 +627,31 @@ impl ViewerApp {
             Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => (None, Some(edge.clone())),
             _ => (None, None),
         };
-        // Double-clicking a bend removes it.
+        // Double-clicking a bend removes it; double-clicking a part, or a
+        // part def, opens its Interconnection Diagram.
+        let pointer_scene = response.hover_pos().map(|p| view.to_scene(origin, p));
+        let mut open = None;
         if response.double_clicked()
             && let Some(Grab::Bend { edge, index }) = &hover
+            && diagram.kind == DiagramKind::General
         {
             let mut bends = bends_of(edge);
             bends.remove(*index);
             edit = Some(Edit::Route { edge: edge.edge_key().expect("an edge has a key"), bends });
+        } else if response.double_clicked()
+            && let (Some(element), Some(model)) = (&hovered, &self.model)
+            && model.element(element).is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
+            && !(diagram.kind == DiagramKind::Interconnection && &diagram.root == element)
+        {
+            open = Some(element.clone());
         } else if response.clicked() {
-            select = Some(hovered.clone());
+            // A port, else a part or node, else a connection.
+            let port = pointer_scene.and_then(|p| scene.port_at(p)).map(|(_, port)| port.clone());
+            let connection = match &hovered_edge {
+                Some(Depicts::Connection(c)) => Some(c.clone()),
+                _ => None,
+            };
+            select = Some(port.or(hovered.clone()).or(connection));
         }
         if response.secondary_clicked() {
             self.context_target = match &hover {
@@ -628,7 +665,27 @@ impl ViewerApp {
         let clipped = painter.with_clip_rect(response.rect);
         canvas::paint(&clipped, scene, view, origin, highlight);
         let accent = egui::Color32::from_rgb(0x1f, 0x6f, 0xeb);
-        if let Some(bounds) = highlight.and_then(|e| scene.node_bounds(e)) {
+        // A selected port or connection is outlined where it's drawn.
+        if let Some(selected) = &self.selected {
+            for item in &scene.items {
+                match (&item.depicts, &item.shape) {
+                    (Depicts::Port { port, .. }, viewer_core::scene::Shape::Rect { rect, .. }) if port == selected => {
+                        let r = egui::Rect::from_min_size(
+                            view.to_screen(origin, viewer_core::scene::Point::new(rect.x, rect.y)),
+                            egui::vec2(rect.width, rect.height) * view.zoom,
+                        );
+                        clipped.rect_stroke(r, 1.0, egui::Stroke::new(2.0, accent), egui::StrokeKind::Outside);
+                    }
+                    (Depicts::Connection(c), viewer_core::scene::Shape::Polyline { points, .. }) if c == selected => {
+                        let points = points.iter().map(|p| view.to_screen(origin, *p)).collect();
+                        clipped.line(points, egui::Stroke::new(2.5, accent));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // The resize handle, only where resizing works (General Diagrams).
+        if let Some(bounds) = highlight.and_then(|e| scene.node_bounds(e)).filter(|_| diagram.kind == DiagramKind::General) {
             let corner = view.to_screen(origin, viewer_core::scene::Point::new(bounds.right(), bounds.bottom()));
             let handle = egui::Rect::from_center_size(corner, egui::vec2(RESIZE_HANDLE, RESIZE_HANDLE) * 0.8);
             clipped.rect_filled(handle, 1.0, accent);
@@ -659,8 +716,28 @@ impl ViewerApp {
 
         let target = self.context_target.clone();
         let collapsed = matches!(&target, ContextTarget::Node(e) if diagram.layout.collapsed.contains(e));
+        let editable = diagram.kind == DiagramKind::General;
+        let opens_interconnection = |element: &QualifiedName| {
+            self.model.as_ref().and_then(|m| m.element(element)).is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
+                && !(diagram.kind == DiagramKind::Interconnection && &diagram.root == element)
+        };
+        let mut open_from_menu = None;
         response.context_menu(|ui| match &target {
+            ContextTarget::Node(element) if !editable => {
+                ui.label(egui::RichText::new(element.as_str()).weak());
+                if opens_interconnection(element) && ui.button("Open Interconnection Diagram").clicked() {
+                    open_from_menu = Some(element.clone());
+                    ui.close();
+                }
+            }
+            ContextTarget::Edge(_) | ContextTarget::Canvas if !editable => {
+                ui.weak("Editing Interconnection Diagrams is coming soon.");
+            }
             ContextTarget::Node(element) => {
+                if opens_interconnection(element) && ui.button("Open Interconnection Diagram").clicked() {
+                    open_from_menu = Some(element.clone());
+                    ui.close();
+                }
                 ui.label(egui::RichText::new(element.as_str()).weak());
                 if ui.button("Hide").clicked() {
                     edit = Some(Edit::Hide(element.clone()));
@@ -707,6 +784,9 @@ impl ViewerApp {
         }
         if let Some(element) = select {
             self.select_and_reveal(element);
+        }
+        if let Some(root) = open.or(open_from_menu) {
+            self.open_diagram(DiagramKind::Interconnection, root);
         }
     }
 
@@ -796,26 +876,48 @@ fn browser_entry(
             .header_response
     };
 
-    let openable = context
-        .model
-        .element(&entry.element)
-        .is_some_and(|e| DiagramKind::General.accepts_root(e));
+    let accepts = |kind: DiagramKind| context.model.element(&entry.element).is_some_and(|e| kind.accepts_root(e));
+    let (general, interconnection) = (accepts(DiagramKind::General), accepts(DiagramKind::Interconnection));
     if selected && context.reveal.first() == Some(&entry.element) {
         response.scroll_to_me(Some(egui::Align::Center));
     }
     if response.clicked() {
         actions.push(BrowserAction::Select(entry.element.clone()));
     }
-    if openable && response.double_clicked() {
-        actions.push(BrowserAction::OpenGeneral(entry.element.clone()));
+    // Double-click opens a General Diagram where one fits (packages and
+    // definitions), else an Interconnection Diagram (part usages).
+    if response.double_clicked() {
+        if general {
+            actions.push(BrowserAction::Open(DiagramKind::General, entry.element.clone()));
+        } else if interconnection {
+            actions.push(BrowserAction::Open(DiagramKind::Interconnection, entry.element.clone()));
+        }
     }
-    if openable {
+    if general || interconnection {
         response.context_menu(|ui| {
-            if ui.button("Open General Diagram").clicked() {
-                actions.push(BrowserAction::OpenGeneral(entry.element.clone()));
+            if general && ui.button("Open General Diagram").clicked() {
+                actions.push(BrowserAction::Open(DiagramKind::General, entry.element.clone()));
+                ui.close();
+            }
+            if interconnection && ui.button("Open Interconnection Diagram").clicked() {
+                actions.push(BrowserAction::Open(DiagramKind::Interconnection, entry.element.clone()));
                 ui.close();
             }
         });
+    }
+}
+
+/// The kind of Diagram to open for a root named on the command line: an
+/// Interconnection Diagram if asked for (and it fits), else a General
+/// Diagram where one fits, else an Interconnection Diagram (part usages).
+pub fn startup_kind(model: &Model, root: &QualifiedName, interconnection: bool) -> Option<DiagramKind> {
+    let element = model.element(root)?;
+    let fits = |kind: DiagramKind| kind.accepts_root(element);
+    match (interconnection, fits(DiagramKind::General), fits(DiagramKind::Interconnection)) {
+        (true, _, true) => Some(DiagramKind::Interconnection),
+        (_, true, _) => Some(DiagramKind::General),
+        (_, false, true) => Some(DiagramKind::Interconnection),
+        _ => None,
     }
 }
 

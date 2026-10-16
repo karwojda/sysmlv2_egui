@@ -12,8 +12,13 @@ use viewer_opensysml::{BINARY_VARIABLE, OpenSysmlBackend, ServiceConfig};
 struct Args {
     /// The Model folder to open.
     model_folder: Option<PathBuf>,
-    /// An element whose General Diagram to open once the Model has loaded.
+    /// An element whose Diagram to open once the Model has loaded: a General
+    /// Diagram for a package or definition, an Interconnection Diagram for a
+    /// part.
     root: Option<String>,
+    /// Open an Interconnection Diagram of the root, even if it's a part def.
+    #[arg(long)]
+    interconnection: bool,
     /// The sysml-grpc binary to start (default: $OPENSYSML_GRPC_BINARY, else
     /// a cached or downloaded release).
     #[arg(long, value_name = "PATH")]
@@ -40,12 +45,13 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
         ..Default::default()
     };
-    let (folder, root) = (args.model_folder, args.root.map(QualifiedName::new));
+    let (folder, root, interconnection) = (args.model_folder, args.root.map(QualifiedName::new), args.interconnection);
     eframe::run_native(
         "SysML v2 Viewer",
         options,
         Box::new(|cc| {
-            Ok(Box::new(ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::with_config(config)), folder, root)))
+            let app = ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::with_config(config)), folder, root);
+            Ok(Box::new(if interconnection { app.prefer_interconnection() } else { app }))
         }),
     )
 }

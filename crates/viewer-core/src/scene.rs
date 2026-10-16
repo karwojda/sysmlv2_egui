@@ -176,6 +176,14 @@ impl Scene {
         })
     }
 
+    /// The port whose square is topmost at `point`, as (part, port).
+    pub fn port_at(&self, point: Point) -> Option<(&QualifiedName, &QualifiedName)> {
+        self.items.iter().rev().find_map(|item| match (&item.depicts, &item.shape) {
+            (Depicts::Port { part, port }, Shape::Rect { rect, .. }) if rect.contains(point) => Some((part, port)),
+            _ => None,
+        })
+    }
+
     /// Every element that has a node in the Diagram, in paint order.
     pub fn elements(&self) -> Vec<&QualifiedName> {
         let mut elements = Vec::new();

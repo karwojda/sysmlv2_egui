@@ -62,6 +62,8 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let app = ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::new()), Some(folder), root);
+            // SCREENSHOT_INTERCONNECTION=1 opens the root's Interconnection Diagram.
+            let app = if std::env::var_os("SCREENSHOT_INTERCONNECTION").is_some() { app.prefer_interconnection() } else { app };
             Ok(Box::new(Screenshot { app, out, started: Instant::now(), requested: false, saved: Default::default() }))
         }),
     )
