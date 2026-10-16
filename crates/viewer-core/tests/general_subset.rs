@@ -316,7 +316,7 @@ fn export_matches_the_golden_file() {
 
 /// Text box estimate matching the notation's font metrics, for overlap checks.
 fn label_box(shape: &Shape) -> viewer_core::scene::Rect {
-    let Shape::Text { position, text, anchor, font } = shape else { panic!("not a label") };
+    let Shape::Text { position, text, anchor, font, .. } = shape else { panic!("not a label") };
     let width = text.chars().count() as f32 * font.size * 0.56;
     let x = match anchor {
         viewer_core::scene::TextAnchor::Start => position.x,

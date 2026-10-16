@@ -702,12 +702,14 @@ fn texts(depicts: &Depicts, rect: Rect, keyword: &str, title: String) -> Vec<Ite
             text: keyword.to_owned(),
             anchor: TextAnchor::Middle,
             font: KEYWORD_FONT,
+            fill: Fill::Stroke,
         },
         Shape::Text {
             position: Point::new(rect.center_x(), keyword_baseline + LINE_GAP + USAGE_NAME_FONT.size),
             text: title,
             anchor: TextAnchor::Middle,
             font: USAGE_NAME_FONT,
+            fill: Fill::Stroke,
         },
     ]
     .into_iter()
@@ -768,7 +770,7 @@ fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
             Side::Right => (Point::new(p.x + beside, p.y - LABEL_OFFSET), TextAnchor::Start),
         };
         items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: square, fill: Fill::Background, corner_radius: 0.0, dashed: false } });
-        items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT } });
+        items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT, fill: Fill::Stroke } });
     }
     for child in &node.children {
         draw_ports(child, items);
@@ -832,7 +834,7 @@ fn composite_port(node: &BoxNode, slot: &PortSlot, depicts: Depicts) -> Vec<Item
         let anchor = if slot.side == Side::Left { TextAnchor::End } else { TextAnchor::Start };
         (Point::new(x, bar.y - LABEL_OFFSET), anchor)
     };
-    items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT } });
+    items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT, fill: Fill::Stroke } });
     let port_key = feature_path(&node.path, &slot.port.name);
     for (n, nested) in slot.nested.iter().enumerate() {
         let depicts = Depicts::Port {
@@ -850,7 +852,7 @@ fn composite_port(node: &BoxNode, slot: &PortSlot, depicts: Depicts) -> Vec<Item
             Side::Right => (Point::new(c.x + beside, c.y + LABEL_FONT.size / 3.0), TextAnchor::Start),
         };
         items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: square, fill: Fill::Background, corner_radius: 0.0, dashed: false } });
-        items.push(Item { depicts, shape: Shape::Text { position, text: port_label(nested), anchor, font: LABEL_FONT } });
+        items.push(Item { depicts, shape: Shape::Text { position, text: port_label(nested), anchor, font: LABEL_FONT, fill: Fill::Stroke } });
     }
     items
 }
@@ -969,6 +971,7 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
             text: text.clone(),
             anchor,
             font: LABEL_FONT,
+            fill: Fill::Stroke,
         };
         let label = (0..=2 * LABEL_TRIES)
             .map(|k| if k % 2 == 1 { (k / 2 + 1) as f32 } else { -((k / 2) as f32) })

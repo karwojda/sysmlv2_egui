@@ -15,6 +15,7 @@ pub mod model;
 pub mod properties;
 mod notation;
 pub mod scene;
+pub mod style;
 pub mod svg;
 pub mod view;
 pub mod watch;

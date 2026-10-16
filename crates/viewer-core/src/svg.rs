@@ -58,9 +58,9 @@ fn shape(out: &mut String, shape: &Shape) {
             num(*radius),
             fill_color(*fill),
         ),
-        Shape::Text { position, text, anchor, font } => writeln!(
+        Shape::Text { position, text, anchor, font, fill } => writeln!(
             out,
-            r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}{}>{}</text>"#,
+            r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}{}{}>{}</text>"#,
             num(position.x),
             num(position.y),
             match anchor {
@@ -71,17 +71,20 @@ fn shape(out: &mut String, shape: &Shape) {
             num(font.size),
             if font.bold { r#" font-weight="bold""# } else { "" },
             if font.italic { r#" font-style="italic""# } else { "" },
+            // Black text is the SVG default, so unstyled output is unchanged.
+            if *fill == Fill::Stroke { String::new() } else { format!(r#" fill="{}""#, fill_color(*fill)) },
             escape(text),
         ),
     }
     .unwrap();
 }
 
-fn fill_color(fill: Fill) -> &'static str {
+fn fill_color(fill: Fill) -> String {
     match fill {
-        Fill::None => "none",
-        Fill::Background => BACKGROUND,
-        Fill::Stroke => STROKE,
+        Fill::None => "none".to_owned(),
+        Fill::Background => BACKGROUND.to_owned(),
+        Fill::Stroke => STROKE.to_owned(),
+        Fill::Color(color) => color.to_string(),
     }
 }
 

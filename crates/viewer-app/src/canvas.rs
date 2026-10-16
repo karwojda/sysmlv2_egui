@@ -288,6 +288,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
         Fill::None => Color32::TRANSPARENT,
         Fill::Background => PAGE,
         Fill::Stroke => STROKE,
+        Fill::Color(c) => Color32::from_rgb(c.0, c.1, c.2),
     };
 
     let page = egui::Rect::from_min_size(at(Point::new(scene.x, scene.y)), Vec2::new(scene.width, scene.height) * z);
@@ -320,7 +321,8 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
             Shape::Circle { center, radius, fill: f } => {
                 painter.circle_filled(at(*center), radius * z, fill(*f));
             }
-            Shape::Text { position, text, anchor, font } => {
+            Shape::Text { position, text, anchor, font, fill: text_fill } => {
+                let color = fill(*text_fill);
                 let size = font.size * z;
                 let pos = at(*position) + Vec2::new(0.0, size * DESCENT);
                 let align = match anchor {
@@ -330,15 +332,15 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
                 };
                 let mut job = egui::text::LayoutJob::single_section(
                     text.clone(),
-                    egui::TextFormat { font_id: FontId::proportional(size), color: STROKE, italics: font.italic, ..Default::default() },
+                    egui::TextFormat { font_id: FontId::proportional(size), color, italics: font.italic, ..Default::default() },
                 );
                 job.wrap.max_width = f32::INFINITY;
                 let galley = painter.layout_job(job);
                 let rect = align.anchor_size(pos, galley.size());
-                painter.galley(rect.min, galley.clone(), STROKE);
+                painter.galley(rect.min, galley.clone(), color);
                 // The default font has no bold face; overprint to embolden.
                 if font.bold {
-                    painter.galley(rect.min + Vec2::new(0.6 * z.max(0.5), 0.0), galley, STROKE);
+                    painter.galley(rect.min + Vec2::new(0.6 * z.max(0.5), 0.0), galley, color);
                 }
             }
         }

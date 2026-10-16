@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::model::{Diagnostic, Severity};
+use viewer_core::style::{self, Style};
 use viewer_core::view::{self, ViewError};
 use viewer_core::{DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file, svg};
 use viewer_opensysml::ServiceConfig;
@@ -129,7 +130,8 @@ fn export_one(
 ) -> Result<(), Failure> {
     let diagram = read_diagram(model_folder, name)?;
     let model = load_model(model_folder, backend, stderr)?;
-    render_to(&model, &diagram, out)
+    let style = load_style(model_folder, stderr);
+    render_to(&model, &diagram, style.as_ref(), out)
 }
 
 /// Exports the view `name` (simple or qualified), with the Layout of a
@@ -153,7 +155,8 @@ fn export_view(
         .filter_map(|name| read_diagram(model_folder, name).ok())
         .find(|file| file.source == source);
     let diagram = saved.unwrap_or_else(|| DiagramFile::of(view::file_name(&view), source));
-    render_to(&model, &diagram, out)
+    let style = load_style(model_folder, stderr);
+    render_to(&model, &diagram, style.as_ref(), out)
 }
 
 /// The view a command-line name means: a qualified name, else the one view
@@ -219,11 +222,12 @@ fn export_all(
         return Ok(());
     }
 
+    let style = load_style(model_folder, stderr);
     let mut failed = 0;
     for (name, diagram) in &jobs {
         let out = out_dir.join(format!("{name}.svg"));
         let result = match diagram {
-            Ok(diagram) => render_to(&model, diagram, &out),
+            Ok(diagram) => render_to(&model, diagram, style.as_ref(), &out),
             Err(error) => Err(Failure(error.0.clone())),
         };
         if let Err(error) = result {
@@ -256,11 +260,23 @@ fn load_model(model_folder: &Path, backend: &mut dyn ModelBackend, stderr: &mut 
     Ok(model)
 }
 
-fn render_to(model: &Model, diagram: &DiagramFile, out: &Path) -> Result<(), Failure> {
-    let scene = diagram
+/// The Model Style, if it has one; a broken Style file is reported and
+/// Diagrams are drawn without it.
+fn load_style(model_folder: &Path, stderr: &mut dyn Write) -> Option<Style> {
+    style::load(model_folder).unwrap_or_else(|error| {
+        let _ = writeln!(stderr, "warning: {error}; Exporting without the Model Style");
+        None
+    })
+}
+
+fn render_to(model: &Model, diagram: &DiagramFile, style: Option<&Style>, out: &Path) -> Result<(), Failure> {
+    let mut scene = diagram
         .source
         .build_scene(model, &diagram.layout)
         .map_err(|e| Failure(format!("Diagram `{}`: {e}", diagram.name)))?;
+    if let Some(style) = style {
+        style::apply(&mut scene, model, &[&style.rules]);
+    }
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| Failure(format!("cannot create {}: {e}", parent.display())))?;
     }

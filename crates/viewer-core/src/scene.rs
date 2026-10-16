@@ -57,6 +57,51 @@ pub enum Fill {
     Background,
     /// The stroke color, for solid markers such as a composition diamond.
     Stroke,
+    /// A color a Style gave.
+    Color(Rgb),
+}
+
+/// An sRGB color, written `#rrggbb`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Rgb(pub u8, pub u8, pub u8);
+
+impl Rgb {
+    /// Reads `#rrggbb` (either case).
+    pub fn parse(text: &str) -> Option<Self> {
+        let hex = text.strip_prefix('#').filter(|h| h.len() == 6 && h.is_ascii())?;
+        let channel = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+        Some(Rgb(channel(0)?, channel(2)?, channel(4)?))
+    }
+
+    /// Whether black text on it would be harder to read than white: its
+    /// relative luminance is below the point where both contrast equally.
+    pub fn is_dark(self) -> bool {
+        let linear = |c: u8| {
+            let c = c as f32 / 255.0;
+            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        let luminance = 0.2126 * linear(self.0) + 0.7152 * linear(self.1) + 0.0722 * linear(self.2);
+        luminance < 0.179
+    }
+}
+
+impl std::fmt::Display for Rgb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
+    }
+}
+
+impl serde::Serialize for Rgb {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Rgb {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Rgb::parse(&text).ok_or_else(|| serde::de::Error::custom(format!("`{text}` is not a #rrggbb color")))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,6 +147,9 @@ pub enum Shape {
         text: String,
         anchor: TextAnchor,
         font: Font,
+        /// Normally [`Fill::Stroke`]; [`Fill::Background`] inside a dark
+        /// Style fill.
+        fill: Fill,
     },
 }
 

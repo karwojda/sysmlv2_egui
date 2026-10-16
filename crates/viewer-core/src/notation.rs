@@ -58,7 +58,7 @@ pub fn extent(shape: &Shape) -> Rect {
         Shape::Rect { rect, .. } => *rect,
         Shape::Polyline { points, .. } | Shape::Polygon { points, .. } => around(points, 0.0),
         Shape::Circle { center, radius, .. } => around(&[*center], *radius),
-        Shape::Text { position, text, anchor, font } => {
+        Shape::Text { position, text, anchor, font, .. } => {
             let width = text_width(text, *font);
             let x = match anchor {
                 TextAnchor::Start => position.x,
@@ -232,12 +232,14 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
             text: content.keyword.clone(),
             anchor: TextAnchor::Middle,
             font: KEYWORD_FONT,
+            fill: Fill::Stroke,
         },
         Shape::Text {
             position: Point::new(rect.center_x(), keyword_baseline + LINE_GAP + NAME_FONT.size),
             text: content.title.clone(),
             anchor: TextAnchor::Middle,
             font: title_font(content),
+            fill: Fill::Stroke,
         },
     ];
     let mut top = rect.y + header_height();
@@ -252,6 +254,7 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
             text: (*title).to_owned(),
             anchor: TextAnchor::Middle,
             font: COMPARTMENT_TITLE_FONT,
+            fill: Fill::Stroke,
         });
         for row in rows {
             baseline += LINE_GAP + ROW_FONT.size;
@@ -260,6 +263,7 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
                 text: row.clone(),
                 anchor: TextAnchor::Start,
                 font: ROW_FONT,
+                fill: Fill::Stroke,
             });
         }
         top += compartment_height(rows.len());
@@ -328,6 +332,7 @@ pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) 
             text: label,
             anchor: TextAnchor::Start,
             font: LABEL_FONT,
+            fill: Fill::Stroke,
         });
     }
     tag(depicts, shapes)
@@ -366,7 +371,7 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
     }
     // An unnamed, untyped connection has no label.
     if !text.is_empty() {
-        shapes.push(Shape::Text { position, text, anchor, font: LABEL_FONT });
+        shapes.push(Shape::Text { position, text, anchor, font: LABEL_FONT, fill: Fill::Stroke });
     }
     tag(depicts, shapes)
 }
