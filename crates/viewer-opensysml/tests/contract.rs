@@ -249,3 +249,23 @@ fn a_broken_file_does_not_cost_other_files_their_source_lines() {
         model.diagnostics()
     );
 }
+
+#[path = "../../viewer-core/tests/common/mod.rs"]
+mod common;
+
+/// The Model without source locations, which the fake twin doesn't carry.
+fn without_sources(model: &Model) -> Model {
+    let elements = model.elements().cloned().map(|mut e| {
+        e.source = None;
+        e
+    });
+    Model::new(elements, model.diagnostics().to_vec())
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_the_drivetrain_like_the_interconnection_tests_fake_twin() {
+    let real = OpenSysmlBackend::new().load(&fixture("drivetrain")).unwrap();
+
+    assert_same_model(&without_sources(&real), &common::drivetrain());
+}

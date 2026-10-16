@@ -26,6 +26,8 @@ pub fn drivetrain() -> Model {
         b = b.port_def(&q(definition));
     }
     b = b.interface_def(&q("FuelInterface"));
+    b = port(b, "FuelInterface", "demand", "FuelPort", None, true);
+    b = port(b, "FuelInterface", "supply", "FuelPort", None, false);
     b = b.part_def(&q("AxleAssembly"));
     b = port(b, "AxleAssembly", "torqueIn", "TorquePort", Some(Direction::In), true);
     for (name, ty) in [("differential", "Differential"), ("leftWheel", "Wheel"), ("rightWheel", "Wheel")] {
@@ -74,8 +76,14 @@ pub fn drivetrain() -> Model {
         .typed_by(&q("FuelInterface"))
         .end(&[&v("fuelTank"), &q("FuelTank::fuelOut")])
         .end(&[&v("engine"), &q("Engine::fuelIn")]);
+    b = b
+        .connection(&v("leftDrive"))
+        .end(&[&v("driveshaft"), &q("Driveshaft::torqueOut")])
+        .end(&[&v("rearAxleAssembly"), &q("AxleAssembly::leftWheel"), &q("Wheel::hub")]);
     b = b.connection(&v("shaft")).end(&[&v("transmission"), &q("Transmission::torqueOut")]).end(&[&v("driveshaft"), &q("Driveshaft::torqueIn")]);
     b = b.connection(&v("supply")).end(&[&v("power")]).end(&[&v("engine"), &q("Engine::power")]);
+    b = b.part_def(&q("Wheel"));
+    b = port(b, "Wheel", "hub", "TorquePort", Some(Direction::In), true);
     b = b.connection(&v("torque")).end(&[&v("engine"), &q("Engine::torqueOut")]).end(&[&v("transmission"), &q("Transmission::torqueIn")]);
     b.build()
 }
