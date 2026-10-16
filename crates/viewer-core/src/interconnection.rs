@@ -285,12 +285,13 @@ fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<End> {
     }
     let mut path = vec![child_of(node, first)?];
     let mut current = &node.children[path[0]];
-    for (i, name) in rest.iter().enumerate() {
-        let last = i == rest.len() - 1;
+    for name in rest {
         if let Some(c) = child_of(current, name) {
             path.push(c);
             current = &current.children[c];
-        } else if last && let Some(port) = port_of(current, name) {
+        } else if let Some(port) = port_of(current, name) {
+            // The rest of the chain, if any, is inside the port (an item it
+            // carries): the port is as far as the drawing goes.
             return Some(End::Port { path, port });
         } else if current.children.is_empty() {
             // A closed part: the rest of the chain is inside it.
@@ -824,7 +825,12 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
         } else {
             (Point::new(middle.x, middle.y - LABEL_OFFSET), TextAnchor::Middle)
         };
-        let text = notation::usage_label(wire.connection);
+        let text = notation::connector_label(wire.connection);
+        // A flow points from its first end to its second; the path runs
+        // from `wire.a` to `wire.b`, which are those ends in order.
+        if wire.connection.kind == ElementKind::FlowUsage {
+            items.push(Item { depicts: depicts.clone(), shape: notation::flow_arrow(&points) });
+        }
         if text.is_empty() {
             // An unnamed, untyped connector has no label.
             items.push(Item { depicts, shape: Shape::Polyline { points, dashed: false } });

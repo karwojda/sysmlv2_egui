@@ -30,6 +30,9 @@ const CORNER_CLEARANCE: f32 = 14.0;
 /// Sideways distance between parallel edges joining the same two nodes.
 const PARALLEL_SPREAD: f32 = 36.0;
 const COLON_DOT_RADIUS: f32 = 1.8;
+/// A flow's filled arrowhead.
+const FLOW_ARROW_LENGTH: f32 = 12.0;
+const FLOW_ARROW_HALF_WIDTH: f32 = 6.0;
 /// How far the defined-by colon sits before the triangle, and how far
 /// apart its two dots are.
 const COLON_GAP: f32 = 5.0;
@@ -81,7 +84,7 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
     ("attributes", &[ElementKind::AttributeUsage]),
     ("ports", &[ElementKind::PortUsage]),
     ("parts", &[ElementKind::PartUsage]),
-    ("connections", &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage]),
+    ("connections", &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage, ElementKind::FlowUsage]),
 ];
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
@@ -108,6 +111,36 @@ pub fn node_content(element: &Element, model: &Model, compartments: bool) -> Nod
     }
 }
 
+/// A connector's label: a flow's `name:Payload` (`:Payload` unnamed),
+/// otherwise `name:Type`; empty for an unnamed, untyped connector.
+pub(crate) fn connector_label(element: &Element) -> String {
+    match (&element.kind, &element.payload) {
+        (ElementKind::FlowUsage, Some(payload)) => format!("{}:{}", element.name, payload.simple_name()),
+        (ElementKind::FlowUsage, None) => element.name.clone(),
+        _ => usage_label(element),
+    }
+}
+
+/// A flow's arrowhead: a filled triangle at the middle of the path's
+/// longest run, pointing along the path (from its first point to its last).
+pub(crate) fn flow_arrow(points: &[Point]) -> Shape {
+    let (a, b) = points
+        .windows(2)
+        .map(|s| (s[0], s[1]))
+        .max_by(|x, y| distance(x.0, x.1).total_cmp(&distance(y.0, y.1)))
+        .expect("a path has a segment");
+    let middle = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+    let length = distance(a, b).max(f32::EPSILON);
+    let (ux, uy) = ((b.x - a.x) / length, (b.y - a.y) / length);
+    let tip = Point::new(middle.x + ux * FLOW_ARROW_LENGTH / 2.0, middle.y + uy * FLOW_ARROW_LENGTH / 2.0);
+    let base = Point::new(middle.x - ux * FLOW_ARROW_LENGTH / 2.0, middle.y - uy * FLOW_ARROW_LENGTH / 2.0);
+    let (nx, ny) = (-uy * FLOW_ARROW_HALF_WIDTH, ux * FLOW_ARROW_HALF_WIDTH);
+    Shape::Polygon {
+        points: vec![tip, Point::new(base.x + nx, base.y + ny), Point::new(base.x - nx, base.y - ny)],
+        fill: Fill::Stroke,
+    }
+}
+
 /// `name:Type [multiplicity]`, with `~` for a conjugated type.
 pub(crate) fn usage_label(element: &Element) -> String {
     let mut label = element.name.clone();
@@ -129,7 +162,10 @@ fn feature_row(feature: &Element) -> String {
         row.push_str(direction.keyword());
         row.push(' ');
     }
-    row.push_str(&usage_label(feature));
+    if feature.kind == ElementKind::FlowUsage {
+        row.push_str("flow ");
+    }
+    row.push_str(&connector_label(feature));
     if feature.kind.is_connection() && !feature.ends.is_empty() {
         let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
         row.push_str(&format!(" ({})", ends.join(" → ")));
@@ -304,8 +340,11 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
         let (a, b) = (path[segment], path[segment + 1]);
         (Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0 - LABEL_OFFSET), TextAnchor::Middle)
     };
-    let text = usage_label(element);
-    let mut shapes = vec![Shape::Polyline { points: path, dashed: false }];
+    let text = connector_label(element);
+    let mut shapes = vec![Shape::Polyline { points: path.clone(), dashed: false }];
+    if element.kind == ElementKind::FlowUsage {
+        shapes.push(flow_arrow(&path));
+    }
     // An unnamed, untyped connection has no label.
     if !text.is_empty() {
         shapes.push(Shape::Text { position, text, anchor, font: LABEL_FONT });
