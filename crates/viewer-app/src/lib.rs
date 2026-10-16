@@ -15,7 +15,10 @@ use viewer_core::editing::Edit;
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::scene::Depicts;
 use viewer_core::view::{self, ViewError};
-use viewer_core::{DiagramFile, DiagramKind, DiagramSource, ElementKind, Model, ModelBackend, QualifiedName, diagram_file};
+use viewer_core::{
+    DiagramFile, DiagramKind, DiagramSource, ElementKind, Model, ModelBackend, QualifiedName,
+    diagram_file,
+};
 
 use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
 use loader::Loader;
@@ -73,8 +76,15 @@ enum Drag {
     Move(QualifiedName),
     Resize(QualifiedName),
     /// A port (by key) dragged along the border of the box with key `on`.
-    Port { key: String, on: QualifiedName },
-    Bend { key: String, index: usize, bends: Vec<[f32; 2]> },
+    Port {
+        key: String,
+        on: QualifiedName,
+    },
+    Bend {
+        key: String,
+        index: usize,
+        bends: Vec<[f32; 2]>,
+    },
 }
 
 #[derive(Clone)]
@@ -125,7 +135,10 @@ impl ViewerApp {
                 let _ = requests.send(folder);
             }),
             loader,
-            folder_input: folder.as_ref().map(|f| f.display().to_string()).unwrap_or_default(),
+            folder_input: folder
+                .as_ref()
+                .map(|f| f.display().to_string())
+                .unwrap_or_default(),
             loading: None,
             folder: None,
             model: None,
@@ -179,16 +192,19 @@ impl ViewerApp {
                         self.watcher.watch(loaded.folder.clone());
                     }
                     let previous = match (reload, self.model.take()) {
-                        (true, Some(model)) => {
-                            Some(Shown { model, diagnostics: std::mem::take(&mut self.diagnostics), stale: self.stale })
-                        }
+                        (true, Some(model)) => Some(Shown {
+                            model,
+                            diagnostics: std::mem::take(&mut self.diagnostics),
+                            stale: self.stale,
+                        }),
                         _ => None,
                     };
                     let shown = accept(previous, model);
-                    (self.model_style, self.style_error) = match viewer_core::style::load(&loaded.folder) {
-                        Ok(style) => (style, None),
-                        Err(error) => (None, Some(error.to_string())),
-                    };
+                    (self.model_style, self.style_error) =
+                        match viewer_core::style::load(&loaded.folder) {
+                            Ok(style) => (style, None),
+                            Err(error) => (None, Some(error.to_string())),
+                        };
                     for diagram in &mut self.diagrams {
                         diagram.set_model_style(&shown.model, self.model_style.clone());
                     }
@@ -198,11 +214,22 @@ impl ViewerApp {
                     self.diagnostics = shown.diagnostics;
                     self.stale = shown.stale;
                     if let Some((root, interconnection)) = self.pending_root.take() {
-                        let is_view = self.model.as_ref().and_then(|m| m.element(&root)).is_some_and(|e| e.kind == ElementKind::ViewUsage);
-                        match self.model.as_ref().and_then(|m| startup_kind(m, &root, interconnection)) {
+                        let is_view = self
+                            .model
+                            .as_ref()
+                            .and_then(|m| m.element(&root))
+                            .is_some_and(|e| e.kind == ElementKind::ViewUsage);
+                        match self
+                            .model
+                            .as_ref()
+                            .and_then(|m| startup_kind(m, &root, interconnection))
+                        {
                             _ if is_view => self.open_view(root.clone()),
                             Some(kind) => self.open_diagram(kind, root.clone()),
-                            None => self.status = Some(format!("`{root}` can't be the root of a Diagram")),
+                            None => {
+                                self.status =
+                                    Some(format!("`{root}` can't be the root of a Diagram"))
+                            }
                         }
                         self.select_and_reveal(Some(root));
                     }
@@ -259,11 +286,17 @@ impl ViewerApp {
 
     /// Opens the saved Diagram File `name`, or switches to it if open.
     fn open_saved(&mut self, name: &str) {
-        if let Some(index) = self.diagrams.iter().position(|d| d.name.as_deref() == Some(name)) {
+        if let Some(index) = self
+            .diagrams
+            .iter()
+            .position(|d| d.name.as_deref() == Some(name))
+        {
             self.activate(index);
             return;
         }
-        let (Some(model), Some(folder)) = (&self.model, &self.folder) else { return };
+        let (Some(model), Some(folder)) = (&self.model, &self.folder) else {
+            return;
+        };
         let path = diagram_file::path_for(folder, name);
         let file = std::fs::read_to_string(&path)
             .map_err(|e| e.to_string())
@@ -288,7 +321,10 @@ impl ViewerApp {
             (None, DiagramSource::View { view }) => view::file_name(view),
         };
         let folder = self.folder.clone().unwrap_or_default();
-        self.export_path = folder.join(format!("{file_name}.svg")).display().to_string();
+        self.export_path = folder
+            .join(format!("{file_name}.svg"))
+            .display()
+            .to_string();
         self.save_name = diagram.default_name();
         self.status = None;
     }
@@ -320,14 +356,17 @@ impl ViewerApp {
     }
 
     fn edit_active(&mut self, edit: Edit) {
-        let (Some(active), Some(model)) = (self.active, &self.model) else { return };
+        let (Some(active), Some(model)) = (self.active, &self.model) else {
+            return;
+        };
         self.diagrams[active].edit(model, &edit);
     }
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Model folder:");
-            let input = ui.add(egui::TextEdit::singleline(&mut self.folder_input).desired_width(420.0));
+            let input =
+                ui.add(egui::TextEdit::singleline(&mut self.folder_input).desired_width(420.0));
             let submitted = input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             if (ui.button("Open").clicked() || submitted) && !self.folder_input.trim().is_empty() {
                 self.open(PathBuf::from(self.folder_input.trim()));
@@ -343,7 +382,10 @@ impl ViewerApp {
             ui.colored_label(ui.visuals().error_fg_color, error);
         }
         if let Some(error) = &self.style_error {
-            ui.colored_label(ui.visuals().warn_fg_color, format!("{error}; drawing without the Model Style."));
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                format!("{error}; drawing without the Model Style."),
+            );
         }
         if self.stale {
             ui.colored_label(
@@ -363,7 +405,11 @@ impl ViewerApp {
                         ui.weak("None yet. Use “Save as” on an open Diagram.");
                     }
                     for name in &self.saved_names {
-                        if ui.selectable_label(false, name).on_hover_text("Open").clicked() {
+                        if ui
+                            .selectable_label(false, name)
+                            .on_hover_text("Open")
+                            .clicked()
+                        {
                             open = Some(name.clone());
                         }
                     }
@@ -381,36 +427,50 @@ impl ViewerApp {
     /// Unsupported Views are greyed, with the reason on hover.
     fn views_list(&mut self, ui: &mut egui::Ui) {
         let Some(model) = &self.model else { return };
-        let views: Vec<(QualifiedName, Result<DiagramKind, ViewError>)> =
-            view::views(model).map(|v| (v.qualified_name.clone(), view::kind(model, &v.qualified_name))).collect();
+        let views: Vec<(QualifiedName, Result<DiagramKind, ViewError>)> = view::views(model)
+            .map(|v| {
+                (
+                    v.qualified_name.clone(),
+                    view::kind(model, &v.qualified_name),
+                )
+            })
+            .collect();
         let mut open = None;
-        egui::CollapsingHeader::new(format!("Views ({})", views.len())).default_open(true).show(ui, |ui| {
-            if views.is_empty() {
-                ui.weak("The Model defines no views.");
-            }
-            for (name, kind) in &views {
-                match kind {
-                    Ok(kind) => {
-                        let kind = match kind {
-                            DiagramKind::General => "General",
-                            DiagramKind::Interconnection => "Interconnection",
-                        };
-                        let label = ui.selectable_label(false, name.simple_name());
-                        if label.on_hover_text(format!("{name}\nOpen ({kind} Diagram)")).clicked() {
-                            open = Some(name.clone());
+        egui::CollapsingHeader::new(format!("Views ({})", views.len()))
+            .default_open(true)
+            .show(ui, |ui| {
+                if views.is_empty() {
+                    ui.weak("The Model defines no views.");
+                }
+                for (name, kind) in &views {
+                    match kind {
+                        Ok(kind) => {
+                            let kind = match kind {
+                                DiagramKind::General => "General",
+                                DiagramKind::Interconnection => "Interconnection",
+                            };
+                            let label = ui.selectable_label(false, name.simple_name());
+                            if label
+                                .on_hover_text(format!("{name}\nOpen ({kind} Diagram)"))
+                                .clicked()
+                            {
+                                open = Some(name.clone());
+                            }
+                        }
+                        Err(error) => {
+                            let reason = match error {
+                                ViewError::Unsupported { reason, .. } => reason.clone(),
+                                other => other.to_string(),
+                            };
+                            ui.add_enabled(
+                                false,
+                                egui::Button::selectable(false, name.simple_name()),
+                            )
+                            .on_disabled_hover_text(format!("{name}\nCan't be drawn: {reason}"));
                         }
                     }
-                    Err(error) => {
-                        let reason = match error {
-                            ViewError::Unsupported { reason, .. } => reason.clone(),
-                            other => other.to_string(),
-                        };
-                        ui.add_enabled(false, egui::Button::selectable(false, name.simple_name()))
-                            .on_disabled_hover_text(format!("{name}\nCan't be drawn: {reason}"));
-                    }
                 }
-            }
-        });
+            });
         if let Some(view) = open {
             self.open_view(view);
         }
@@ -427,15 +487,26 @@ impl ViewerApp {
         let entries = browser::tree(model, &self.filter);
         let filtering = !self.filter.trim().is_empty();
         let mut actions = Vec::new();
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            if entries.is_empty() {
-                ui.weak(if filtering { "Nothing matches the filter." } else { "The Model is empty." });
-            }
-            let context = EntryContext { model, selected: self.selected.as_ref(), reveal: &self.reveal, filtering };
-            for entry in &entries {
-                browser_entry(ui, entry, 0, &context, &mut actions);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                if entries.is_empty() {
+                    ui.weak(if filtering {
+                        "Nothing matches the filter."
+                    } else {
+                        "The Model is empty."
+                    });
+                }
+                let context = EntryContext {
+                    model,
+                    selected: self.selected.as_ref(),
+                    reveal: &self.reveal,
+                    filtering,
+                };
+                for entry in &entries {
+                    browser_entry(ui, entry, 0, &context, &mut actions);
+                }
+            });
         self.reveal.clear();
         for action in actions {
             match action {
@@ -448,8 +519,16 @@ impl ViewerApp {
 
     fn right_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.right_tab, RightTab::Properties, egui::RichText::new("Properties").heading());
-            ui.selectable_value(&mut self.right_tab, RightTab::Style, egui::RichText::new("Style").heading());
+            ui.selectable_value(
+                &mut self.right_tab,
+                RightTab::Properties,
+                egui::RichText::new("Properties").heading(),
+            );
+            ui.selectable_value(
+                &mut self.right_tab,
+                RightTab::Style,
+                egui::RichText::new("Style").heading(),
+            );
         });
         match self.right_tab {
             RightTab::Properties => self.properties_panel(ui),
@@ -477,46 +556,60 @@ impl ViewerApp {
             self.style_tab = StyleTab::Model;
         }
         ui.separator();
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| match (self.style_tab, self.active) {
-            (StyleTab::Diagram, Some(active)) => {
-                let diagram = &mut self.diagrams[active];
-                let mut style = diagram.style.clone();
-                ui.checkbox(&mut style.model_style, "Use Model Style")
-                    .on_hover_text("Off: only this Diagram's rules apply");
-                ui.checkbox(&mut style.legend, "Legend");
-                ui.weak("This Diagram's rules win over the Model's.");
-                style_panel::rule_list(ui, "diagram", &mut style.rules, model);
-                diagram.set_style(model, style);
-            }
-            _ => {
-                ui.weak(format!("Applies to every Diagram; saved in {}.", viewer_core::style::path_for(folder).display()));
-                if let Some(error) = &self.style_error {
-                    ui.colored_label(ui.visuals().warn_fg_color, format!("{error}. Editing here replaces it."));
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| match (self.style_tab, self.active) {
+                (StyleTab::Diagram, Some(active)) => {
+                    let diagram = &mut self.diagrams[active];
+                    let mut style = diagram.style.clone();
+                    ui.checkbox(&mut style.model_style, "Use Model Style")
+                        .on_hover_text("Off: only this Diagram's rules apply");
+                    ui.checkbox(&mut style.legend, "Legend");
+                    ui.weak("This Diagram's rules win over the Model's.");
+                    style_panel::rule_list(ui, "diagram", &mut style.rules, model);
+                    diagram.set_style(model, style);
                 }
-                let mut rules = self.model_style.as_ref().map(|s| s.rules.clone()).unwrap_or_default();
-                let edited = style_panel::rule_list(ui, "model", &mut rules, model);
-                if edited.changed {
-                    self.model_style = Some(viewer_core::style::Style::new(rules));
-                    for diagram in &mut self.diagrams {
-                        diagram.set_model_style(model, self.model_style.clone());
+                _ => {
+                    ui.weak(format!(
+                        "Applies to every Diagram; saved in {}.",
+                        viewer_core::style::path_for(folder).display()
+                    ));
+                    if let Some(error) = &self.style_error {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            format!("{error}. Editing here replaces it."),
+                        );
+                    }
+                    let mut rules = self
+                        .model_style
+                        .as_ref()
+                        .map(|s| s.rules.clone())
+                        .unwrap_or_default();
+                    let edited = style_panel::rule_list(ui, "model", &mut rules, model);
+                    if edited.changed {
+                        self.model_style = Some(viewer_core::style::Style::new(rules));
+                        for diagram in &mut self.diagrams {
+                            diagram.set_model_style(model, self.model_style.clone());
+                        }
+                    }
+                    if edited.commit
+                        && let Some(style) = &self.model_style
+                    {
+                        let path = viewer_core::style::path_for(folder);
+                        let written = std::fs::create_dir_all(
+                            path.parent().expect("the Style file is in a folder"),
+                        )
+                        .and_then(|()| std::fs::write(&path, style.to_text()));
+                        self.status = Some(match written {
+                            Ok(()) => {
+                                self.style_error = None;
+                                format!("Saved {}", path.display())
+                            }
+                            Err(error) => format!("Style not saved: {error}"),
+                        });
                     }
                 }
-                if edited.commit
-                    && let Some(style) = &self.model_style
-                {
-                    let path = viewer_core::style::path_for(folder);
-                    let written = std::fs::create_dir_all(path.parent().expect("the Style file is in a folder"))
-                        .and_then(|()| std::fs::write(&path, style.to_text()));
-                    self.status = Some(match written {
-                        Ok(()) => {
-                            self.style_error = None;
-                            format!("Saved {}", path.display())
-                        }
-                        Err(error) => format!("Style not saved: {error}"),
-                    });
-                }
-            }
-        });
+            });
     }
 
     /// The selected element's properties, with its type, owner and
@@ -531,61 +624,93 @@ impl ViewerApp {
             ui.weak("The selected element is no longer in the Model.");
             return;
         };
-        let accepts = |kind: DiagramKind| model.element(selected).is_some_and(|e| kind.accepts_root(e));
-        let (general, interconnection) = (accepts(DiagramKind::General), accepts(DiagramKind::Interconnection));
-        let is_view = model.element(selected).is_some_and(|e| e.kind == ElementKind::ViewUsage);
+        let accepts = |kind: DiagramKind| {
+            model
+                .element(selected)
+                .is_some_and(|e| kind.accepts_root(e))
+        };
+        let (general, interconnection) = (
+            accepts(DiagramKind::General),
+            accepts(DiagramKind::Interconnection),
+        );
+        let is_view = model
+            .element(selected)
+            .is_some_and(|e| e.kind == ElementKind::ViewUsage);
         let view_drawable = is_view && view::kind(model, selected).is_ok();
         let mut follow = None;
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            egui::Grid::new("properties").num_columns(2).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
-                for property in &properties.rows {
-                    ui.label(egui::RichText::new(property.label).strong());
-                    match &property.refers_to {
-                        Some(target) => {
-                            if ui.link(&property.value).on_hover_text("Select").clicked() {
-                                follow = Some(target.clone());
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                egui::Grid::new("properties")
+                    .num_columns(2)
+                    .striped(true)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        for property in &properties.rows {
+                            ui.label(egui::RichText::new(property.label).strong());
+                            match &property.refers_to {
+                                Some(target) => {
+                                    if ui.link(&property.value).on_hover_text("Select").clicked() {
+                                        follow = Some(target.clone());
+                                    }
+                                }
+                                None => {
+                                    ui.add(egui::Label::new(&property.value).wrap());
+                                }
                             }
+                            ui.end_row();
                         }
-                        None => {
-                            ui.add(egui::Label::new(&property.value).wrap());
-                        }
-                    }
-                    ui.end_row();
-                }
-            });
-            ui.add_space(8.0);
-            ui.horizontal_wrapped(|ui| {
-                let source = properties.source.clone();
-                let editor = ui
-                    .add_enabled(source.is_some(), egui::Button::new("Open in editor"))
-                    .on_hover_text("Runs `code -g <file>:<line>`")
-                    .on_disabled_hover_text("The service gave no source location for this element");
-                if editor.clicked()
-                    && let Some(source) = source
-                {
-                    self.status = Some(match open_in_editor(&source) {
-                        Ok(()) => format!("Opened {}:{} in the editor", source.file.display(), source.line),
-                        Err(error) => error,
                     });
-                }
-                if general && ui.button("Open General Diagram").clicked() {
-                    follow = None;
-                    self.pending_open = Some(DiagramSource::Tool { kind: DiagramKind::General, root: selected.clone() });
-                }
-                if interconnection && ui.button("Open Interconnection Diagram").clicked() {
-                    follow = None;
-                    self.pending_open =
-                        Some(DiagramSource::Tool { kind: DiagramKind::Interconnection, root: selected.clone() });
-                }
-                if is_view && ui.add_enabled(view_drawable, egui::Button::new("Open view")).clicked() {
-                    follow = None;
-                    self.pending_open = Some(DiagramSource::View { view: selected.clone() });
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    let source = properties.source.clone();
+                    let editor = ui
+                        .add_enabled(source.is_some(), egui::Button::new("Open in editor"))
+                        .on_hover_text("Runs `code -g <file>:<line>`")
+                        .on_disabled_hover_text(
+                            "The service gave no source location for this element",
+                        );
+                    if editor.clicked()
+                        && let Some(source) = source
+                    {
+                        self.status = Some(match open_in_editor(&source) {
+                            Ok(()) => format!(
+                                "Opened {}:{} in the editor",
+                                source.file.display(),
+                                source.line
+                            ),
+                            Err(error) => error,
+                        });
+                    }
+                    if general && ui.button("Open General Diagram").clicked() {
+                        follow = None;
+                        self.pending_open = Some(DiagramSource::Tool {
+                            kind: DiagramKind::General,
+                            root: selected.clone(),
+                        });
+                    }
+                    if interconnection && ui.button("Open Interconnection Diagram").clicked() {
+                        follow = None;
+                        self.pending_open = Some(DiagramSource::Tool {
+                            kind: DiagramKind::Interconnection,
+                            root: selected.clone(),
+                        });
+                    }
+                    if is_view
+                        && ui
+                            .add_enabled(view_drawable, egui::Button::new("Open view"))
+                            .clicked()
+                    {
+                        follow = None;
+                        self.pending_open = Some(DiagramSource::View {
+                            view: selected.clone(),
+                        });
+                    }
+                });
+                if let Some(status) = &self.status {
+                    ui.weak(status);
                 }
             });
-            if let Some(status) = &self.status {
-                ui.weak(status);
-            }
-        });
         if let Some(target) = follow {
             self.select_and_reveal(Some(target));
         }
@@ -597,11 +722,13 @@ impl ViewerApp {
     fn diagnostics(&self, ui: &mut egui::Ui) {
         let diagnostics = &self.diagnostics;
         ui.label(format!("Diagnostics ({})", diagnostics.len()));
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            for diagnostic in diagnostics {
-                diagnostic_line(ui, diagnostic, self.folder.as_deref());
-            }
-        });
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                for diagnostic in diagnostics {
+                    diagnostic_line(ui, diagnostic, self.folder.as_deref());
+                }
+            });
     }
 
     fn diagram_area(&mut self, ui: &mut egui::Ui) {
@@ -624,7 +751,11 @@ impl ViewerApp {
         ui.horizontal_wrapped(|ui| {
             for (index, diagram) in self.diagrams.iter().enumerate() {
                 let tab = ui.selectable_label(self.active == Some(index), diagram.title());
-                let tab = if diagram.dirty { tab.on_hover_text("Unsaved changes") } else { tab };
+                let tab = if diagram.dirty {
+                    tab.on_hover_text("Unsaved changes")
+                } else {
+                    tab
+                };
                 if tab.clicked() {
                     activate = Some(index);
                 }
@@ -656,22 +787,38 @@ impl ViewerApp {
             ui.separator();
 
             let diagram = &self.diagrams[active];
-            if diagram.name.is_some() && ui.add_enabled(diagram.dirty, egui::Button::new("Save")).clicked() {
+            if diagram.name.is_some()
+                && ui
+                    .add_enabled(diagram.dirty, egui::Button::new("Save"))
+                    .clicked()
+            {
                 let name = diagram.name.clone().expect("checked above");
                 self.save_active(active, &name);
             }
-            ui.add(egui::TextEdit::singleline(&mut self.save_name).desired_width(120.0).hint_text("name"));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.save_name)
+                    .desired_width(120.0)
+                    .hint_text("name"),
+            );
             if ui.button("Save as").clicked() {
                 let name = self.save_name.trim().to_owned();
                 self.save_active(active, &name);
             }
             ui.separator();
 
-            let hidden: Vec<QualifiedName> = self.diagrams[active].layout.hidden.iter().cloned().collect();
+            let hidden: Vec<QualifiedName> = self.diagrams[active]
+                .layout
+                .hidden
+                .iter()
+                .cloned()
+                .collect();
             ui.add_enabled_ui(!hidden.is_empty(), |ui| {
                 ui.menu_button(format!("Hidden ({})", hidden.len()), |ui| {
                     for element in &hidden {
-                        if ui.button(format!("Show {}", element.simple_name())).clicked() {
+                        if ui
+                            .button(format!("Show {}", element.simple_name()))
+                            .clicked()
+                        {
                             edits.push(Edit::Show(element.clone()));
                         }
                     }
@@ -681,15 +828,25 @@ impl ViewerApp {
                     }
                 });
             });
-            if ui.button("Reset layout").on_hover_text("Back to the automatic arrangement").clicked() {
+            if ui
+                .button("Reset layout")
+                .on_hover_text("Back to the automatic arrangement")
+                .clicked()
+            {
                 edits.push(Edit::Reset);
             }
             let mut legend = self.diagrams[active].style.legend;
-            if ui.checkbox(&mut legend, "Legend").on_hover_text("Key the Style's colors on the Diagram").changed()
+            if ui
+                .checkbox(&mut legend, "Legend")
+                .on_hover_text("Key the Style's colors on the Diagram")
+                .changed()
                 && let Some(model) = &self.model
             {
                 let diagram = &mut self.diagrams[active];
-                let style = viewer_core::DiagramStyle { legend, ..diagram.style.clone() };
+                let style = viewer_core::DiagramStyle {
+                    legend,
+                    ..diagram.style.clone()
+                };
                 diagram.set_style(model, style);
             }
             ui.separator();
@@ -712,7 +869,9 @@ impl ViewerApp {
     }
 
     fn save_active(&mut self, active: usize, name: &str) {
-        let Some(folder) = self.folder.clone() else { return };
+        let Some(folder) = self.folder.clone() else {
+            return;
+        };
         self.status = Some(match self.diagrams[active].save_as(&folder, name) {
             Ok(()) => {
                 self.saved_names = diagram_file::names_in(&folder).unwrap_or_default();
@@ -723,7 +882,8 @@ impl ViewerApp {
     }
 
     fn canvas(&mut self, ui: &mut egui::Ui, active: usize) {
-        let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
+        let (response, painter) =
+            ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
         let origin = response.rect.min;
         let diagram = &mut self.diagrams[active];
         let scene = match &diagram.scene {
@@ -742,9 +902,15 @@ impl ViewerApp {
         // Fit on request, and keep refitting while the canvas settles (side
         // panels appear) until the user pans or zooms.
         let size = response.rect.size();
-        let resized = diagram.fitted_to.is_some_and(|fitted| (fitted - size).length() > 1.0);
+        let resized = diagram
+            .fitted_to
+            .is_some_and(|fitted| (fitted - size).length() > 1.0);
         if diagram.needs_fit || resized {
-            diagram.view = View::fit(egui::vec2(scene.x, scene.y), egui::vec2(scene.width, scene.height), size);
+            diagram.view = View::fit(
+                egui::vec2(scene.x, scene.y),
+                egui::vec2(scene.width, scene.height),
+                size,
+            );
             diagram.needs_fit = false;
             diagram.fitted_to = Some(size);
         }
@@ -765,21 +931,29 @@ impl ViewerApp {
         // Decide what a drag does from where the press began (not where
         // the pointer is once the drag is recognised).
         if response.drag_started_by(egui::PointerButton::Primary)
-            && let Some(start) = ui.input(|i| i.pointer.press_origin()).or(response.interact_pointer_pos())
+            && let Some(start) = ui
+                .input(|i| i.pointer.press_origin())
+                .or(response.interact_pointer_pos())
         {
             self.drag = Some(match grab_at(scene, view, origin, start) {
                 Grab::Resize(element) => Drag::Resize(element),
                 Grab::Port { key, on } => Drag::Port { key, on },
                 Grab::Move(element) => Drag::Move(element),
                 Grab::Pan => Drag::Pan,
-                Grab::Bend { edge, index } => {
-                    Drag::Bend { key: edge.edge_key().expect("an edge has a key"), index, bends: bends_of(&edge) }
-                }
+                Grab::Bend { edge, index } => Drag::Bend {
+                    key: edge.edge_key().expect("an edge has a key"),
+                    index,
+                    bends: bends_of(&edge),
+                },
                 // Dragging a line puts a new bend where it was grabbed.
                 Grab::Segment { edge, segment, at } => {
                     let mut bends = bends_of(&edge);
                     bends.insert(segment, [at.x, at.y]);
-                    Drag::Bend { key: edge.edge_key().expect("an edge has a key"), index: segment, bends }
+                    Drag::Bend {
+                        key: edge.edge_key().expect("an edge has a key"),
+                        index: segment,
+                        bends,
+                    }
                 }
             });
         }
@@ -787,7 +961,11 @@ impl ViewerApp {
             let delta = response.drag_delta() / view.zoom;
             match &mut self.drag {
                 Some(Drag::Move(element)) => {
-                    edit = Some(Edit::Move { element: element.clone(), dx: delta.x, dy: delta.y });
+                    edit = Some(Edit::Move {
+                        element: element.clone(),
+                        dx: delta.x,
+                        dy: delta.y,
+                    });
                 }
                 Some(Drag::Resize(element)) => {
                     if let Some(b) = scene.node_bounds(element) {
@@ -801,14 +979,23 @@ impl ViewerApp {
                 Some(Drag::Bend { key, index, bends }) => {
                     bends[*index][0] += delta.x;
                     bends[*index][1] += delta.y;
-                    edit = Some(Edit::Route { edge: key.clone(), bends: bends.clone() });
+                    edit = Some(Edit::Route {
+                        edge: key.clone(),
+                        bends: bends.clone(),
+                    });
                 }
                 // A dragged port follows the pointer round its box's border.
                 Some(Drag::Port { key, on }) => {
-                    if let (Some(rect), Some(pointer)) = (scene.node_bounds(on), response.interact_pointer_pos()) {
+                    if let (Some(rect), Some(pointer)) =
+                        (scene.node_bounds(on), response.interact_pointer_pos())
+                    {
                         let p = view.to_scene(origin, pointer);
                         let (side, offset) = nearest_side(rect, p);
-                        edit = Some(Edit::MovePort { port: key.clone(), side, offset });
+                        edit = Some(Edit::MovePort {
+                            port: key.clone(),
+                            side,
+                            offset,
+                        });
                     }
                 }
                 Some(Drag::Pan) | None => diagram.view.pan += response.drag_delta(),
@@ -829,11 +1016,15 @@ impl ViewerApp {
         if diagram.view != view_before {
             diagram.fitted_to = None;
         }
-        let hover = response.hover_pos().map(|p| grab_at(scene, view, origin, p));
+        let hover = response
+            .hover_pos()
+            .map(|p| grab_at(scene, view, origin, p));
         // The hovered node by key (its Layout key) and by element.
         let (hovered, hovered_edge) = match &hover {
             Some(Grab::Resize(e) | Grab::Move(e)) => (Some(e.clone()), None),
-            Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => (None, Some(edge.clone())),
+            Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => {
+                (None, Some(edge.clone()))
+            }
             _ => (None, None),
         };
         let hovered_element = hovered.as_ref().and_then(|k| scene.element_of(k)).cloned();
@@ -846,27 +1037,39 @@ impl ViewerApp {
         {
             let mut bends = bends_of(edge);
             bends.remove(*index);
-            edit = Some(Edit::Route { edge: edge.edge_key().expect("an edge has a key"), bends });
+            edit = Some(Edit::Route {
+                edge: edge.edge_key().expect("an edge has a key"),
+                bends,
+            });
         } else if response.double_clicked()
             && let (Some(element), Some(model)) = (&hovered_element, &self.model)
-            && model.element(element).is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
+            && model
+                .element(element)
+                .is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
             && !diagram.is_interconnection_of(element)
         {
             open = Some(element.clone());
         } else if response.clicked() {
             // A port, else a part or node, else a connection.
-            let port = pointer_scene.and_then(|p| scene.port_at(p)).map(|(_, port, _)| port.clone());
+            let port = pointer_scene
+                .and_then(|p| scene.port_at(p))
+                .map(|(_, port, _)| port.clone());
             let connection = match &hovered_edge {
                 Some(Depicts::Connection(c)) => Some(c.clone()),
                 _ => None,
             };
-            let node = pointer_scene.and_then(|p| scene.element_at(p)).and_then(|k| scene.element_of(k)).cloned();
+            let node = pointer_scene
+                .and_then(|p| scene.element_at(p))
+                .and_then(|k| scene.element_of(k))
+                .cloned();
             select = Some(port.or(node).or(connection));
         }
         if response.secondary_clicked() {
             self.context_target = match &hover {
                 Some(Grab::Resize(e) | Grab::Move(e)) => ContextTarget::Node(e.clone()),
-                Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => ContextTarget::Edge(edge.clone()),
+                Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => {
+                    ContextTarget::Edge(edge.clone())
+                }
                 _ => ContextTarget::Canvas,
             };
         }
@@ -875,7 +1078,12 @@ impl ViewerApp {
         let selected_key = self
             .selected
             .as_ref()
-            .and_then(|sel| scene.elements().into_iter().find(|k| scene.element_of(k) == Some(sel)))
+            .and_then(|sel| {
+                scene
+                    .elements()
+                    .into_iter()
+                    .find(|k| scene.element_of(k) == Some(sel))
+            })
             .cloned();
         let highlight_key = hovered.clone().or(selected_key);
         let highlight = highlight_key.as_ref().and_then(|k| scene.node_bounds(k));
@@ -886,14 +1094,24 @@ impl ViewerApp {
         if let Some(selected) = &self.selected {
             for item in &scene.items {
                 match (&item.depicts, &item.shape) {
-                    (Depicts::Port { port, .. }, viewer_core::scene::Shape::Rect { rect, .. }) if port == selected => {
+                    (Depicts::Port { port, .. }, viewer_core::scene::Shape::Rect { rect, .. })
+                        if port == selected =>
+                    {
                         let r = egui::Rect::from_min_size(
                             view.to_screen(origin, viewer_core::scene::Point::new(rect.x, rect.y)),
                             egui::vec2(rect.width, rect.height) * view.zoom,
                         );
-                        clipped.rect_stroke(r, 1.0, egui::Stroke::new(2.0, accent), egui::StrokeKind::Outside);
+                        clipped.rect_stroke(
+                            r,
+                            1.0,
+                            egui::Stroke::new(2.0, accent),
+                            egui::StrokeKind::Outside,
+                        );
                     }
-                    (Depicts::Connection(c), viewer_core::scene::Shape::Polyline { points, .. }) if c == selected => {
+                    (
+                        Depicts::Connection(c),
+                        viewer_core::scene::Shape::Polyline { points, .. },
+                    ) if c == selected => {
                         let points = points.iter().map(|p| view.to_screen(origin, *p)).collect();
                         clipped.line(points, egui::Stroke::new(2.5, accent));
                     }
@@ -902,14 +1120,26 @@ impl ViewerApp {
             }
         }
         // The resize handle, on nodes that can be resized (not the Frame).
-        let resizable = highlight_key.as_ref().is_some_and(|k| scene.origins.is_empty() || scene.origins.contains_key(k));
+        let resizable = highlight_key
+            .as_ref()
+            .is_some_and(|k| scene.origins.is_empty() || scene.origins.contains_key(k));
         if let Some(bounds) = highlight.filter(|_| resizable) {
-            let corner = view.to_screen(origin, viewer_core::scene::Point::new(bounds.right(), bounds.bottom()));
-            let handle = egui::Rect::from_center_size(corner, egui::vec2(RESIZE_HANDLE, RESIZE_HANDLE) * 0.8);
+            let corner = view.to_screen(
+                origin,
+                viewer_core::scene::Point::new(bounds.right(), bounds.bottom()),
+            );
+            let handle = egui::Rect::from_center_size(
+                corner,
+                egui::vec2(RESIZE_HANDLE, RESIZE_HANDLE) * 0.8,
+            );
             clipped.rect_filled(handle, 1.0, accent);
         }
         let dragged_edge = match &self.drag {
-            Some(Drag::Bend { key, .. }) => scene.edges().into_iter().find(|(d, _)| d.edge_key().as_ref() == Some(key)).map(|(d, _)| d.clone()),
+            Some(Drag::Bend { key, .. }) => scene
+                .edges()
+                .into_iter()
+                .find(|(d, _)| d.edge_key().as_ref() == Some(key))
+                .map(|(d, _)| d.clone()),
             _ => None,
         };
         if let Some(edge) = dragged_edge.as_ref().or(hovered_edge.as_ref())
@@ -918,14 +1148,25 @@ impl ViewerApp {
             let points: Vec<egui::Pos2> = path.iter().map(|p| view.to_screen(origin, *p)).collect();
             clipped.line(points.clone(), egui::Stroke::new(2.0, accent));
             for bend in &points[1..points.len() - 1] {
-                clipped.circle(*bend, 4.0, egui::Color32::WHITE, egui::Stroke::new(1.5, accent));
+                clipped.circle(
+                    *bend,
+                    4.0,
+                    egui::Color32::WHITE,
+                    egui::Stroke::new(1.5, accent),
+                );
             }
         }
         if response.hover_pos().is_some() {
             let cursor = match (&self.drag, &hover) {
-                (Some(Drag::Resize(_)), _) | (None, Some(Grab::Resize(_))) => egui::CursorIcon::ResizeNwSe,
-                (Some(Drag::Move(_) | Drag::Bend { .. } | Drag::Port { .. }), _) => egui::CursorIcon::Grabbing,
-                (None, Some(Grab::Move(_) | Grab::Bend { .. } | Grab::Port { .. })) => egui::CursorIcon::Grab,
+                (Some(Drag::Resize(_)), _) | (None, Some(Grab::Resize(_))) => {
+                    egui::CursorIcon::ResizeNwSe
+                }
+                (Some(Drag::Move(_) | Drag::Bend { .. } | Drag::Port { .. }), _) => {
+                    egui::CursorIcon::Grabbing
+                }
+                (None, Some(Grab::Move(_) | Grab::Bend { .. } | Grab::Port { .. })) => {
+                    egui::CursorIcon::Grab
+                }
                 (None, Some(Grab::Segment { .. })) => egui::CursorIcon::PointingHand,
                 _ => egui::CursorIcon::Default,
             };
@@ -933,10 +1174,14 @@ impl ViewerApp {
         }
 
         let target = self.context_target.clone();
-        let collapsed = matches!(&target, ContextTarget::Node(e) if diagram.layout.collapsed.contains(e));
+        let collapsed =
+            matches!(&target, ContextTarget::Node(e) if diagram.layout.collapsed.contains(e));
         let interconnection = diagram.kind == Some(DiagramKind::Interconnection);
         let opens_interconnection = |element: &QualifiedName| {
-            self.model.as_ref().and_then(|m| m.element(element)).is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
+            self.model
+                .as_ref()
+                .and_then(|m| m.element(element))
+                .is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
                 && !diagram.is_interconnection_of(element)
         };
         // In an Interconnection Diagram, a part whose type has parts can be
@@ -945,15 +1190,23 @@ impl ViewerApp {
             self.model.as_ref().is_some_and(|m| {
                 m.element(element)
                     .and_then(|e| e.typed_by.as_ref())
-                    .is_some_and(|d| m.owned_members(d).any(|p| p.kind == viewer_core::ElementKind::PartUsage))
+                    .is_some_and(|d| {
+                        m.owned_members(d)
+                            .any(|p| p.kind == viewer_core::ElementKind::PartUsage)
+                    })
             })
         };
         let mut open_from_menu = None;
         response.context_menu(|ui| match &target {
             ContextTarget::Node(key) => {
-                let element = scene.element_of(key).cloned().unwrap_or_else(|| key.clone());
+                let element = scene
+                    .element_of(key)
+                    .cloned()
+                    .unwrap_or_else(|| key.clone());
                 ui.label(egui::RichText::new(element.as_str()).weak());
-                if opens_interconnection(&element) && ui.button("Open Interconnection Diagram").clicked() {
+                if opens_interconnection(&element)
+                    && ui.button("Open Interconnection Diagram").clicked()
+                {
                     open_from_menu = Some(element.clone());
                     ui.close();
                 }
@@ -988,8 +1241,15 @@ impl ViewerApp {
             ContextTarget::Edge(edge) => {
                 let key = edge.edge_key().expect("an edge has a key");
                 ui.label(egui::RichText::new(&key).weak());
-                if ui.button("Reset route").on_hover_text("Back to automatic routing").clicked() {
-                    edit = Some(Edit::Route { edge: key, bends: Vec::new() });
+                if ui
+                    .button("Reset route")
+                    .on_hover_text("Back to automatic routing")
+                    .clicked()
+                {
+                    edit = Some(Edit::Route {
+                        edge: key,
+                        bends: Vec::new(),
+                    });
                     ui.close();
                 }
             }
@@ -1008,7 +1268,8 @@ impl ViewerApp {
             if let Some(element) = &hovered_element {
                 response.on_hover_text_at_pointer(element.as_str());
             } else if hovered_edge.is_some() {
-                response.on_hover_text_at_pointer("Drag to bend · double-click a bend to remove it");
+                response
+                    .on_hover_text_at_pointer("Drag to bend · double-click a bend to remove it");
             }
         }
         if let Some(edit) = edit {
@@ -1034,9 +1295,17 @@ impl ViewerApp {
         }
         let Some(confirm) = &self.confirm else { return };
         let question = match confirm {
-            Confirm::CloseTab(index) => format!("Discard unsaved changes to “{}”?", self.diagrams[*index].title()),
+            Confirm::CloseTab(index) => format!(
+                "Discard unsaved changes to “{}”?",
+                self.diagrams[*index].title()
+            ),
             Confirm::Quit => {
-                let names: Vec<String> = self.diagrams.iter().filter(|d| d.dirty).map(|d| d.title()).collect();
+                let names: Vec<String> = self
+                    .diagrams
+                    .iter()
+                    .filter(|d| d.dirty)
+                    .map(|d| d.title())
+                    .collect();
                 format!("Discard unsaved changes to {} and quit?", names.join(", "))
             }
         };
@@ -1095,11 +1364,18 @@ fn browser_entry(
         })
         .inner
     } else {
-        let label = if selected { label.background_color(ui.visuals().selection.bg_fill) } else { label };
+        let label = if selected {
+            label.background_color(ui.visuals().selection.bg_fill)
+        } else {
+            label
+        };
         egui::CollapsingHeader::new(label)
             .id_salt(entry.element.as_str())
             .default_open(depth == 0)
-            .open((context.filtering || context.reveal.iter().skip(1).any(|e| e == &entry.element)).then_some(true))
+            .open(
+                (context.filtering || context.reveal.iter().skip(1).any(|e| e == &entry.element))
+                    .then_some(true),
+            )
             .show(ui, |ui| {
                 for child in &entry.children {
                     browser_entry(ui, child, depth + 1, context, actions);
@@ -1108,8 +1384,16 @@ fn browser_entry(
             .header_response
     };
 
-    let accepts = |kind: DiagramKind| context.model.element(&entry.element).is_some_and(|e| kind.accepts_root(e));
-    let (general, interconnection) = (accepts(DiagramKind::General), accepts(DiagramKind::Interconnection));
+    let accepts = |kind: DiagramKind| {
+        context
+            .model
+            .element(&entry.element)
+            .is_some_and(|e| kind.accepts_root(e))
+    };
+    let (general, interconnection) = (
+        accepts(DiagramKind::General),
+        accepts(DiagramKind::Interconnection),
+    );
     if selected && context.reveal.first() == Some(&entry.element) {
         response.scroll_to_me(Some(egui::Align::Center));
     }
@@ -1119,24 +1403,39 @@ fn browser_entry(
     // Double-click opens a view's Diagram, else a General Diagram where one
     // fits (packages and definitions), else an Interconnection Diagram
     // (part usages).
-    let is_view = context.model.element(&entry.element).is_some_and(|e| e.kind == ElementKind::ViewUsage);
+    let is_view = context
+        .model
+        .element(&entry.element)
+        .is_some_and(|e| e.kind == ElementKind::ViewUsage);
     if response.double_clicked() {
         if is_view {
             actions.push(BrowserAction::OpenView(entry.element.clone()));
         } else if general {
-            actions.push(BrowserAction::Open(DiagramKind::General, entry.element.clone()));
+            actions.push(BrowserAction::Open(
+                DiagramKind::General,
+                entry.element.clone(),
+            ));
         } else if interconnection {
-            actions.push(BrowserAction::Open(DiagramKind::Interconnection, entry.element.clone()));
+            actions.push(BrowserAction::Open(
+                DiagramKind::Interconnection,
+                entry.element.clone(),
+            ));
         }
     }
     if general || interconnection {
         response.context_menu(|ui| {
             if general && ui.button("Open General Diagram").clicked() {
-                actions.push(BrowserAction::Open(DiagramKind::General, entry.element.clone()));
+                actions.push(BrowserAction::Open(
+                    DiagramKind::General,
+                    entry.element.clone(),
+                ));
                 ui.close();
             }
             if interconnection && ui.button("Open Interconnection Diagram").clicked() {
-                actions.push(BrowserAction::Open(DiagramKind::Interconnection, entry.element.clone()));
+                actions.push(BrowserAction::Open(
+                    DiagramKind::Interconnection,
+                    entry.element.clone(),
+                ));
                 ui.close();
             }
         });
@@ -1144,7 +1443,10 @@ fn browser_entry(
 }
 
 /// The side of `rect` nearest `p`, and how far along it `p` is.
-fn nearest_side(rect: viewer_core::scene::Rect, p: viewer_core::scene::Point) -> (viewer_core::PortSide, f32) {
+fn nearest_side(
+    rect: viewer_core::scene::Rect,
+    p: viewer_core::scene::Point,
+) -> (viewer_core::PortSide, f32) {
     use viewer_core::PortSide;
     let distances = [
         (PortSide::Top, (p.y - rect.y).abs()),
@@ -1152,7 +1454,11 @@ fn nearest_side(rect: viewer_core::scene::Rect, p: viewer_core::scene::Point) ->
         (PortSide::Left, (p.x - rect.x).abs()),
         (PortSide::Right, (p.x - rect.right()).abs()),
     ];
-    let side = distances.iter().min_by(|a, b| a.1.total_cmp(&b.1)).expect("four sides").0;
+    let side = distances
+        .iter()
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .expect("four sides")
+        .0;
     let offset = match side {
         PortSide::Top | PortSide::Bottom => (p.x - rect.x).clamp(0.0, rect.width),
         PortSide::Left | PortSide::Right => (p.y - rect.y).clamp(0.0, rect.height),
@@ -1163,10 +1469,18 @@ fn nearest_side(rect: viewer_core::scene::Rect, p: viewer_core::scene::Point) ->
 /// The kind of Diagram to open for a root named on the command line: an
 /// Interconnection Diagram if asked for (and it fits), else a General
 /// Diagram where one fits, else an Interconnection Diagram (part usages).
-pub fn startup_kind(model: &Model, root: &QualifiedName, interconnection: bool) -> Option<DiagramKind> {
+pub fn startup_kind(
+    model: &Model,
+    root: &QualifiedName,
+    interconnection: bool,
+) -> Option<DiagramKind> {
     let element = model.element(root)?;
     let fits = |kind: DiagramKind| kind.accepts_root(element);
-    match (interconnection, fits(DiagramKind::General), fits(DiagramKind::Interconnection)) {
+    match (
+        interconnection,
+        fits(DiagramKind::General),
+        fits(DiagramKind::Interconnection),
+    ) {
         (true, _, true) => Some(DiagramKind::Interconnection),
         (_, true, _) => Some(DiagramKind::General),
         (_, false, true) => Some(DiagramKind::Interconnection),
@@ -1196,14 +1510,19 @@ fn diagnostic_line(ui: &mut egui::Ui, diagnostic: &Diagnostic, folder: Option<&P
         .location
         .as_ref()
         .map(|l| {
-            let file = folder.and_then(|f| l.file.strip_prefix(f).ok()).unwrap_or(&l.file);
+            let file = folder
+                .and_then(|f| l.file.strip_prefix(f).ok())
+                .unwrap_or(&l.file);
             match l.line {
                 0 => format!("{}: ", file.display()),
                 line => format!("{}:{line}: ", file.display()),
             }
         })
         .unwrap_or_default();
-    ui.colored_label(color, format!("{location}{severity}: {}", diagnostic.message));
+    ui.colored_label(
+        color,
+        format!("{location}{severity}: {}", diagnostic.message),
+    );
 }
 
 impl eframe::App for ViewerApp {
@@ -1236,11 +1555,29 @@ mod tests {
 
     #[test]
     fn a_dragged_port_goes_to_the_nearest_side_at_the_pointers_position_along_it() {
-        let rect = Rect { x: 100.0, y: 50.0, width: 200.0, height: 80.0 };
+        let rect = Rect {
+            x: 100.0,
+            y: 50.0,
+            width: 200.0,
+            height: 80.0,
+        };
 
-        assert_eq!(nearest_side(rect, Point::new(160.0, 45.0)), (PortSide::Top, 60.0));
-        assert_eq!(nearest_side(rect, Point::new(305.0, 90.0)), (PortSide::Right, 40.0));
-        assert_eq!(nearest_side(rect, Point::new(120.0, 128.0)), (PortSide::Bottom, 20.0));
-        assert_eq!(nearest_side(rect, Point::new(90.0, 500.0)), (PortSide::Left, 80.0), "clamped to the side's length");
+        assert_eq!(
+            nearest_side(rect, Point::new(160.0, 45.0)),
+            (PortSide::Top, 60.0)
+        );
+        assert_eq!(
+            nearest_side(rect, Point::new(305.0, 90.0)),
+            (PortSide::Right, 40.0)
+        );
+        assert_eq!(
+            nearest_side(rect, Point::new(120.0, 128.0)),
+            (PortSide::Bottom, 20.0)
+        );
+        assert_eq!(
+            nearest_side(rect, Point::new(90.0, 500.0)),
+            (PortSide::Left, 80.0),
+            "clamped to the side's length"
+        );
     }
 }

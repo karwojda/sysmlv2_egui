@@ -19,7 +19,11 @@ const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
 const NAVY: Rgb = Rgb(0x1f, 0x2a, 0x44);
 
 fn rule(condition: Condition, fill: Rgb) -> StyleRule {
-    StyleRule { condition, fill, label: None }
+    StyleRule {
+        condition,
+        fill,
+        label: None,
+    }
 }
 
 fn kind(keyword: &str, fill: Rgb) -> StyleRule {
@@ -60,12 +64,24 @@ fn fill_for(element: &str, levels: &[&[StyleRule]]) -> Option<Rgb> {
 fn each_condition_matches_what_it_names() {
     let rules = [kind("part def", BLUE)];
     assert_eq!(fill_for("V::Radio", &[&rules]), Some(BLUE));
-    assert_eq!(fill_for("V::Powertrain", &[&rules]), None, "a package isn't a part def");
+    assert_eq!(
+        fill_for("V::Powertrain", &[&rules]),
+        None,
+        "a package isn't a part def"
+    );
 
     let rules = [package("V::Powertrain", GREEN)];
-    assert_eq!(fill_for("V::Powertrain::Fuel::Tank", &[&rules]), Some(GREEN), "at any depth");
+    assert_eq!(
+        fill_for("V::Powertrain::Fuel::Tank", &[&rules]),
+        Some(GREEN),
+        "at any depth"
+    );
     assert_eq!(fill_for("V::Radio", &[&rules]), None);
-    assert_eq!(fill_for("V::Powertrain", &[&rules]), None, "the package isn't inside itself");
+    assert_eq!(
+        fill_for("V::Powertrain", &[&rules]),
+        None,
+        "the package isn't inside itself"
+    );
 
     let rules = [metadata("V::Safety", RED)];
     assert_eq!(fill_for("V::Powertrain::Pump", &[&rules]), Some(RED));
@@ -81,7 +97,11 @@ fn a_package_rule_only_matches_whole_names() {
 
 #[test]
 fn metadata_beats_package_beats_kind_whatever_the_order() {
-    let rules = [kind("part def", BLUE), package("V::Powertrain", GREEN), metadata("V::Safety", RED)];
+    let rules = [
+        kind("part def", BLUE),
+        package("V::Powertrain", GREEN),
+        metadata("V::Safety", RED),
+    ];
 
     assert_eq!(fill_for("V::Powertrain::Pump", &[&rules]), Some(RED));
     assert_eq!(fill_for("V::Powertrain::Engine", &[&rules]), Some(GREEN));
@@ -90,11 +110,20 @@ fn metadata_beats_package_beats_kind_whatever_the_order() {
 
 #[test]
 fn the_deeper_package_wins() {
-    let rules = [package("V::Powertrain::Fuel", RED), package("V::Powertrain", GREEN)];
+    let rules = [
+        package("V::Powertrain::Fuel", RED),
+        package("V::Powertrain", GREEN),
+    ];
     assert_eq!(fill_for("V::Powertrain::Fuel::Tank", &[&rules]), Some(RED));
 
-    let reversed = [package("V::Powertrain", GREEN), package("V::Powertrain::Fuel", RED)];
-    assert_eq!(fill_for("V::Powertrain::Fuel::Tank", &[&reversed]), Some(RED));
+    let reversed = [
+        package("V::Powertrain", GREEN),
+        package("V::Powertrain::Fuel", RED),
+    ];
+    assert_eq!(
+        fill_for("V::Powertrain::Fuel::Tank", &[&reversed]),
+        Some(RED)
+    );
 }
 
 #[test]
@@ -109,8 +138,15 @@ fn an_earlier_level_wins_over_a_more_specific_rule_in_a_later_one() {
     let diagram = [package("V::Powertrain", BLUE)];
     let model_style = [metadata("V::Safety", RED), kind("part def", GREEN)];
 
-    assert_eq!(fill_for("V::Powertrain::Pump", &[&diagram, &model_style]), Some(BLUE));
-    assert_eq!(fill_for("V::Radio", &[&diagram, &model_style]), Some(GREEN), "falls through to the Model's");
+    assert_eq!(
+        fill_for("V::Powertrain::Pump", &[&diagram, &model_style]),
+        Some(BLUE)
+    );
+    assert_eq!(
+        fill_for("V::Radio", &[&diagram, &model_style]),
+        Some(GREEN),
+        "falls through to the Model's"
+    );
 }
 
 #[test]
@@ -123,7 +159,10 @@ fn rules_naming_missing_elements_never_match() {
 #[test]
 fn the_style_file_is_readable_json_that_round_trips() {
     let style = Style::new(vec![
-        StyleRule { label: Some("Safety-critical".to_owned()), ..metadata("V::Safety", RED) },
+        StyleRule {
+            label: Some("Safety-critical".to_owned()),
+            ..metadata("V::Safety", RED)
+        },
         kind("part def", BLUE),
     ]);
 
@@ -160,13 +199,20 @@ fn a_model_without_a_style_file_has_no_model_style() {
 fn a_broken_style_file_is_an_error_naming_it() {
     let folder = TempDir::new().unwrap();
     std::fs::create_dir_all(folder.path().join("diagrams")).unwrap();
-    std::fs::write(style::path_for(folder.path()), r##"{"format_version": 1, "rules": [{"kind": "part def", "fill": "red"}]}"##).unwrap();
+    std::fs::write(
+        style::path_for(folder.path()),
+        r##"{"format_version": 1, "rules": [{"kind": "part def", "fill": "red"}]}"##,
+    )
+    .unwrap();
 
     let error = style::load(folder.path()).unwrap_err();
 
     assert!(matches!(error, StyleError::Invalid { .. }));
     assert!(error.to_string().contains("style.json"), "{error}");
-    assert!(error.to_string().contains("`red` is not a #rrggbb color"), "{error}");
+    assert!(
+        error.to_string().contains("`red` is not a #rrggbb color"),
+        "{error}"
+    );
 }
 
 fn general(model: &Model, root: &str) -> Scene {
@@ -205,9 +251,22 @@ fn applying_a_style_fills_matching_nodes_and_nothing_else_changes() {
     assert_eq!(used, [&rules[0]]);
     let pump = Depicts::Element(qn("V::Powertrain::Pump"));
     assert_eq!(rect_fill(&styled, &pump), Fill::Color(RED));
-    assert_eq!(rect_fill(&styled, &Depicts::Element(qn("V::Powertrain::Engine"))), Fill::Background);
-    assert!(text_fills(&styled, &pump).iter().all(|f| *f == Fill::Stroke), "black text on a light fill");
-    let geometry = |s: &Scene| s.items.iter().map(|i| (i.depicts.clone(), i.shape.extent())).collect::<Vec<_>>();
+    assert_eq!(
+        rect_fill(&styled, &Depicts::Element(qn("V::Powertrain::Engine"))),
+        Fill::Background
+    );
+    assert!(
+        text_fills(&styled, &pump)
+            .iter()
+            .all(|f| *f == Fill::Stroke),
+        "black text on a light fill"
+    );
+    let geometry = |s: &Scene| {
+        s.items
+            .iter()
+            .map(|i| (i.depicts.clone(), i.shape.extent()))
+            .collect::<Vec<_>>()
+    };
     assert_eq!(geometry(&styled), geometry(&plain), "nothing moves");
     assert_eq!((styled.width, styled.height), (plain.width, plain.height));
 }
@@ -220,7 +279,11 @@ fn text_inside_a_dark_fill_turns_white() {
     apply(&mut scene, &model, &[&[kind("part def", NAVY)]]);
 
     let engine = Depicts::Element(qn("V::Powertrain::Engine"));
-    assert!(text_fills(&scene, &engine).iter().all(|f| *f == Fill::Background));
+    assert!(
+        text_fills(&scene, &engine)
+            .iter()
+            .all(|f| *f == Fill::Background)
+    );
     assert!(Rgb(0x1f, 0x2a, 0x44).is_dark() && !RED.is_dark() && !Rgb(0xff, 0xff, 0x00).is_dark());
 }
 
@@ -229,18 +292,41 @@ fn interconnection_parts_and_ports_are_filled_but_port_labels_stay_black() {
     let model = common::drivetrain();
     let mut scene = build_scene(&model, DiagramKind::Interconnection, &qn("D::Vehicle")).unwrap();
 
-    apply(&mut scene, &model, &[&[kind("part", BLUE), kind("port", NAVY)]]);
+    apply(
+        &mut scene,
+        &model,
+        &[&[kind("part", BLUE), kind("port", NAVY)]],
+    );
 
-    let part = scene.items.iter().find_map(|i| match (&i.depicts, &i.shape) {
-        (Depicts::Part { .. }, Shape::Rect { fill, .. }) => Some(*fill),
-        _ => None,
-    });
+    let part = scene
+        .items
+        .iter()
+        .find_map(|i| match (&i.depicts, &i.shape) {
+            (Depicts::Part { .. }, Shape::Rect { fill, .. }) => Some(*fill),
+            _ => None,
+        });
     assert_eq!(part, Some(Fill::Color(BLUE)));
-    let port_items: Vec<&Shape> =
-        scene.items.iter().filter(|i| matches!(i.depicts, Depicts::Port { .. })).map(|i| &i.shape).collect();
-    assert!(port_items.iter().any(|s| matches!(s, Shape::Rect { fill: Fill::Color(NAVY), .. })));
+    let port_items: Vec<&Shape> = scene
+        .items
+        .iter()
+        .filter(|i| matches!(i.depicts, Depicts::Port { .. }))
+        .map(|i| &i.shape)
+        .collect();
+    assert!(port_items.iter().any(|s| matches!(
+        s,
+        Shape::Rect {
+            fill: Fill::Color(NAVY),
+            ..
+        }
+    )));
     assert!(
-        port_items.iter().all(|s| !matches!(s, Shape::Text { fill: Fill::Background, .. })),
+        port_items.iter().all(|s| !matches!(
+            s,
+            Shape::Text {
+                fill: Fill::Background,
+                ..
+            }
+        )),
         "labels sit outside the square, on the page"
     );
 }
@@ -254,25 +340,45 @@ fn svg_writes_style_colors_and_leaves_unstyled_text_alone() {
     let svg = svg::render(&scene);
 
     assert!(svg.contains(r##"fill="#1f2a44""##));
-    assert!(svg.contains(r##"fill="#ffffff">Engine</text>"##), "white text on navy");
+    assert!(
+        svg.contains(r##"fill="#ffffff">Engine</text>"##),
+        "white text on navy"
+    );
 }
 
 fn assert_golden(name: &str, scene: &Scene) {
     let svg = svg::render(scene);
-    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(name);
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(name);
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::write(&golden, &svg).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
 
 #[test]
 fn a_styled_general_diagram_matches_the_golden_file() {
     let model = common::metadata();
     let mut scene = general(&model, "M");
-    apply(&mut scene, &model, &[&[metadata("M::Safety", RED), metadata("M::Supplier", NAVY), kind("part def", BLUE)]]);
+    apply(
+        &mut scene,
+        &model,
+        &[&[
+            metadata("M::Safety", RED),
+            metadata("M::Supplier", NAVY),
+            kind("part def", BLUE),
+        ]],
+    );
 
     assert_golden("styled-general.svg", &scene);
 }
@@ -281,7 +387,15 @@ fn a_styled_general_diagram_matches_the_golden_file() {
 fn a_styled_interconnection_diagram_matches_the_golden_file() {
     let model = common::drivetrain();
     let mut scene = build_scene(&model, DiagramKind::Interconnection, &qn("D::Vehicle")).unwrap();
-    apply(&mut scene, &model, &[&[package("D::Vehicle", GREEN), kind("part", BLUE), kind("port", NAVY)]]);
+    apply(
+        &mut scene,
+        &model,
+        &[&[
+            package("D::Vehicle", GREEN),
+            kind("part", BLUE),
+            kind("port", NAVY),
+        ]],
+    );
 
     assert_golden("styled-interconnection.svg", &scene);
 }
@@ -291,21 +405,36 @@ fn a_diagram_style_layers_over_the_model_style_or_switches_it_off() {
     use viewer_core::DiagramStyle;
     let model = model();
     let model_style = Style::new(vec![kind("part def", BLUE)]);
-    let mut diagram = DiagramStyle { rules: vec![package("V::Powertrain::Fuel", RED)], ..DiagramStyle::default() };
+    let mut diagram = DiagramStyle {
+        rules: vec![package("V::Powertrain::Fuel", RED)],
+        ..DiagramStyle::default()
+    };
     let fill_of = |scene: &Scene, e: &str| rect_fill(scene, &Depicts::Element(qn(e)));
 
     let mut scene = general(&model, "V::Powertrain");
     viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &diagram);
-    assert_eq!(fill_of(&scene, "V::Powertrain::Engine"), Fill::Color(BLUE), "the Model's rule");
+    assert_eq!(
+        fill_of(&scene, "V::Powertrain::Engine"),
+        Fill::Color(BLUE),
+        "the Model's rule"
+    );
 
     let mut fuel = general(&model, "V::Powertrain::Fuel");
     viewer_core::style::apply_styles(&mut fuel, &model, Some(&model_style), &diagram);
-    assert_eq!(fill_of(&fuel, "V::Powertrain::Fuel::Tank"), Fill::Color(RED), "the Diagram's rule wins");
+    assert_eq!(
+        fill_of(&fuel, "V::Powertrain::Fuel::Tank"),
+        Fill::Color(RED),
+        "the Diagram's rule wins"
+    );
 
     diagram.model_style = false;
     let mut scene = general(&model, "V::Powertrain");
     viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &diagram);
-    assert_eq!(fill_of(&scene, "V::Powertrain::Engine"), Fill::Background, "Model Style off");
+    assert_eq!(
+        fill_of(&scene, "V::Powertrain::Engine"),
+        Fill::Background,
+        "Model Style off"
+    );
 }
 
 fn legend_texts(scene: &Scene) -> Vec<String> {
@@ -323,7 +452,11 @@ fn with_legend(rules: Vec<StyleRule>, model_rules: Vec<StyleRule>) -> (Model, Sc
     let model = model();
     let plain = general(&model, "V::Powertrain");
     let mut scene = plain.clone();
-    let diagram = DiagramStyle { rules, legend: true, ..DiagramStyle::default() };
+    let diagram = DiagramStyle {
+        rules,
+        legend: true,
+        ..DiagramStyle::default()
+    };
     viewer_core::style::apply_styles(&mut scene, &model, Some(&Style::new(model_rules)), &diagram);
     (model, plain, scene)
 }
@@ -331,8 +464,15 @@ fn with_legend(rules: Vec<StyleRule>, model_rules: Vec<StyleRule>) -> (Model, Sc
 #[test]
 fn the_legend_lists_only_rules_that_colored_something_in_rule_order_diagram_first() {
     let (_, _, scene) = with_legend(
-        vec![StyleRule { label: Some("Safety-critical".to_owned()), ..metadata("V::Safety", RED) }],
-        vec![kind("attribute def", GREEN), kind("part def", BLUE), package("V::Elsewhere", NAVY)],
+        vec![StyleRule {
+            label: Some("Safety-critical".to_owned()),
+            ..metadata("V::Safety", RED)
+        }],
+        vec![
+            kind("attribute def", GREEN),
+            kind("part def", BLUE),
+            package("V::Elsewhere", NAVY),
+        ],
     );
 
     assert_eq!(legend_texts(&scene), ["Safety-critical", "«part def»"]);
@@ -340,9 +480,16 @@ fn the_legend_lists_only_rules_that_colored_something_in_rule_order_diagram_firs
 
 #[test]
 fn legend_labels_default_to_the_condition() {
-    let (_, _, scene) = with_legend(vec![package("V::Powertrain", GREEN), metadata("V::Safety", NAVY)], vec![]);
+    let (_, _, scene) = with_legend(
+        vec![package("V::Powertrain", GREEN), metadata("V::Safety", NAVY)],
+        vec![],
+    );
 
-    assert_eq!(legend_texts(&scene), ["Powertrain", "@Safety"], "kind rules read «part def»");
+    assert_eq!(
+        legend_texts(&scene),
+        ["Powertrain", "@Safety"],
+        "kind rules read «part def»"
+    );
 }
 
 #[test]
@@ -364,9 +511,18 @@ fn the_legend_sits_bottom_right_outside_the_nodes_and_grows_the_page() {
         .fold(0.0, f32::max);
     assert!(legend.y > nodes_bottom, "below everything else");
     assert!(legend.bottom() < scene.y + scene.height, "on the page");
-    assert!(legend.right() <= scene.x + scene.width - 19.0, "right-aligned within the margin");
+    assert!(
+        legend.right() <= scene.x + scene.width - 19.0,
+        "right-aligned within the margin"
+    );
     assert!(scene.height > plain.height);
-    let others = |s: &Scene| s.items.iter().filter(|i| i.depicts != Depicts::Legend).map(|i| i.shape.extent()).collect::<Vec<_>>();
+    let others = |s: &Scene| {
+        s.items
+            .iter()
+            .filter(|i| i.depicts != Depicts::Legend)
+            .map(|i| i.shape.extent())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(others(&scene), others(&plain), "nothing else moves");
 }
 
@@ -375,7 +531,12 @@ fn no_legend_without_the_switch_or_without_colors() {
     use viewer_core::DiagramStyle;
     let model = model();
     let mut off = general(&model, "V::Powertrain");
-    viewer_core::style::apply_styles(&mut off, &model, Some(&Style::new(vec![kind("part def", BLUE)])), &DiagramStyle::default());
+    viewer_core::style::apply_styles(
+        &mut off,
+        &model,
+        Some(&Style::new(vec![kind("part def", BLUE)])),
+        &DiagramStyle::default(),
+    );
     assert!(off.items_depicting(&Depicts::Legend).next().is_none());
 
     let (_, plain, nothing) = with_legend(vec![], vec![kind("attribute def", BLUE)]);
@@ -389,18 +550,33 @@ fn a_styled_diagram_with_a_legend_matches_the_golden_file() {
     let model = common::metadata();
     let mut scene = general(&model, "M");
     let model_style = Style::new(vec![
-        StyleRule { label: Some("Safety-critical".to_owned()), ..metadata("M::Safety", RED) },
+        StyleRule {
+            label: Some("Safety-critical".to_owned()),
+            ..metadata("M::Safety", RED)
+        },
         metadata("M::Supplier", NAVY),
         kind("part def", BLUE),
     ]);
-    viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &DiagramStyle { legend: true, ..DiagramStyle::default() });
+    viewer_core::style::apply_styles(
+        &mut scene,
+        &model,
+        Some(&model_style),
+        &DiagramStyle {
+            legend: true,
+            ..DiagramStyle::default()
+        },
+    );
 
     assert_golden("styled-legend.svg", &scene);
 }
 
 #[test]
 fn rules_move_up_and_down_and_stop_at_the_ends() {
-    let mut rules = vec![kind("part def", BLUE), kind("port", RED), kind("part", GREEN)];
+    let mut rules = vec![
+        kind("part def", BLUE),
+        kind("port", RED),
+        kind("part", GREEN),
+    ];
     let order = |r: &[StyleRule]| r.iter().map(|r| r.fill).collect::<Vec<_>>();
 
     viewer_core::style::move_up(&mut rules, 2);
@@ -410,7 +586,11 @@ fn rules_move_up_and_down_and_stop_at_the_ends() {
     viewer_core::style::move_up(&mut rules, 0);
     viewer_core::style::move_down(&mut rules, 2);
     viewer_core::style::move_down(&mut rules, 9);
-    assert_eq!(order(&rules), [GREEN, BLUE, RED], "no change at the ends or out of range");
+    assert_eq!(
+        order(&rules),
+        [GREEN, BLUE, RED],
+        "no change at the ends or out of range"
+    );
 }
 
 #[test]

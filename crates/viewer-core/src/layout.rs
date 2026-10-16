@@ -35,7 +35,15 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)]) -> Vec<Rect> {
     }
     components.sort_by_key(|(positions, _, _)| positions.first().map(|&(id, _)| id));
 
-    let mut rects = vec![Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 }; sizes.len()];
+    let mut rects = vec![
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0
+        };
+        sizes.len()
+    ];
     let (mut offset_x, mut offset_y, mut row_bottom) = (0.0_f32, 0.0_f32, 0.0_f32);
     for (positions, _, _) in components {
         // The library gives node centers; convert to top-left corners and
@@ -53,9 +61,18 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)]) -> Vec<Rect> {
                 (id, rect)
             })
             .collect();
-        let min_x = placed.iter().map(|(_, r)| r.x).fold(f32::INFINITY, f32::min);
-        let min_y = placed.iter().map(|(_, r)| r.y).fold(f32::INFINITY, f32::min);
-        let width = placed.iter().map(|(_, r)| r.right() - min_x).fold(0.0, f32::max);
+        let min_x = placed
+            .iter()
+            .map(|(_, r)| r.x)
+            .fold(f32::INFINITY, f32::min);
+        let min_y = placed
+            .iter()
+            .map(|(_, r)| r.y)
+            .fold(f32::INFINITY, f32::min);
+        let width = placed
+            .iter()
+            .map(|(_, r)| r.right() - min_x)
+            .fold(0.0, f32::max);
         if offset_x > 0.0 && offset_x + width > MAX_ROW_WIDTH {
             offset_x = 0.0;
             offset_y = row_bottom + COMPONENT_GAP;

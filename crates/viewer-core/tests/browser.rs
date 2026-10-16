@@ -24,7 +24,12 @@ fn model() -> Model {
 fn outline(entries: &[BrowserEntry]) -> Vec<String> {
     fn walk(entries: &[BrowserEntry], depth: usize, out: &mut Vec<String>) {
         for entry in entries {
-            out.push(format!("{}«{}» {}", "  ".repeat(depth), entry.keyword, entry.name));
+            out.push(format!(
+                "{}«{}» {}",
+                "  ".repeat(depth),
+                entry.keyword,
+                entry.name
+            ));
             walk(&entry.children, depth + 1, out);
         }
     }
@@ -65,7 +70,11 @@ fn marks_unsupported_elements() {
 fn a_filter_keeps_matching_entries_and_their_ancestors() {
     assert_eq!(
         outline(&tree(&model(), "wheel")),
-        ["«package» Vehicles", "  «package» Parts", "    «part def» Wheel"]
+        [
+            "«package» Vehicles",
+            "  «package» Parts",
+            "    «part def» Wheel"
+        ]
     );
 }
 
@@ -73,7 +82,11 @@ fn a_filter_keeps_matching_entries_and_their_ancestors() {
 fn a_filter_matches_any_part_of_a_name_ignoring_case() {
     assert_eq!(
         outline(&tree(&model(), "  AR ")),
-        ["«package» Vehicles", "  «part def» Car", "  «package» Parts"]
+        [
+            "«package» Vehicles",
+            "  «part def» Car",
+            "  «package» Parts"
+        ]
     );
 }
 

@@ -4,7 +4,9 @@ use std::path::Path;
 
 use viewer_core::model::Direction;
 use viewer_core::scene::{Depicts, Point, Rect, Shape, TextAnchor};
-use viewer_core::{DiagramError, DiagramFile, DiagramKind, Model, QualifiedName, Scene, build_scene, svg};
+use viewer_core::{
+    DiagramError, DiagramFile, DiagramKind, Model, QualifiedName, Scene, build_scene, svg,
+};
 
 /// The `structure` fixture's wiring: a vehicle whose tanks feed its engine
 /// over two connections, plus a controller on an undirected status port.
@@ -107,18 +109,34 @@ fn the_frame_holds_the_definitions_parts() {
 
     assert_eq!(node_texts(&scene, "S::Vehicle"), ["«part def»", "Vehicle"]);
     let frame = scene.element_bounds(&qn("S::Vehicle")).unwrap();
-    for part in ["S::Vehicle::engine", "S::Vehicle::tanks", "S::Vehicle::controller"] {
+    for part in [
+        "S::Vehicle::engine",
+        "S::Vehicle::tanks",
+        "S::Vehicle::controller",
+    ] {
         let rect = scene.element_bounds(&qn(part)).unwrap();
-        assert!(rect.x > frame.x && rect.right() < frame.right() && rect.y > frame.y && rect.bottom() < frame.bottom(), "{part} inside");
+        assert!(
+            rect.x > frame.x
+                && rect.right() < frame.right()
+                && rect.y > frame.y
+                && rect.bottom() < frame.bottom(),
+            "{part} inside"
+        );
     }
-    assert!(scene.element_bounds(&qn("S::Vehicle::mass")).is_none(), "attributes are not parts");
+    assert!(
+        scene.element_bounds(&qn("S::Vehicle::mass")).is_none(),
+        "attributes are not parts"
+    );
 }
 
 #[test]
 fn parts_are_labelled_with_their_type_and_multiplicity() {
     let scene = interconnection("S::Vehicle");
 
-    assert_eq!(node_texts(&scene, "S::Vehicle::tanks"), ["«part»", "tanks:Tank [1..2]"]);
+    assert_eq!(
+        node_texts(&scene, "S::Vehicle::tanks"),
+        ["«part»", "tanks:Tank [1..2]"]
+    );
 }
 
 #[test]
@@ -133,7 +151,10 @@ fn a_part_usage_root_shows_the_parts_of_its_definition() {
 fn only_parts_can_be_roots() {
     for root in ["S", "S::loose", "S::FuelPort"] {
         let result = build_scene(&vehicle(), DiagramKind::Interconnection, &qn(root));
-        assert!(matches!(result, Err(DiagramError::UnsuitableRoot { .. })), "{root}: {result:?}");
+        assert!(
+            matches!(result, Err(DiagramError::UnsuitableRoot { .. })),
+            "{root}: {result:?}"
+        );
     }
 }
 
@@ -143,8 +164,19 @@ fn in_ports_sit_on_top_out_ports_at_the_bottom() {
     let engine = scene.element_bounds(&qn("S::Vehicle::engine")).unwrap();
     let tanks = scene.element_bounds(&qn("S::Vehicle::tanks")).unwrap();
 
-    assert_eq!(centre(port_square(&scene, "S::Vehicle::engine", "S::Engine::fuelIn")).y, engine.y);
-    assert_eq!(centre(port_square(&scene, "S::Vehicle::tanks", "S::Tank::fuelOut")).y, tanks.bottom());
+    assert_eq!(
+        centre(port_square(
+            &scene,
+            "S::Vehicle::engine",
+            "S::Engine::fuelIn"
+        ))
+        .y,
+        engine.y
+    );
+    assert_eq!(
+        centre(port_square(&scene, "S::Vehicle::tanks", "S::Tank::fuelOut")).y,
+        tanks.bottom()
+    );
 }
 
 #[test]
@@ -168,7 +200,10 @@ fn flow_runs_top_to_bottom_from_out_to_in() {
 
     let tanks = scene.element_bounds(&qn("S::Vehicle::tanks")).unwrap();
     let engine = scene.element_bounds(&qn("S::Vehicle::engine")).unwrap();
-    assert!(tanks.bottom() < engine.y, "tanks feed the engine from above");
+    assert!(
+        tanks.bottom() < engine.y,
+        "tanks feed the engine from above"
+    );
 }
 
 #[test]
@@ -177,11 +212,21 @@ fn undirected_ports_face_what_they_connect_to() {
     let engine = centre(scene.element_bounds(&qn("S::Vehicle::engine")).unwrap());
     let controller = centre(scene.element_bounds(&qn("S::Vehicle::controller")).unwrap());
 
-    let status = centre(port_square(&scene, "S::Vehicle::engine", "S::Engine::status"));
+    let status = centre(port_square(
+        &scene,
+        "S::Vehicle::engine",
+        "S::Engine::status",
+    ));
 
     let toward = (controller.x - engine.x, controller.y - engine.y);
     let placed = (status.x - engine.x, status.y - engine.y);
-    let dominant = |(x, y): (f32, f32)| if y.abs() >= x.abs() { (0.0, y.signum()) } else { (x.signum(), 0.0) };
+    let dominant = |(x, y): (f32, f32)| {
+        if y.abs() >= x.abs() {
+            (0.0, y.signum())
+        } else {
+            (x.signum(), 0.0)
+        }
+    };
     assert_eq!(dominant(placed), dominant(toward));
 }
 
@@ -196,10 +241,23 @@ fn connectors_join_their_ports_with_right_angles() {
         })
         .unwrap();
 
-    assert_eq!(line[0], centre(port_square(&scene, "S::Vehicle::tanks", "S::Tank::fuelOut")));
-    assert_eq!(*line.last().unwrap(), centre(port_square(&scene, "S::Vehicle::engine", "S::Engine::fuelIn")));
+    assert_eq!(
+        line[0],
+        centre(port_square(&scene, "S::Vehicle::tanks", "S::Tank::fuelOut"))
+    );
+    assert_eq!(
+        *line.last().unwrap(),
+        centre(port_square(
+            &scene,
+            "S::Vehicle::engine",
+            "S::Engine::fuelIn"
+        ))
+    );
     for segment in line.windows(2) {
-        assert!(segment[0].x == segment[1].x || segment[0].y == segment[1].y, "{segment:?} is not straight");
+        assert!(
+            segment[0].x == segment[1].x || segment[0].y == segment[1].y,
+            "{segment:?} is not straight"
+        );
     }
 }
 
@@ -210,7 +268,12 @@ fn connectors_over_the_same_ports_keep_separate_labels() {
         scene
             .items_depicting(&Depicts::Connection(qn(name)))
             .find_map(|s| match s {
-                Shape::Text { position, text, anchor: TextAnchor::Start, .. } => Some((*position, text.clone())),
+                Shape::Text {
+                    position,
+                    text,
+                    anchor: TextAnchor::Start,
+                    ..
+                } => Some((*position, text.clone())),
                 _ => None,
             })
             .unwrap()
@@ -221,16 +284,23 @@ fn connectors_over_the_same_ports_keep_separate_labels() {
 
     assert_eq!(line_text, "line:FuelLine");
     assert_eq!(iface_text, "iface:FuelInterface");
-    assert!((line_at.y - iface_at.y).abs() >= 11.0, "stacked, not overprinted");
+    assert!(
+        (line_at.y - iface_at.y).abs() >= 11.0,
+        "stacked, not overprinted"
+    );
 }
 
 #[test]
 fn parts_do_not_overlap() {
     let scene = interconnection("S::Vehicle");
-    let parts: Vec<Rect> = ["S::Vehicle::engine", "S::Vehicle::tanks", "S::Vehicle::controller"]
-        .iter()
-        .map(|p| scene.element_bounds(&qn(p)).unwrap())
-        .collect();
+    let parts: Vec<Rect> = [
+        "S::Vehicle::engine",
+        "S::Vehicle::tanks",
+        "S::Vehicle::controller",
+    ]
+    .iter()
+    .map(|p| scene.element_bounds(&qn(p)).unwrap())
+    .collect();
 
     for (i, a) in parts.iter().enumerate() {
         for b in &parts[i + 1..] {
@@ -245,13 +315,21 @@ fn export_is_deterministic_and_matches_the_golden_file() {
     for _ in 0..20 {
         assert_eq!(svg::render(&interconnection("S::Vehicle")), first);
     }
-    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/vehicle-interconnection.svg");
+    let golden =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/vehicle-interconnection.svg");
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::write(&golden, &first).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(first, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        first, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
 
 #[test]
@@ -269,8 +347,18 @@ fn finds_the_port_under_a_point() {
 
     let found = scene.port_at(centre(square));
 
-    assert_eq!(found, Some((&qn("S::Vehicle::engine"), &qn("S::Engine::fuelIn"), "engine.fuelIn")));
-    assert_eq!(scene.port_at(Point::new(square.x - 20.0, square.y - 20.0)), None);
+    assert_eq!(
+        found,
+        Some((
+            &qn("S::Vehicle::engine"),
+            &qn("S::Engine::fuelIn"),
+            "engine.fuelIn"
+        ))
+    );
+    assert_eq!(
+        scene.port_at(Point::new(square.x - 20.0, square.y - 20.0)),
+        None
+    );
 }
 
 mod common;
@@ -297,12 +385,20 @@ fn overlapping_labels(scene: &Scene) -> Vec<(String, String)> {
 }
 
 fn drivetrain(root: &str) -> Scene {
-    build_scene(&common::drivetrain(), DiagramKind::Interconnection, &qn(root)).unwrap()
+    build_scene(
+        &common::drivetrain(),
+        DiagramKind::Interconnection,
+        &qn(root),
+    )
+    .unwrap()
 }
 
 #[test]
 fn no_two_labels_overlap() {
-    for (name, scene) in [("vehicle", interconnection("S::Vehicle")), ("drivetrain", drivetrain("D::Vehicle"))] {
+    for (name, scene) in [
+        ("vehicle", interconnection("S::Vehicle")),
+        ("drivetrain", drivetrain("D::Vehicle")),
+    ] {
         let overlaps = overlapping_labels(&scene);
         assert!(overlaps.is_empty(), "{name}: {overlaps:?}");
     }
@@ -322,19 +418,31 @@ fn closed_parts_are_wide_enough_for_their_port_labels_side_by_side() {
         })
         .sum();
 
-    assert!(engine.width >= top_labels, "{} < {top_labels}", engine.width);
+    assert!(
+        engine.width >= top_labels,
+        "{} < {top_labels}",
+        engine.width
+    );
 }
 
 #[test]
 fn drivetrain_matches_the_golden_file() {
     let svg = svg::render(&drivetrain("D::Vehicle"));
-    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/drivetrain-interconnection.svg");
+    let golden =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/drivetrain-interconnection.svg");
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::write(&golden, &svg).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
 
 fn polyline(scene: &Scene, connection: &str) -> Vec<Point> {
@@ -354,7 +462,10 @@ fn the_roots_own_ports_sit_on_the_frame_border() {
 
     let power = centre(port_square(&scene, "D::Vehicle", "D::Vehicle::power"));
 
-    assert_eq!(power.y, frame.y, "an in port of the root sits on the Frame's top edge");
+    assert_eq!(
+        power.y, frame.y,
+        "an in port of the root sits on the Frame's top edge"
+    );
 }
 
 #[test]
@@ -364,9 +475,16 @@ fn a_connection_to_a_root_port_runs_from_the_frame_border_into_the_part() {
 
     let ends = [supply[0], *supply.last().unwrap()];
     let power = centre(port_square(&scene, "D::Vehicle", "D::Vehicle::power"));
-    let engine_power = centre(port_square(&scene, "D::Vehicle::engine", "D::Engine::power"));
+    let engine_power = centre(port_square(
+        &scene,
+        "D::Vehicle::engine",
+        "D::Engine::power",
+    ));
 
-    assert!(ends.contains(&power) && ends.contains(&engine_power), "{supply:?}");
+    assert!(
+        ends.contains(&power) && ends.contains(&engine_power),
+        "{supply:?}"
+    );
 }
 
 #[test]
@@ -394,9 +512,15 @@ fn a_connection_ending_at_a_part_attaches_to_its_border_facing_the_other_end() {
 
     let at_sink = *feed.last().unwrap();
 
-    let on_border = at_sink.y == sink.y || at_sink.y == sink.bottom() || at_sink.x == sink.x || at_sink.x == sink.right();
+    let on_border = at_sink.y == sink.y
+        || at_sink.y == sink.bottom()
+        || at_sink.x == sink.x
+        || at_sink.x == sink.right();
     assert!(on_border, "{at_sink:?} on {sink:?}");
-    assert!(feed[0].y < sink.y && at_sink.y == sink.y, "the source is above, so it enters from the top");
+    assert!(
+        feed[0].y < sink.y && at_sink.y == sink.y,
+        "the source is above, so it enters from the top"
+    );
 }
 
 /// Within the tolerance a straight connector allows for ports nearly in line
@@ -408,20 +532,45 @@ fn near(a: Point, b: Point) -> bool {
 fn drivetrain_opened(paths: &[&str]) -> Scene {
     let mut layout = viewer_core::Layout::default();
     layout.opened.extend(paths.iter().map(|p| p.to_string()));
-    viewer_core::build_scene_with_layout(&common::drivetrain(), DiagramKind::Interconnection, &qn("D::Vehicle"), &layout).unwrap()
+    viewer_core::build_scene_with_layout(
+        &common::drivetrain(),
+        DiagramKind::Interconnection,
+        &qn("D::Vehicle"),
+        &layout,
+    )
+    .unwrap()
 }
 
 #[test]
 fn an_opened_part_shows_its_parts_inside_its_box() {
     let scene = drivetrain_opened(&["rearAxleAssembly"]);
-    let axle = scene.element_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
+    let axle = scene
+        .element_bounds(&qn("D::Vehicle::rearAxleAssembly"))
+        .unwrap();
 
-    for inner in ["D::AxleAssembly::differential", "D::AxleAssembly::leftWheel", "D::AxleAssembly::rightWheel"] {
-        let rect = scene.element_bounds(&qn(inner)).unwrap_or_else(|| panic!("{inner} is drawn"));
-        assert!(rect.x > axle.x && rect.right() < axle.right() && rect.y > axle.y && rect.bottom() < axle.bottom(), "{inner} inside");
+    for inner in [
+        "D::AxleAssembly::differential",
+        "D::AxleAssembly::leftWheel",
+        "D::AxleAssembly::rightWheel",
+    ] {
+        let rect = scene
+            .element_bounds(&qn(inner))
+            .unwrap_or_else(|| panic!("{inner} is drawn"));
+        assert!(
+            rect.x > axle.x
+                && rect.right() < axle.right()
+                && rect.y > axle.y
+                && rect.bottom() < axle.bottom(),
+            "{inner} inside"
+        );
     }
     let closed = drivetrain("D::Vehicle");
-    assert!(closed.element_bounds(&qn("D::AxleAssembly::differential")).is_none(), "closed by default");
+    assert!(
+        closed
+            .element_bounds(&qn("D::AxleAssembly::differential"))
+            .is_none(),
+        "closed by default"
+    );
 }
 
 #[test]
@@ -429,24 +578,49 @@ fn an_opened_part_draws_its_own_connections_including_from_its_own_ports() {
     let scene = drivetrain_opened(&["rearAxleAssembly"]);
     let drive = polyline(&scene, "D::AxleAssembly::drive");
 
-    let own = centre(port_square(&scene, "D::Vehicle::rearAxleAssembly", "D::AxleAssembly::torqueIn"));
-    let differential = centre(port_square(&scene, "D::AxleAssembly::differential", "D::Differential::torqueIn"));
+    let own = centre(port_square(
+        &scene,
+        "D::Vehicle::rearAxleAssembly",
+        "D::AxleAssembly::torqueIn",
+    ));
+    let differential = centre(port_square(
+        &scene,
+        "D::AxleAssembly::differential",
+        "D::Differential::torqueIn",
+    ));
     let ends = [drive[0], *drive.last().unwrap()];
-    assert!(ends.iter().any(|e| near(*e, own)) && ends.iter().any(|e| near(*e, differential)), "{drive:?}");
+    assert!(
+        ends.iter().any(|e| near(*e, own)) && ends.iter().any(|e| near(*e, differential)),
+        "{drive:?}"
+    );
 }
 
 #[test]
 fn an_end_inside_a_closed_part_attaches_to_its_border_and_to_the_port_once_opened() {
     let closed = drivetrain("D::Vehicle");
-    let axle = closed.element_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
+    let axle = closed
+        .element_bounds(&qn("D::Vehicle::rearAxleAssembly"))
+        .unwrap();
     let to_axle = *polyline(&closed, "D::Vehicle::leftDrive").last().unwrap();
-    assert!(to_axle.y == axle.y || to_axle.y == axle.bottom() || to_axle.x == axle.x || to_axle.x == axle.right());
+    assert!(
+        to_axle.y == axle.y
+            || to_axle.y == axle.bottom()
+            || to_axle.x == axle.x
+            || to_axle.x == axle.right()
+    );
 
     let opened = drivetrain_opened(&["rearAxleAssembly"]);
-    let hub = centre(port_square(&opened, "D::AxleAssembly::leftWheel", "D::Wheel::hub"));
+    let hub = centre(port_square(
+        &opened,
+        "D::AxleAssembly::leftWheel",
+        "D::Wheel::hub",
+    ));
     let left_drive = polyline(&opened, "D::Vehicle::leftDrive");
     let ends = [left_drive[0], *left_drive.last().unwrap()];
-    assert!(ends.iter().any(|e| near(*e, hub)), "{left_drive:?} reaches {hub:?}");
+    assert!(
+        ends.iter().any(|e| near(*e, hub)),
+        "{left_drive:?} reaches {hub:?}"
+    );
 }
 
 #[test]
@@ -459,8 +633,18 @@ fn opened_parts_are_saved_and_unknown_ones_kept() {
 
     assert_eq!(reread, file);
     assert!(file.to_text().contains(r#""opened": ["#));
-    let scene = viewer_core::build_scene_with_layout(&common::drivetrain(), DiagramKind::Interconnection, &qn("D::Vehicle"), &file.layout).unwrap();
-    assert!(scene.element_bounds(&qn("D::AxleAssembly::differential")).is_some());
+    let scene = viewer_core::build_scene_with_layout(
+        &common::drivetrain(),
+        DiagramKind::Interconnection,
+        &qn("D::Vehicle"),
+        &file.layout,
+    )
+    .unwrap();
+    assert!(
+        scene
+            .element_bounds(&qn("D::AxleAssembly::differential"))
+            .is_some()
+    );
 }
 
 #[test]
@@ -468,13 +652,21 @@ fn an_opened_drivetrain_has_no_overlapping_labels_and_matches_the_golden_file() 
     let scene = drivetrain_opened(&["rearAxleAssembly"]);
     assert_eq!(overlapping_labels(&scene), Vec::<(String, String)>::new());
     let svg = svg::render(&scene);
-    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/drivetrain-opened-interconnection.svg");
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden/drivetrain-opened-interconnection.svg");
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::write(&golden, &svg).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
 
 #[test]
@@ -494,7 +686,13 @@ fn two_usages_of_the_same_definition_open_independently() {
     let mut layout = viewer_core::Layout::default();
     layout.opened.insert("front".into());
 
-    let scene = viewer_core::build_scene_with_layout(&model, DiagramKind::Interconnection, &qn("P::Pack"), &layout).unwrap();
+    let scene = viewer_core::build_scene_with_layout(
+        &model,
+        DiagramKind::Interconnection,
+        &qn("P::Pack"),
+        &layout,
+    )
+    .unwrap();
 
     let front = scene.element_bounds(&qn("P::Pack::front")).unwrap();
     let rear = scene.element_bounds(&qn("P::Pack::rear")).unwrap();
@@ -508,7 +706,10 @@ fn two_usages_of_the_same_definition_open_independently() {
         })
         .collect();
     assert_eq!(cells.len(), 1, "only the opened module shows its cell");
-    assert!(cells[0].x > front.x && cells[0].right() < front.right(), "inside front");
+    assert!(
+        cells[0].x > front.x && cells[0].right() < front.right(),
+        "inside front"
+    );
     assert!(rear.height < front.height, "rear stays closed");
 }
 
@@ -517,23 +718,36 @@ fn connectors_are_right_angled_and_never_pass_through_a_box_they_dont_connect() 
     let scenes = [
         ("vehicle", interconnection("S::Vehicle")),
         ("drivetrain", drivetrain("D::Vehicle")),
-        ("drivetrain opened", drivetrain_opened(&["rearAxleAssembly"])),
+        (
+            "drivetrain opened",
+            drivetrain_opened(&["rearAxleAssembly"]),
+        ),
     ];
     for (name, scene) in scenes {
         let boxes: Vec<(QualifiedName, Rect)> = scene
             .items
             .iter()
             .filter_map(|item| match (&item.depicts, &item.shape) {
-                (Depicts::Element(e) | Depicts::Part { element: e, .. }, Shape::Rect { rect, .. }) => Some((e.clone(), *rect)),
+                (
+                    Depicts::Element(e) | Depicts::Part { element: e, .. },
+                    Shape::Rect { rect, .. },
+                ) => Some((e.clone(), *rect)),
                 _ => None,
             })
             .collect();
         for item in &scene.items {
-            let (Depicts::Connection(connection), Shape::Polyline { points, .. }) = (&item.depicts, &item.shape) else { continue };
+            let (Depicts::Connection(connection), Shape::Polyline { points, .. }) =
+                (&item.depicts, &item.shape)
+            else {
+                continue;
+            };
             let (first, last) = (points[0], *points.last().unwrap());
             for segment in points.windows(2) {
                 let (a, b) = (segment[0], segment[1]);
-                assert!(a.x == b.x || a.y == b.y, "{name}: {connection} has a slanted segment {a:?} → {b:?}");
+                assert!(
+                    a.x == b.x || a.y == b.y,
+                    "{name}: {connection} has a slanted segment {a:?} → {b:?}"
+                );
                 for (element, rect) in &boxes {
                     // A connector may run inside the boxes its ends lie in.
                     if rect.contains(first) || rect.contains(last) {
@@ -541,7 +755,10 @@ fn connectors_are_right_angled_and_never_pass_through_a_box_they_dont_connect() 
                     }
                     let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
                     let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
-                    let through = x0 < rect.right() - 1.0 && x1 > rect.x + 1.0 && y0 < rect.bottom() - 1.0 && y1 > rect.y + 1.0;
+                    let through = x0 < rect.right() - 1.0
+                        && x1 > rect.x + 1.0
+                        && y0 < rect.bottom() - 1.0
+                        && y1 > rect.y + 1.0;
                     assert!(!through, "{name}: {connection} passes through {element}");
                 }
             }

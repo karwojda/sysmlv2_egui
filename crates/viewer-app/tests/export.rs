@@ -28,10 +28,21 @@ fn the_viewer_export_is_byte_identical_to_the_cli_export() {
     let path = diagram_file::path_for(folder.path(), "p");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, diagram.to_text()).unwrap();
-    let (from_cli, from_viewer) = (folder.path().join("cli.svg"), folder.path().join("viewer.svg"));
+    let (from_cli, from_viewer) = (
+        folder.path().join("cli.svg"),
+        folder.path().join("viewer.svg"),
+    );
 
     let code = viewer_cli::run(
-        ["sysml-viewer".into(), "export".into(), folder.path().into(), "--diagram".into(), "p".into(), "--out".into(), from_cli.clone().into()],
+        [
+            "sysml-viewer".into(),
+            "export".into(),
+            folder.path().into(),
+            "--diagram".into(),
+            "p".into(),
+            "--out".into(),
+            from_cli.clone().into(),
+        ],
         &mut FakeBackend::new(model()),
         &mut Vec::new(),
     );
@@ -40,7 +51,10 @@ fn the_viewer_export_is_byte_identical_to_the_cli_export() {
         .unwrap();
 
     assert_eq!(code, viewer_cli::EXIT_OK);
-    assert_eq!(std::fs::read(from_viewer).unwrap(), std::fs::read(from_cli).unwrap());
+    assert_eq!(
+        std::fs::read(from_viewer).unwrap(),
+        std::fs::read(from_cli).unwrap()
+    );
 }
 
 #[test]
@@ -48,7 +62,9 @@ fn exporting_a_diagram_whose_root_is_gone_fails_with_the_reason() {
     let diagram = OpenDiagram::open(&model(), DiagramKind::General, QualifiedName::from("Gone"));
     let folder = tempfile::TempDir::new().unwrap();
 
-    let error = diagram.export_svg(&folder.path().join("x.svg")).unwrap_err();
+    let error = diagram
+        .export_svg(&folder.path().join("x.svg"))
+        .unwrap_err();
 
     assert!(error.contains("Gone"), "{error}");
 }
@@ -60,5 +76,8 @@ fn reopening_a_model_rebuilds_the_open_diagram() {
 
     diagram.refresh(&smaller);
 
-    assert_eq!(diagram.scene.unwrap().elements(), [&QualifiedName::from("P::Engine")]);
+    assert_eq!(
+        diagram.scene.unwrap().elements(),
+        [&QualifiedName::from("P::Engine")]
+    );
 }

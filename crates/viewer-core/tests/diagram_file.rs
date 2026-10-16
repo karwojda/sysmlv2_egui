@@ -1,10 +1,16 @@
 //! Diagram Files are readable, stable text that round-trips.
 
-use viewer_core::{DiagramFile, DiagramFileError, DiagramKind, DiagramSource, DiagramStyle, QualifiedName};
+use viewer_core::{
+    DiagramFile, DiagramFileError, DiagramKind, DiagramSource, DiagramStyle, QualifiedName,
+};
 
 #[test]
 fn is_readable_json_with_a_fixed_key_order() {
-    let file = DiagramFile::new("overview", DiagramKind::General, QualifiedName::from("Vehicles"));
+    let file = DiagramFile::new(
+        "overview",
+        DiagramKind::General,
+        QualifiedName::from("Vehicles"),
+    );
 
     assert_eq!(
         file.to_text(),
@@ -21,7 +27,11 @@ fn is_readable_json_with_a_fixed_key_order() {
 
 #[test]
 fn round_trips() {
-    let file = DiagramFile::new("overview", DiagramKind::General, QualifiedName::from("Vehicles::Parts"));
+    let file = DiagramFile::new(
+        "overview",
+        DiagramKind::General,
+        QualifiedName::from("Vehicles::Parts"),
+    );
 
     assert_eq!(DiagramFile::parse(&file.to_text()).unwrap(), file);
 }
@@ -40,7 +50,12 @@ fn rejects_an_unknown_format_version() {
 
 #[test]
 fn a_model_defined_diagram_refers_to_its_view_instead_of_a_kind_and_root() {
-    let file = DiagramFile::of("vehicle-tree", DiagramSource::View { view: QualifiedName::from("V::vehicle tree") });
+    let file = DiagramFile::of(
+        "vehicle-tree",
+        DiagramSource::View {
+            view: QualifiedName::from("V::vehicle tree"),
+        },
+    );
 
     assert_eq!(
         file.to_text(),
@@ -63,7 +78,10 @@ fn a_tool_defined_file_still_reads_as_a_kind_and_root() {
 
     assert_eq!(
         file.source,
-        DiagramSource::Tool { kind: DiagramKind::Interconnection, root: QualifiedName::from("P::V") }
+        DiagramSource::Tool {
+            kind: DiagramKind::Interconnection,
+            root: QualifiedName::from("P::V")
+        }
     );
 }
 
@@ -83,7 +101,11 @@ fn a_diagram_style_round_trips_after_the_layout() {
     let mut file = DiagramFile::new("x", DiagramKind::General, QualifiedName::from("P"));
     file.style = DiagramStyle {
         model_style: false,
-        rules: vec![StyleRule { condition: Condition::Package("P::Sub".into()), fill: Rgb(1, 2, 3), label: None }],
+        rules: vec![StyleRule {
+            condition: Condition::Package("P::Sub".into()),
+            fill: Rgb(1, 2, 3),
+            label: None,
+        }],
         legend: true,
     };
 
@@ -100,5 +122,12 @@ fn missing_style_fields_take_their_defaults() {
 
     let style = DiagramFile::parse(text).unwrap().style;
 
-    assert_eq!(style, DiagramStyle { model_style: true, rules: vec![], legend: true });
+    assert_eq!(
+        style,
+        DiagramStyle {
+            model_style: true,
+            rules: vec![],
+            legend: true
+        }
+    );
 }

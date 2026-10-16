@@ -22,7 +22,10 @@ pub struct Loader {
 impl Loader {
     /// Starts the worker. `notify` runs after each load, from the worker
     /// thread, so the UI can wake up and collect the result.
-    pub fn new(mut backend: Box<dyn ModelBackend + Send>, notify: impl Fn() + Send + 'static) -> Self {
+    pub fn new(
+        mut backend: Box<dyn ModelBackend + Send>,
+        notify: impl Fn() + Send + 'static,
+    ) -> Self {
         let (requests, incoming) = mpsc::channel::<PathBuf>();
         let (outgoing, results) = mpsc::channel();
         let worker = std::thread::Builder::new()
@@ -37,7 +40,11 @@ impl Loader {
                 }
             })
             .expect("the loader thread starts");
-        Self { requests: Some(requests), results, worker: Some(worker) }
+        Self {
+            requests: Some(requests),
+            results,
+            worker: Some(worker),
+        }
     }
 
     pub fn load(&self, folder: PathBuf) {

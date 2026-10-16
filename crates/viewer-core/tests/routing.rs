@@ -2,7 +2,9 @@
 //! same spot on a border are spread apart. Saved routes are left alone.
 
 use viewer_core::scene::{Depicts, Point, Rect, Shape};
-use viewer_core::{DiagramKind, Layout, Model, NodePlacement, QualifiedName, Scene, build_scene_with_layout};
+use viewer_core::{
+    DiagramKind, Layout, Model, NodePlacement, QualifiedName, Scene, build_scene_with_layout,
+};
 
 fn model() -> Model {
     Model::builder()
@@ -53,14 +55,20 @@ fn passes_through(points: &[Point], rect: Rect) -> bool {
     points.windows(2).any(|s| {
         (1..100).any(|i| {
             let t = i as f32 / 100.0;
-            let p = Point::new(s[0].x + (s[1].x - s[0].x) * t, s[0].y + (s[1].y - s[0].y) * t);
+            let p = Point::new(
+                s[0].x + (s[1].x - s[0].x) * t,
+                s[0].y + (s[1].y - s[0].y) * t,
+            );
             p.x > rect.x && p.x < rect.right() && p.y > rect.y && p.y < rect.bottom()
         })
     })
 }
 
 fn defined_by() -> Depicts {
-    Depicts::Typing { usage: qn("P::vehicle"), definition: qn("P::Vehicle") }
+    Depicts::Typing {
+        usage: qn("P::vehicle"),
+        definition: qn("P::Vehicle"),
+    }
 }
 
 #[test]
@@ -77,7 +85,9 @@ fn an_edge_that_would_cross_a_node_bends_around_it() {
 #[test]
 fn a_saved_route_is_kept_even_if_it_crosses_a_node() {
     let mut layout = blocked();
-    layout.edges.insert(defined_by().edge_key().unwrap(), vec![[150.0, 300.0]]);
+    layout
+        .edges
+        .insert(defined_by().edge_key().unwrap(), vec![[150.0, 300.0]]);
 
     let path = line(&build(&layout), &defined_by());
 
@@ -92,7 +102,10 @@ fn edge_ends_on_the_same_side_of_a_node_are_spread_apart() {
     // Vehicle's bottom close together.
     let scene = build(&blocked());
     let vehicle = scene.node_bounds(&qn("P::Vehicle")).unwrap();
-    let composition = Depicts::Composition { owner: qn("P::Vehicle"), usage: qn("P::Vehicle::tanks") };
+    let composition = Depicts::Composition {
+        owner: qn("P::Vehicle"),
+        usage: qn("P::Vehicle::tanks"),
+    };
 
     let ends: Vec<Point> = [
         scene
@@ -115,5 +128,8 @@ fn edge_ends_on_the_same_side_of_a_node_are_spread_apart() {
     for end in &ends {
         assert_eq!(end.y, vehicle.bottom(), "{end:?} is on Vehicle's bottom");
     }
-    assert!((ends[0].x - ends[1].x).abs() >= 14.0, "{ends:?} are spread apart");
+    assert!(
+        (ends[0].x - ends[1].x).abs() >= 14.0,
+        "{ends:?} are spread apart"
+    );
 }

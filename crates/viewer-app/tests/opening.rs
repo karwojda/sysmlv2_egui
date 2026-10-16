@@ -24,28 +24,46 @@ fn qn(name: &str) -> QualifiedName {
 
 #[test]
 fn a_command_line_root_opens_a_general_diagram_where_one_fits() {
-    assert_eq!(startup_kind(&model(), &qn("P"), false), Some(DiagramKind::General));
-    assert_eq!(startup_kind(&model(), &qn("P::Vehicle"), false), Some(DiagramKind::General));
+    assert_eq!(
+        startup_kind(&model(), &qn("P"), false),
+        Some(DiagramKind::General)
+    );
+    assert_eq!(
+        startup_kind(&model(), &qn("P::Vehicle"), false),
+        Some(DiagramKind::General)
+    );
 }
 
 #[test]
 fn a_part_usage_root_opens_its_interconnection_diagram() {
-    assert_eq!(startup_kind(&model(), &qn("P::car"), false), Some(DiagramKind::Interconnection));
+    assert_eq!(
+        startup_kind(&model(), &qn("P::car"), false),
+        Some(DiagramKind::Interconnection)
+    );
 }
 
 #[test]
 fn asking_for_interconnection_opens_one_for_a_part_def() {
-    assert_eq!(startup_kind(&model(), &qn("P::Vehicle"), true), Some(DiagramKind::Interconnection));
+    assert_eq!(
+        startup_kind(&model(), &qn("P::Vehicle"), true),
+        Some(DiagramKind::Interconnection)
+    );
 }
 
 #[test]
 fn asking_for_interconnection_falls_back_where_it_doesnt_fit() {
-    assert_eq!(startup_kind(&model(), &qn("P"), true), Some(DiagramKind::General));
+    assert_eq!(
+        startup_kind(&model(), &qn("P"), true),
+        Some(DiagramKind::General)
+    );
 }
 
 #[test]
 fn a_root_no_diagram_fits_opens_nothing() {
-    assert_eq!(startup_kind(&model(), &qn("P::Vehicle::nothing"), false), None);
+    assert_eq!(
+        startup_kind(&model(), &qn("P::Vehicle::nothing"), false),
+        None
+    );
 }
 
 #[test]
@@ -61,5 +79,11 @@ fn an_interconnection_diagram_saves_and_reopens_as_one() {
     assert!(text.contains(r#""kind": "interconnection""#));
     let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
     assert_eq!(reopened.kind, Some(DiagramKind::Interconnection));
-    assert!(reopened.scene.unwrap().element_bounds(&qn("P::Vehicle::engine")).is_some());
+    assert!(
+        reopened
+            .scene
+            .unwrap()
+            .element_bounds(&qn("P::Vehicle::engine"))
+            .is_some()
+    );
 }

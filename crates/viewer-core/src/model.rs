@@ -6,7 +6,9 @@ use std::fmt;
 use std::path::PathBuf;
 
 /// A `::`-separated element path such as `Vehicles::Car`.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(transparent)]
 pub struct QualifiedName(String);
 
@@ -26,7 +28,9 @@ impl QualifiedName {
 
     /// The qualified name of the enclosing namespace, if any.
     pub fn parent(&self) -> Option<QualifiedName> {
-        self.0.rsplit_once("::").map(|(parent, _)| QualifiedName::new(parent))
+        self.0
+            .rsplit_once("::")
+            .map(|(parent, _)| QualifiedName::new(parent))
     }
 }
 
@@ -239,7 +243,11 @@ impl Element {
             return self.name.clone();
         }
         let ends: Vec<String> = self.ends.iter().map(ToString::to_string).collect();
-        let joiner = if self.kind == ElementKind::BindingConnection { " = " } else { " → " };
+        let joiner = if self.kind == ElementKind::BindingConnection {
+            " = "
+        } else {
+            " → "
+        };
         ends.join(joiner)
     }
 
@@ -312,7 +320,10 @@ impl Model {
     }
 
     /// Elements directly owned by `owner`, ordered by qualified name.
-    pub fn owned_members<'a>(&'a self, owner: &'a QualifiedName) -> impl Iterator<Item = &'a Element> {
+    pub fn owned_members<'a>(
+        &'a self,
+        owner: &'a QualifiedName,
+    ) -> impl Iterator<Item = &'a Element> {
         self.elements
             .values()
             .filter(move |e| e.owner.as_ref() == Some(owner))
@@ -323,7 +334,9 @@ impl Model {
     }
 
     pub fn has_errors(&self) -> bool {
-        self.diagnostics.iter().any(|d| d.severity == Severity::Error)
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error)
     }
 }
 
@@ -416,7 +429,10 @@ impl ModelBuilder {
     }
 
     pub fn exposes(mut self, target: &str, scope: ExposeScope) -> Self {
-        self.last().exposes.push(Expose { target: QualifiedName::new(target), scope });
+        self.last().exposes.push(Expose {
+            target: QualifiedName::new(target),
+            scope,
+        });
         self
     }
 
@@ -435,7 +451,8 @@ impl ModelBuilder {
     }
 
     pub fn element(mut self, name: &str, kind: ElementKind) -> Self {
-        self.elements.push(Element::new(QualifiedName::new(name), kind));
+        self.elements
+            .push(Element::new(QualifiedName::new(name), kind));
         self
     }
 
@@ -455,7 +472,10 @@ impl ModelBuilder {
     }
 
     pub fn multiplicity(mut self, lower: &str, upper: &str) -> Self {
-        self.last().multiplicity = Some(Multiplicity { lower: lower.to_owned(), upper: upper.to_owned() });
+        self.last().multiplicity = Some(Multiplicity {
+            lower: lower.to_owned(),
+            upper: upper.to_owned(),
+        });
         self
     }
 
@@ -478,7 +498,10 @@ impl ModelBuilder {
     }
 
     pub fn at(mut self, file: impl Into<PathBuf>, line: u32) -> Self {
-        self.last().source = Some(SourceLocation { file: file.into(), line });
+        self.last().source = Some(SourceLocation {
+            file: file.into(),
+            line,
+        });
         self
     }
 

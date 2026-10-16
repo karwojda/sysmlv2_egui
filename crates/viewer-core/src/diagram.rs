@@ -26,7 +26,9 @@ impl DiagramKind {
     pub fn description(self) -> &'static str {
         match self {
             DiagramKind::General => "a General Diagram",
-            DiagramKind::Interconnection => "an Interconnection Diagram (it must be a part or part def)",
+            DiagramKind::Interconnection => {
+                "an Interconnection Diagram (it must be a part or part def)"
+            }
         }
     }
 
@@ -34,9 +36,12 @@ impl DiagramKind {
     /// Diagram shows the members of a package or definition.
     pub fn accepts_root(self, element: &Element) -> bool {
         match self {
-            DiagramKind::General => element.kind == ElementKind::Package || element.kind.is_definition(),
+            DiagramKind::General => {
+                element.kind == ElementKind::Package || element.kind.is_definition()
+            }
             DiagramKind::Interconnection => {
-                element.kind == ElementKind::PartDefinition || element.kind == ElementKind::PartUsage
+                element.kind == ElementKind::PartDefinition
+                    || element.kind == ElementKind::PartUsage
             }
         }
     }
@@ -47,7 +52,10 @@ pub enum DiagramError {
     #[error("root element `{0}` does not exist in the Model")]
     RootNotFound(QualifiedName),
     #[error("`{root}` can't be the root of {kind}")]
-    UnsuitableRoot { root: QualifiedName, kind: &'static str },
+    UnsuitableRoot {
+        root: QualifiedName,
+        kind: &'static str,
+    },
     #[error(transparent)]
     View(#[from] crate::view::ViewError),
 }
@@ -59,15 +67,22 @@ pub enum DiagramError {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum DiagramSource {
-    Tool { kind: DiagramKind, root: QualifiedName },
-    View { view: QualifiedName },
+    Tool {
+        kind: DiagramKind,
+        root: QualifiedName,
+    },
+    View {
+        view: QualifiedName,
+    },
 }
 
 impl DiagramSource {
     /// Draws the Diagram with the user's `layout`.
     pub fn build_scene(&self, model: &Model, layout: &Layout) -> Result<Scene, DiagramError> {
         match self {
-            DiagramSource::Tool { kind, root } => build_scene_with_layout(model, *kind, root, layout),
+            DiagramSource::Tool { kind, root } => {
+                build_scene_with_layout(model, *kind, root, layout)
+            }
             DiagramSource::View { view } => Ok(crate::view::build_scene(model, view, layout)?),
         }
     }
@@ -102,16 +117,27 @@ impl DiagramSource {
 /// Whether a Layout key of a Diagram of `kind` rooted at `root` still names
 /// something in the Model: an element (General), or a feature path from the
 /// root (Interconnection).
-pub fn layout_key_exists(model: &Model, kind: DiagramKind, root: &QualifiedName, key: &QualifiedName) -> bool {
+pub fn layout_key_exists(
+    model: &Model,
+    kind: DiagramKind,
+    root: &QualifiedName,
+    key: &QualifiedName,
+) -> bool {
     match kind {
         DiagramKind::General => model.element(key).is_some(),
-        DiagramKind::Interconnection => crate::interconnection::path_exists(model, root, key.as_str()),
+        DiagramKind::Interconnection => {
+            crate::interconnection::path_exists(model, root, key.as_str())
+        }
     }
 }
 
 /// Builds the scene for a Diagram of `kind` rooted at `root`, arranged
 /// automatically.
-pub fn build_scene(model: &Model, kind: DiagramKind, root: &QualifiedName) -> Result<Scene, DiagramError> {
+pub fn build_scene(
+    model: &Model,
+    kind: DiagramKind,
+    root: &QualifiedName,
+) -> Result<Scene, DiagramError> {
     build_scene_with_layout(model, kind, root, &Layout::default())
 }
 
@@ -130,12 +156,21 @@ pub fn build_scene_with_layout(
         return Err(DiagramError::RootNotFound(root.clone()));
     };
     if !kind.accepts_root(element) {
-        return Err(DiagramError::UnsuitableRoot { root: root.clone(), kind: kind.description() });
+        return Err(DiagramError::UnsuitableRoot {
+            root: root.clone(),
+            kind: kind.description(),
+        });
     }
     match kind {
         DiagramKind::General => {
-            let nodes: Vec<&Element> = model.owned_members(root).filter(|e| is_node_in_general(e)).collect();
-            let connections = model.owned_members(root).filter(|e| e.kind.is_connection()).collect();
+            let nodes: Vec<&Element> = model
+                .owned_members(root)
+                .filter(|e| is_node_in_general(e))
+                .collect();
+            let connections = model
+                .owned_members(root)
+                .filter(|e| e.kind.is_connection())
+                .collect();
             Ok(general(model, nodes, connections, layout))
         }
         DiagramKind::Interconnection => crate::interconnection::build(model, root, layout),
@@ -161,8 +196,10 @@ pub fn build_general_scene(model: &Model, elements: &[QualifiedName], layout: &L
         .filter_map(|name| model.element(name))
         .filter(|e| is_node_in_general(e))
         .collect();
-    let owners: std::collections::BTreeSet<&QualifiedName> =
-        nodes.iter().flat_map(|e| std::iter::once(&e.qualified_name).chain(&e.owner)).collect();
+    let owners: std::collections::BTreeSet<&QualifiedName> = nodes
+        .iter()
+        .flat_map(|e| std::iter::once(&e.qualified_name).chain(&e.owner))
+        .collect();
     let connections = owners
         .into_iter()
         .flat_map(|owner| model.owned_members(owner))
@@ -172,31 +209,62 @@ pub fn build_general_scene(model: &Model, elements: &[QualifiedName], layout: &L
 }
 
 enum Edge<'a> {
-    Specialization { specific: usize, general: usize },
-    Typing { usage: usize, definition: usize },
-    Composition { owner: usize, part_type: usize, usage: &'a Element },
+    Specialization {
+        specific: usize,
+        general: usize,
+    },
+    Typing {
+        usage: usize,
+        definition: usize,
+    },
+    Composition {
+        owner: usize,
+        part_type: usize,
+        usage: &'a Element,
+    },
     /// A usage drawn below the usage or definition that owns it, as in a
     /// parts tree.
-    Ownership { owner: usize, usage: usize },
-    Connection { a: usize, b: usize, connection: &'a Element },
+    Ownership {
+        owner: usize,
+        usage: usize,
+    },
+    Connection {
+        a: usize,
+        b: usize,
+        connection: &'a Element,
+    },
 }
 
 /// A General Diagram of `nodes`, each listing in compartments the features
 /// that aren't nodes themselves, with specialization, typing, composition
 /// and `connections` edges between them.
-fn general<'a>(model: &'a Model, nodes: Vec<&'a Element>, connections: Vec<&'a Element>, saved: &Layout) -> Scene {
-    let nodes: Vec<&Element> = nodes.into_iter().filter(|e| !saved.hidden.contains(&e.qualified_name)).collect();
+fn general<'a>(
+    model: &'a Model,
+    nodes: Vec<&'a Element>,
+    connections: Vec<&'a Element>,
+    saved: &Layout,
+) -> Scene {
+    let nodes: Vec<&Element> = nodes
+        .into_iter()
+        .filter(|e| !saved.hidden.contains(&e.qualified_name))
+        .collect();
     let index_of = |name: &QualifiedName| nodes.iter().position(|e| &e.qualified_name == name);
 
     let mut edges = Vec::new();
     for (i, element) in nodes.iter().enumerate() {
         for general in &element.specializes {
             if let Some(general) = index_of(general) {
-                edges.push(Edge::Specialization { specific: i, general });
+                edges.push(Edge::Specialization {
+                    specific: i,
+                    general,
+                });
             }
         }
         if let Some(definition) = element.typed_by.as_ref().and_then(index_of) {
-            edges.push(Edge::Typing { usage: i, definition });
+            edges.push(Edge::Typing {
+                usage: i,
+                definition,
+            });
         }
         if let Some(owner) = element.owner.as_ref().and_then(index_of) {
             edges.push(Edge::Ownership { owner, usage: i });
@@ -205,8 +273,17 @@ fn general<'a>(model: &'a Model, nodes: Vec<&'a Element>, connections: Vec<&'a E
             .owned_members(&element.qualified_name)
             .filter(|m| m.kind == ElementKind::PartUsage)
         {
-            if let Some(part_type) = usage.typed_by.as_ref().and_then(index_of).filter(|&t| t != i) {
-                edges.push(Edge::Composition { owner: i, part_type, usage });
+            if let Some(part_type) = usage
+                .typed_by
+                .as_ref()
+                .and_then(index_of)
+                .filter(|&t| t != i)
+            {
+                edges.push(Edge::Composition {
+                    owner: i,
+                    part_type,
+                    usage,
+                });
             }
         }
     }
@@ -228,7 +305,9 @@ fn general<'a>(model: &'a Model, nodes: Vec<&'a Element>, connections: Vec<&'a E
         .map(|edge| match *edge {
             Edge::Specialization { specific, general } => (general, specific),
             Edge::Typing { usage, definition } => (definition, usage),
-            Edge::Composition { owner, part_type, .. } => (owner, part_type),
+            Edge::Composition {
+                owner, part_type, ..
+            } => (owner, part_type),
             Edge::Ownership { owner, usage } => (owner, usage),
             Edge::Connection { a, b, .. } => (a, b),
         })
@@ -249,7 +328,9 @@ fn general<'a>(model: &'a Model, nodes: Vec<&'a Element>, connections: Vec<&'a E
     let mut fan_slot = Vec::with_capacity(edges.len());
     for edge in &edges {
         let (depicts, from, to) = describe(edge, &nodes);
-        let routed = depicts.edge_key().is_some_and(|key| saved.edges.contains_key(&key));
+        let routed = depicts
+            .edge_key()
+            .is_some_and(|key| saved.edges.contains_key(&key));
         let pair = (from.min(to), from.max(to));
         fan_slot.push((!routed && from != to).then(|| {
             let slot = parallel.entry(pair).or_default();
@@ -272,7 +353,10 @@ fn general<'a>(model: &'a Model, nodes: Vec<&'a Element>, connections: Vec<&'a E
                 notation::fan_bends(rects[pair.0], rects[pair.1], *index, parallel[pair])
             }
             (None, _) => {
-                let obstacles: Vec<Rect> = (0..rects.len()).filter(|&i| i != from && i != to).map(|i| rects[i]).collect();
+                let obstacles: Vec<Rect> = (0..rects.len())
+                    .filter(|&i| i != from && i != to)
+                    .map(|i| rects[i])
+                    .collect();
                 notation::detour(rects[from], rects[to], &obstacles)
             }
         };
@@ -330,26 +414,59 @@ pub(crate) fn page(items: Vec<Item>, rects: &[Rect]) -> Scene {
         right = right.max((e.right() + EDGE_PADDING).ceil());
         bottom = bottom.max((e.bottom() + EDGE_PADDING).ceil());
     }
-    Scene { x: left, y: top, width: right - left, height: bottom - top, items, origins: Default::default() }
+    Scene {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+        items,
+        origins: Default::default(),
+    }
 }
 
 /// What `edge` depicts, and the indices of the nodes it runs from and to.
 fn describe(edge: &Edge, nodes: &[&Element]) -> (Depicts, usize, usize) {
     let name = |i: usize| nodes[i].qualified_name.clone();
     match *edge {
-        Edge::Specialization { specific, general } => {
-            (Depicts::Specialization { specific: name(specific), general: name(general) }, specific, general)
+        Edge::Specialization { specific, general } => (
+            Depicts::Specialization {
+                specific: name(specific),
+                general: name(general),
+            },
+            specific,
+            general,
+        ),
+        Edge::Typing { usage, definition } => (
+            Depicts::Typing {
+                usage: name(usage),
+                definition: name(definition),
+            },
+            usage,
+            definition,
+        ),
+        Edge::Composition {
+            owner,
+            part_type,
+            usage,
+        } => (
+            Depicts::Composition {
+                owner: name(owner),
+                usage: usage.qualified_name.clone(),
+            },
+            owner,
+            part_type,
+        ),
+        Edge::Ownership { owner, usage } => (
+            Depicts::Composition {
+                owner: name(owner),
+                usage: name(usage),
+            },
+            owner,
+            usage,
+        ),
+        Edge::Connection { a, b, connection } => {
+            (Depicts::Connection(connection.qualified_name.clone()), a, b)
         }
-        Edge::Typing { usage, definition } => {
-            (Depicts::Typing { usage: name(usage), definition: name(definition) }, usage, definition)
-        }
-        Edge::Composition { owner, part_type, usage } => {
-            (Depicts::Composition { owner: name(owner), usage: usage.qualified_name.clone() }, owner, part_type)
-        }
-        Edge::Ownership { owner, usage } => {
-            (Depicts::Composition { owner: name(owner), usage: name(usage) }, owner, usage)
-        }
-        Edge::Connection { a, b, connection } => (Depicts::Connection(connection.qualified_name.clone()), a, b),
     }
 }
 
@@ -368,12 +485,22 @@ fn place(
                 let (w, h) = notation::node_size(&contents[i]);
                 [w, h]
             });
-            Rect { x: p.x, y: p.y, width, height }
+            Rect {
+                x: p.x,
+                y: p.y,
+                width,
+                height,
+            }
         })
     };
-    let unplaced: Vec<usize> = (0..nodes.len()).filter(|&i| saved_rect(i).is_none()).collect();
+    let unplaced: Vec<usize> = (0..nodes.len())
+        .filter(|&i| saved_rect(i).is_none())
+        .collect();
     let local = |i: usize| unplaced.iter().position(|&u| u == i);
-    let sizes: Vec<(f32, f32)> = unplaced.iter().map(|&i| notation::node_size(&contents[i])).collect();
+    let sizes: Vec<(f32, f32)> = unplaced
+        .iter()
+        .map(|&i| notation::node_size(&contents[i]))
+        .collect();
     let edges: Vec<(usize, usize)> = layering
         .iter()
         .filter_map(|&(a, b)| Some((local(a)?, local(b)?)))
@@ -384,7 +511,11 @@ fn place(
     let (left, top) = if saved_rects.is_empty() {
         (MARGIN, MARGIN)
     } else {
-        let left = saved_rects.iter().map(|r| r.x).fold(f32::INFINITY, f32::min).max(0.0);
+        let left = saved_rects
+            .iter()
+            .map(|r| r.x)
+            .fold(f32::INFINITY, f32::min)
+            .max(0.0);
         let bottom = saved_rects.iter().map(Rect::bottom).fold(0.0, f32::max);
         (left, bottom + NEW_NODES_GAP)
     };
@@ -393,7 +524,11 @@ fn place(
             Some(rect) => rect,
             None => {
                 let r = auto[local(i).expect("an unplaced node has an automatic place")];
-                Rect { x: r.x + left, y: r.y + top, ..r }
+                Rect {
+                    x: r.x + left,
+                    y: r.y + top,
+                    ..r
+                }
             }
         })
         .collect()

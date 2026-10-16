@@ -5,12 +5,12 @@
 use std::path::Path;
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2};
-use viewer_core::scene::{Depicts, Fill, Point, Rect, Shape, TextAnchor};
 use viewer_core::editing::{self, Edit};
+use viewer_core::scene::{Depicts, Fill, Point, Rect, Shape, TextAnchor};
 use viewer_core::style::{self, Style};
 use viewer_core::{
-    DiagramError, DiagramFile, DiagramKind, DiagramSource, DiagramStyle, Layout, Model, QualifiedName, Scene,
-    diagram_file, svg,
+    DiagramError, DiagramFile, DiagramKind, DiagramSource, DiagramStyle, Layout, Model,
+    QualifiedName, Scene, diagram_file, svg,
 };
 
 const STROKE: Color32 = Color32::BLACK;
@@ -54,7 +54,13 @@ impl OpenDiagram {
     }
 
     pub fn open_source(model: &Model, source: DiagramSource) -> Self {
-        Self::with_layout(model, source, Layout::default(), DiagramStyle::default(), None)
+        Self::with_layout(
+            model,
+            source,
+            Layout::default(),
+            DiagramStyle::default(),
+            None,
+        )
     }
 
     /// Opens a saved Diagram File.
@@ -145,13 +151,29 @@ impl OpenDiagram {
     pub fn title(&self) -> String {
         let title = match (&self.name, &self.source) {
             (Some(name), _) => name.clone(),
-            (None, DiagramSource::Tool { kind: DiagramKind::General, root }) => format!("{} (General)", root.simple_name()),
-            (None, DiagramSource::Tool { kind: DiagramKind::Interconnection, root }) => {
+            (
+                None,
+                DiagramSource::Tool {
+                    kind: DiagramKind::General,
+                    root,
+                },
+            ) => format!("{} (General)", root.simple_name()),
+            (
+                None,
+                DiagramSource::Tool {
+                    kind: DiagramKind::Interconnection,
+                    root,
+                },
+            ) => {
                 format!("{} (Interconnection)", root.simple_name())
             }
             (None, DiagramSource::View { view }) => format!("{} (view)", view.simple_name()),
         };
-        if self.dirty { format!("{title} •") } else { title }
+        if self.dirty {
+            format!("{title} •")
+        } else {
+            title
+        }
     }
 
     /// Saves as the Diagram File `name` in `model_folder`, refusing to
@@ -165,7 +187,8 @@ impl OpenDiagram {
         let mut file = DiagramFile::of(name, self.source.clone());
         file.layout = self.layout.clone();
         file.style = self.style.clone();
-        std::fs::create_dir_all(path.parent().expect("a Diagram File is in a folder")).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(path.parent().expect("a Diagram File is in a folder"))
+            .map_err(|e| e.to_string())?;
         std::fs::write(&path, file.to_text()).map_err(|e| e.to_string())?;
         self.name = Some(name.to_owned());
         self.dirty = false;
@@ -188,7 +211,9 @@ impl OpenDiagram {
 pub fn check_name(name: &str) -> Result<(), String> {
     let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.');
     if name.is_empty() || name.starts_with('.') || !name.chars().all(allowed) {
-        return Err(format!("`{name}` is not a valid Diagram name: use letters, digits, `-`, `_` and `.`"));
+        return Err(format!(
+            "`{name}` is not a valid Diagram name: use letters, digits, `-`, `_` and `.`"
+        ));
     }
     Ok(())
 }
@@ -207,14 +232,24 @@ pub enum Grab {
     /// A node's resize handle, which sits on its corner, half outside it.
     Resize(QualifiedName),
     /// A port, by its key (feature path), on the box with key `on`.
-    Port { key: String, on: QualifiedName },
+    Port {
+        key: String,
+        on: QualifiedName,
+    },
     /// An existing bend of an edge, by its index among the edge's bends.
-    Bend { edge: Depicts, index: usize },
+    Bend {
+        edge: Depicts,
+        index: usize,
+    },
     Move(QualifiedName),
     /// An edge's line between bends: segment `segment` runs from point
     /// `segment` to point `segment + 1` of its path. `at` is the press, in
     /// scene coordinates, where a new bend would go.
-    Segment { edge: Depicts, segment: usize, at: Point },
+    Segment {
+        edge: Depicts,
+        segment: usize,
+        at: Point,
+    },
     /// Empty canvas.
     Pan,
 }
@@ -227,18 +262,28 @@ pub enum Grab {
 pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
     let screen = |p: Point| view.to_screen(origin, p);
     let movable = |key: &QualifiedName| scene.origins.is_empty() || scene.origins.contains_key(key);
-    let handle = scene.elements().into_iter().filter(|k| movable(k)).rev().find(|element| {
-        scene.node_bounds(element).is_some_and(|b| {
-            let corner = screen(Point::new(b.right(), b.bottom()));
-            (pos - corner).x.abs() <= RESIZE_HANDLE && (pos - corner).y.abs() <= RESIZE_HANDLE
-        })
-    });
+    let handle = scene
+        .elements()
+        .into_iter()
+        .filter(|k| movable(k))
+        .rev()
+        .find(|element| {
+            scene.node_bounds(element).is_some_and(|b| {
+                let corner = screen(Point::new(b.right(), b.bottom()));
+                (pos - corner).x.abs() <= RESIZE_HANDLE && (pos - corner).y.abs() <= RESIZE_HANDLE
+            })
+        });
     if let Some(element) = handle {
         return Grab::Resize(element.clone());
     }
     if let Some((_, _, key)) = scene.port_at(view.to_scene(origin, pos)) {
         // A nested port moves with its composite port: grab that instead.
-        let is_port = |k: &str| scene.items.iter().any(|i| matches!(&i.depicts, Depicts::Port { key, .. } if key == k));
+        let is_port = |k: &str| {
+            scene
+                .items
+                .iter()
+                .any(|i| matches!(&i.depicts, Depicts::Port { key, .. } if key == k))
+        };
         let key = match key.rsplit_once('.') {
             Some((parent, _)) if is_port(parent) => parent,
             _ => key,
@@ -246,24 +291,47 @@ pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
         // A port's box: the part its key leads to, or the Frame.
         let on = match key.rsplit_once('.') {
             Some((part, _)) => QualifiedName::new(part),
-            None => scene.elements().into_iter().find(|k| !movable(k)).cloned().unwrap_or_else(|| QualifiedName::new("")),
+            None => scene
+                .elements()
+                .into_iter()
+                .find(|k| !movable(k))
+                .cloned()
+                .unwrap_or_else(|| QualifiedName::new("")),
         };
-        return Grab::Port { key: key.to_owned(), on };
+        return Grab::Port {
+            key: key.to_owned(),
+            on,
+        };
     }
     let edges = scene.edges();
     for (edge, path) in edges.iter().rev() {
         let inner = &path[1..path.len() - 1];
-        if let Some(index) = inner.iter().position(|p| screen(*p).distance(pos) <= BEND_HANDLE) {
-            return Grab::Bend { edge: (*edge).clone(), index };
+        if let Some(index) = inner
+            .iter()
+            .position(|p| screen(*p).distance(pos) <= BEND_HANDLE)
+        {
+            return Grab::Bend {
+                edge: (*edge).clone(),
+                index,
+            };
         }
     }
-    if let Some(element) = scene.element_at(view.to_scene(origin, pos)).filter(|k| movable(k)) {
+    if let Some(element) = scene
+        .element_at(view.to_scene(origin, pos))
+        .filter(|k| movable(k))
+    {
         return Grab::Move(element.clone());
     }
     for (edge, path) in edges.iter().rev() {
-        let near = path.windows(2).position(|s| distance_to_segment(pos, screen(s[0]), screen(s[1])) <= EDGE_TOLERANCE);
+        let near = path
+            .windows(2)
+            .position(|s| distance_to_segment(pos, screen(s[0]), screen(s[1])) <= EDGE_TOLERANCE);
         if let Some(segment) = near {
-            return Grab::Segment { edge: (*edge).clone(), segment, at: view.to_scene(origin, pos) };
+            return Grab::Segment {
+                edge: (*edge).clone(),
+                segment,
+                at: view.to_scene(origin, pos),
+            };
         }
     }
     Grab::Pan
@@ -271,7 +339,11 @@ pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
 
 fn distance_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let ab = b - a;
-    let t = if ab.length_sq() == 0.0 { 0.0 } else { ((p - a).dot(ab) / ab.length_sq()).clamp(0.0, 1.0) };
+    let t = if ab.length_sq() == 0.0 {
+        0.0
+    } else {
+        ((p - a).dot(ab) / ab.length_sq()).clamp(0.0, 1.0)
+    };
     p.distance(a + ab * t)
 }
 
@@ -284,7 +356,10 @@ pub struct View {
 
 impl Default for View {
     fn default() -> Self {
-        Self { pan: Vec2::ZERO, zoom: 1.0 }
+        Self {
+            pan: Vec2::ZERO,
+            zoom: 1.0,
+        }
     }
 }
 
@@ -308,14 +383,25 @@ impl View {
     /// Fits a page at `top_left` of `size` into `available`, centered,
     /// never enlarging.
     pub fn fit(top_left: Vec2, size: Vec2, available: Vec2) -> Self {
-        let zoom = (available.x / size.x).min(available.y / size.y).clamp(MIN_ZOOM, 1.0);
-        Self { pan: (available - size * zoom) / 2.0 - top_left * zoom, zoom }
+        let zoom = (available.x / size.x)
+            .min(available.y / size.y)
+            .clamp(MIN_ZOOM, 1.0);
+        Self {
+            pan: (available - size * zoom) / 2.0 - top_left * zoom,
+            zoom,
+        }
     }
 }
 
 /// Paints `scene` with its top-left at `origin + view.pan`, outlining the
 /// node rect `highlight`.
-pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, highlight: Option<Rect>) {
+pub fn paint(
+    painter: &egui::Painter,
+    scene: &Scene,
+    view: View,
+    origin: Pos2,
+    highlight: Option<Rect>,
+) {
     let z = view.zoom;
     let at = |p: Point| view.to_screen(origin, p);
     let stroke = Stroke::new(z.max(0.5), STROKE);
@@ -326,17 +412,33 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
         Fill::Color(c) => Color32::from_rgb(c.0, c.1, c.2),
     };
 
-    let page = egui::Rect::from_min_size(at(Point::new(scene.x, scene.y)), Vec2::new(scene.width, scene.height) * z);
+    let page = egui::Rect::from_min_size(
+        at(Point::new(scene.x, scene.y)),
+        Vec2::new(scene.width, scene.height) * z,
+    );
     painter.rect_filled(page, 0.0, PAGE);
 
     for item in &scene.items {
         match &item.shape {
-            Shape::Rect { rect, fill: f, corner_radius, dashed } => {
-                let r = egui::Rect::from_min_size(at(Point::new(rect.x, rect.y)), Vec2::new(rect.width, rect.height) * z);
+            Shape::Rect {
+                rect,
+                fill: f,
+                corner_radius,
+                dashed,
+            } => {
+                let r = egui::Rect::from_min_size(
+                    at(Point::new(rect.x, rect.y)),
+                    Vec2::new(rect.width, rect.height) * z,
+                );
                 if *dashed {
                     // egui has no dashed rect: fill it, then dash its outline.
                     painter.rect_filled(r, corner_radius * z, fill(*f));
-                    painter.extend(egui::Shape::dashed_line(&rounded_outline(r, corner_radius * z), stroke, 6.0 * z, 4.0 * z));
+                    painter.extend(egui::Shape::dashed_line(
+                        &rounded_outline(r, corner_radius * z),
+                        stroke,
+                        6.0 * z,
+                        4.0 * z,
+                    ));
                 } else {
                     painter.rect(r, corner_radius * z, fill(*f), stroke, StrokeKind::Middle);
                 }
@@ -353,10 +455,20 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
                 let points: Vec<Pos2> = points.iter().map(|p| at(*p)).collect();
                 painter.add(egui::Shape::convex_polygon(points, fill(*f), stroke));
             }
-            Shape::Circle { center, radius, fill: f } => {
+            Shape::Circle {
+                center,
+                radius,
+                fill: f,
+            } => {
                 painter.circle_filled(at(*center), radius * z, fill(*f));
             }
-            Shape::Text { position, text, anchor, font, fill: text_fill } => {
+            Shape::Text {
+                position,
+                text,
+                anchor,
+                font,
+                fill: text_fill,
+            } => {
                 let color = fill(*text_fill);
                 let size = font.size * z;
                 let pos = at(*position) + Vec2::new(0.0, size * DESCENT);
@@ -367,7 +479,12 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
                 };
                 let mut job = egui::text::LayoutJob::single_section(
                     text.clone(),
-                    egui::TextFormat { font_id: FontId::proportional(size), color, italics: font.italic, ..Default::default() },
+                    egui::TextFormat {
+                        font_id: FontId::proportional(size),
+                        color,
+                        italics: font.italic,
+                        ..Default::default()
+                    },
                 );
                 job.wrap.max_width = f32::INFINITY;
                 let galley = painter.layout_job(job);
@@ -382,7 +499,10 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
     }
 
     if let Some(bounds) = highlight {
-        let r = egui::Rect::from_min_size(at(Point::new(bounds.x, bounds.y)), Vec2::new(bounds.width, bounds.height) * z);
+        let r = egui::Rect::from_min_size(
+            at(Point::new(bounds.x, bounds.y)),
+            Vec2::new(bounds.width, bounds.height) * z,
+        );
         painter.rect_stroke(r, 2.0, Stroke::new(2.0, HIGHLIGHT), StrokeKind::Outside);
     }
 }
@@ -416,7 +536,10 @@ mod tests {
     fn zooming_keeps_the_point_under_the_pointer_in_place() {
         let origin = Pos2::new(100.0, 50.0);
         let pointer = Pos2::new(400.0, 300.0);
-        let mut view = View { pan: Vec2::new(20.0, -10.0), zoom: 1.5 };
+        let mut view = View {
+            pan: Vec2::new(20.0, -10.0),
+            zoom: 1.5,
+        };
         let before = view.to_scene(origin, pointer);
 
         view.zoom_at(origin, pointer, 1.7);
@@ -428,7 +551,10 @@ mod tests {
 
     #[test]
     fn screen_and_scene_coordinates_round_trip() {
-        let view = View { pan: Vec2::new(12.0, 34.0), zoom: 0.75 };
+        let view = View {
+            pan: Vec2::new(12.0, 34.0),
+            zoom: 0.75,
+        };
         let origin = Pos2::new(5.0, 6.0);
 
         let p = view.to_scene(origin, view.to_screen(origin, Point::new(80.0, 120.0)));
@@ -438,20 +564,39 @@ mod tests {
 
     #[test]
     fn fitting_centers_the_scene_and_never_enlarges_it() {
-        let small = View::fit(Vec2::ZERO, Vec2::new(200.0, 100.0), Vec2::new(1000.0, 500.0));
+        let small = View::fit(
+            Vec2::ZERO,
+            Vec2::new(200.0, 100.0),
+            Vec2::new(1000.0, 500.0),
+        );
         assert_eq!(small.zoom, 1.0);
         assert_eq!(small.pan, Vec2::new(400.0, 200.0));
 
-        let large = View::fit(Vec2::ZERO, Vec2::new(2000.0, 500.0), Vec2::new(1000.0, 500.0));
+        let large = View::fit(
+            Vec2::ZERO,
+            Vec2::new(2000.0, 500.0),
+            Vec2::new(1000.0, 500.0),
+        );
         assert_eq!(large.zoom, 0.5);
         assert_eq!(large.pan, Vec2::new(0.0, 125.0));
 
-        let shifted = View::fit(Vec2::new(-40.0, -10.0), Vec2::new(200.0, 100.0), Vec2::new(1000.0, 500.0));
-        assert_eq!(shifted.pan, Vec2::new(440.0, 210.0), "the page's top-left lands where an unshifted one would");
+        let shifted = View::fit(
+            Vec2::new(-40.0, -10.0),
+            Vec2::new(200.0, 100.0),
+            Vec2::new(1000.0, 500.0),
+        );
+        assert_eq!(
+            shifted.pan,
+            Vec2::new(440.0, 210.0),
+            "the page's top-left lands where an unshifted one would"
+        );
     }
 
     fn scene_with_node() -> Scene {
-        let model = viewer_core::Model::builder().package("P").part_def("P::A").build();
+        let model = viewer_core::Model::builder()
+            .package("P")
+            .part_def("P::A")
+            .build();
         viewer_core::build_scene(&model, DiagramKind::General, &QualifiedName::from("P")).unwrap()
     }
 
@@ -460,12 +605,19 @@ mod tests {
         let scene = scene_with_node();
         let a = QualifiedName::from("P::A");
         let b = scene.node_bounds(&a).unwrap();
-        let view = View { pan: Vec2::new(30.0, 10.0), zoom: 2.0 };
+        let view = View {
+            pan: Vec2::new(30.0, 10.0),
+            zoom: 2.0,
+        };
         let origin = Pos2::new(100.0, 50.0);
         let corner = view.to_screen(origin, Point::new(b.right(), b.bottom()));
 
         for offset in [Vec2::ZERO, Vec2::new(6.0, 6.0), Vec2::new(-6.0, -6.0)] {
-            assert_eq!(grab_at(&scene, view, origin, corner + offset), Grab::Resize(a.clone()), "{offset:?}");
+            assert_eq!(
+                grab_at(&scene, view, origin, corner + offset),
+                Grab::Resize(a.clone()),
+                "{offset:?}"
+            );
         }
     }
 
@@ -490,10 +642,21 @@ mod tests {
             .part_def("P::B")
             .specializes("P::A")
             .build();
-        let edge = Depicts::Specialization { specific: QualifiedName::from("P::B"), general: QualifiedName::from("P::A") };
+        let edge = Depicts::Specialization {
+            specific: QualifiedName::from("P::B"),
+            general: QualifiedName::from("P::A"),
+        };
         let mut layout = Layout::default();
-        layout.edges.insert(edge.edge_key().unwrap(), vec![[300.0, 120.0]]);
-        let scene = viewer_core::build_scene_with_layout(&model, DiagramKind::General, &QualifiedName::from("P"), &layout).unwrap();
+        layout
+            .edges
+            .insert(edge.edge_key().unwrap(), vec![[300.0, 120.0]]);
+        let scene = viewer_core::build_scene_with_layout(
+            &model,
+            DiagramKind::General,
+            &QualifiedName::from("P"),
+            &layout,
+        )
+        .unwrap();
         (scene, edge)
     }
 
@@ -512,10 +675,19 @@ mod tests {
         let path = scene.edges()[0].1.to_vec();
         let on_line = Pos2::new((path[0].x + path[1].x) / 2.0, (path[0].y + path[1].y) / 2.0);
 
-        let grab = grab_at(&scene, View::default(), Pos2::ZERO, on_line + Vec2::new(2.0, 0.0));
+        let grab = grab_at(
+            &scene,
+            View::default(),
+            Pos2::ZERO,
+            on_line + Vec2::new(2.0, 0.0),
+        );
 
         match grab {
-            Grab::Segment { edge: grabbed, segment: 0, at } => {
+            Grab::Segment {
+                edge: grabbed,
+                segment: 0,
+                at,
+            } => {
                 assert_eq!(grabbed, edge);
                 assert!((at.x - on_line.x - 2.0).abs() < 1e-3 && (at.y - on_line.y).abs() < 1e-3);
             }
@@ -531,9 +703,15 @@ mod tests {
         // The edge enters A's border; a press just inside A grabs A.
         let path = scene.edges()[0].1.to_vec();
         let end = *path.last().unwrap();
-        let inside = Pos2::new(end.x.clamp(b.x + 3.0, b.right() - RESIZE_HANDLE - 3.0), b.bottom() - 3.0);
+        let inside = Pos2::new(
+            end.x.clamp(b.x + 3.0, b.right() - RESIZE_HANDLE - 3.0),
+            b.bottom() - 3.0,
+        );
 
-        assert_eq!(grab_at(&scene, View::default(), Pos2::ZERO, inside), Grab::Move(a));
+        assert_eq!(
+            grab_at(&scene, View::default(), Pos2::ZERO, inside),
+            Grab::Move(a)
+        );
     }
 
     #[test]
@@ -551,12 +729,19 @@ mod tests {
             .part("P::Sys::a")
             .typed_by("P::A")
             .build();
-        let scene = viewer_core::build_scene(&model, DiagramKind::Interconnection, &QualifiedName::from("P::Sys")).unwrap();
+        let scene = viewer_core::build_scene(
+            &model,
+            DiagramKind::Interconnection,
+            &QualifiedName::from("P::Sys"),
+        )
+        .unwrap();
         let inner = scene
             .items
             .iter()
             .find_map(|i| match (&i.depicts, &i.shape) {
-                (Depicts::Port { key, .. }, Shape::Rect { rect, .. }) if key == "a.outer.inner" => Some(*rect),
+                (Depicts::Port { key, .. }, Shape::Rect { rect, .. }) if key == "a.outer.inner" => {
+                    Some(*rect)
+                }
                 _ => None,
             })
             .unwrap();
@@ -564,7 +749,13 @@ mod tests {
 
         let grab = grab_at(&scene, View::default(), Pos2::ZERO, centre);
 
-        assert_eq!(grab, Grab::Port { key: "a.outer".into(), on: QualifiedName::from("a") });
+        assert_eq!(
+            grab,
+            Grab::Port {
+                key: "a.outer".into(),
+                on: QualifiedName::from("a")
+            }
+        );
     }
 
     #[test]

@@ -4,7 +4,10 @@
 use std::path::Path;
 
 use viewer_core::scene::{Depicts, Fill, Shape};
-use viewer_core::{DiagramError, DiagramKind, FakeBackend, Model, ModelBackend, QualifiedName, Scene, build_scene, svg};
+use viewer_core::{
+    DiagramError, DiagramKind, FakeBackend, Model, ModelBackend, QualifiedName, Scene, build_scene,
+    svg,
+};
 
 fn vehicles() -> Model {
     let model = Model::builder()
@@ -21,7 +24,9 @@ fn vehicles() -> Model {
         .package("Vehicles::Parts")
         .part_def("Vehicles::Parts::Wheel")
         .build();
-    FakeBackend::new(model).load(Path::new("fixtures/vehicles")).unwrap()
+    FakeBackend::new(model)
+        .load(Path::new("fixtures/vehicles"))
+        .unwrap()
 }
 
 fn general(model: &Model, root: &str) -> Scene {
@@ -50,7 +55,13 @@ fn shows_the_part_definitions_owned_by_the_root_package() {
     elements.sort();
     assert_eq!(
         elements,
-        ["Vehicles::Car", "Vehicles::ElectricCar", "Vehicles::Engine", "Vehicles::Truck", "Vehicles::Vehicle"]
+        [
+            "Vehicles::Car",
+            "Vehicles::ElectricCar",
+            "Vehicles::Engine",
+            "Vehicles::Truck",
+            "Vehicles::Vehicle"
+        ]
     );
 }
 
@@ -74,7 +85,10 @@ fn draws_part_definitions_with_keyword_above_name() {
 fn draws_a_specialization_edge_ending_in_a_hollow_triangle_at_the_general() {
     let scene = general(&vehicles(), "Vehicles");
     let general_bounds = scene.node_bounds(&qn("Vehicles::Vehicle")).unwrap();
-    let edge = Depicts::Specialization { specific: qn("Vehicles::Car"), general: qn("Vehicles::Vehicle") };
+    let edge = Depicts::Specialization {
+        specific: qn("Vehicles::Car"),
+        general: qn("Vehicles::Vehicle"),
+    };
 
     let triangle = scene
         .items_depicting(&edge)
@@ -88,7 +102,11 @@ fn draws_a_specialization_edge_ending_in_a_hollow_triangle_at_the_general() {
     assert_eq!(points.len(), 3);
     assert_eq!(fill, Fill::Background, "the triangle is hollow");
     let tip = points[0];
-    assert_eq!(tip.y, general_bounds.bottom(), "the tip touches the general node");
+    assert_eq!(
+        tip.y,
+        general_bounds.bottom(),
+        "the tip touches the general node"
+    );
 }
 
 #[test]
@@ -167,7 +185,10 @@ fn an_empty_package_gives_an_empty_diagram() {
 fn a_missing_root_element_is_an_error() {
     let result = build_scene(&vehicles(), DiagramKind::General, &qn("Vehicles::Gone"));
 
-    assert_eq!(result.unwrap_err(), DiagramError::RootNotFound(qn("Vehicles::Gone")));
+    assert_eq!(
+        result.unwrap_err(),
+        DiagramError::RootNotFound(qn("Vehicles::Gone"))
+    );
 }
 
 #[test]
@@ -182,7 +203,10 @@ fn export_is_deterministic() {
 
 #[test]
 fn export_escapes_names() {
-    let model = Model::builder().package("P").part_def("P::'A<B>&C'").build();
+    let model = Model::builder()
+        .package("P")
+        .part_def("P::'A<B>&C'")
+        .build();
 
     let svg = svg::render(&general(&model, "P"));
 
@@ -198,7 +222,14 @@ fn export_matches_the_golden_file() {
         std::fs::create_dir_all(golden.parent().unwrap()).unwrap();
         std::fs::write(&golden, &svg).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }

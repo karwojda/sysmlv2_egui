@@ -10,13 +10,19 @@ use viewer_core::{BackendError, FakeBackend, Model, ModelBackend, QualifiedName}
 use viewer_opensysml::OpenSysmlBackend;
 
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 /// Asserts element by element, so a mismatch names the element.
 fn assert_same_model(real: &Model, fake: &Model) {
     assert_eq!(real.diagnostics(), fake.diagnostics());
-    let names = |m: &Model| m.elements().map(|e| e.qualified_name.clone()).collect::<Vec<_>>();
+    let names = |m: &Model| {
+        m.elements()
+            .map(|e| e.qualified_name.clone())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(names(real), names(fake));
     for (real, fake) in real.elements().zip(fake.elements()) {
         assert_eq!(real, fake);
@@ -149,7 +155,9 @@ fn structure() -> Model {
 #[ignore = "needs the sysml-grpc service"]
 fn loads_the_same_model_as_the_fake_backend() {
     let real = OpenSysmlBackend::new().load(&fixture("vehicles")).unwrap();
-    let fake = FakeBackend::new(vehicles()).load(&fixture("vehicles")).unwrap();
+    let fake = FakeBackend::new(vehicles())
+        .load(&fixture("vehicles"))
+        .unwrap();
 
     assert_same_model(&real, &fake);
 }
@@ -166,12 +174,27 @@ fn loads_the_full_language_subset_like_the_fake_backend() {
 #[ignore = "needs the sysml-grpc service"]
 fn resolves_types_from_imports_and_the_standard_library() {
     let model = OpenSysmlBackend::new().load(&fixture("imports")).unwrap();
-    let typed_by = |name: &str| model.element(&QualifiedName::from(name)).unwrap().typed_by.clone();
+    let typed_by = |name: &str| {
+        model
+            .element(&QualifiedName::from(name))
+            .unwrap()
+            .typed_by
+            .clone()
+    };
 
     assert_eq!(model.diagnostics(), &[]);
-    assert_eq!(typed_by("Uses::limit"), Some(QualifiedName::from("ScalarValues::Real")));
-    assert_eq!(typed_by("Defs::Car::speed"), Some(QualifiedName::from("ScalarValues::Real")));
-    assert_eq!(typed_by("Uses::car"), Some(QualifiedName::from("Defs::Car")));
+    assert_eq!(
+        typed_by("Uses::limit"),
+        Some(QualifiedName::from("ScalarValues::Real"))
+    );
+    assert_eq!(
+        typed_by("Defs::Car::speed"),
+        Some(QualifiedName::from("ScalarValues::Real"))
+    );
+    assert_eq!(
+        typed_by("Uses::car"),
+        Some(QualifiedName::from("Defs::Car"))
+    );
 }
 
 #[test]
@@ -232,19 +255,33 @@ fn an_empty_folder_is_an_empty_model_without_starting_the_service() {
 #[test]
 #[ignore = "needs the sysml-grpc service"]
 fn a_broken_file_does_not_cost_other_files_their_source_lines() {
-    let folder = std::env::temp_dir().join(format!("viewer-opensysml-mixed-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("viewer-opensysml-mixed-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
-    std::fs::copy(fixture("broken").join("broken.sysml"), folder.join("broken.sysml")).unwrap();
-    std::fs::copy(fixture("vehicles").join("vehicles.sysml"), folder.join("vehicles.sysml")).unwrap();
+    std::fs::copy(
+        fixture("broken").join("broken.sysml"),
+        folder.join("broken.sysml"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixture("vehicles").join("vehicles.sysml"),
+        folder.join("vehicles.sysml"),
+    )
+    .unwrap();
 
     let model = OpenSysmlBackend::new().load(&folder).unwrap();
     std::fs::remove_dir_all(&folder).unwrap();
 
-    let car = model.element(&QualifiedName::from("Vehicles::Car")).unwrap();
+    let car = model
+        .element(&QualifiedName::from("Vehicles::Car"))
+        .unwrap();
     assert_eq!(car.source.as_ref().map(|s| s.line), Some(3));
     assert!(model.has_errors());
     assert!(
-        model.diagnostics().iter().all(|d| d.severity == Severity::Error),
+        model
+            .diagnostics()
+            .iter()
+            .all(|d| d.severity == Severity::Error),
         "no extra warning repeats the broken file's error: {:?}",
         model.diagnostics()
     );
@@ -265,7 +302,9 @@ fn without_sources(model: &Model) -> Model {
 #[test]
 #[ignore = "needs the sysml-grpc service"]
 fn loads_the_drivetrain_like_the_interconnection_tests_fake_twin() {
-    let real = OpenSysmlBackend::new().load(&fixture("drivetrain")).unwrap();
+    let real = OpenSysmlBackend::new()
+        .load(&fixture("drivetrain"))
+        .unwrap();
 
     assert_same_model(&without_sources(&real), &common::drivetrain());
 }

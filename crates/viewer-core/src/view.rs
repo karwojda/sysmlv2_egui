@@ -3,7 +3,9 @@
 
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
-use crate::diagram::{DiagramKind, build_general_scene, build_scene_with_layout, is_node_in_general};
+use crate::diagram::{
+    DiagramKind, build_general_scene, build_scene_with_layout, is_node_in_general,
+};
 use crate::diagram_file::Layout;
 use crate::model::{Element, ElementKind, ExposeScope, Model, QualifiedName};
 use crate::scene::Scene;
@@ -45,7 +47,9 @@ pub enum ViewError {
 
 /// Every view usage in the Model, in qualified-name order.
 pub fn views(model: &Model) -> impl Iterator<Item = &Element> {
-    model.elements().filter(|e| e.kind == ElementKind::ViewUsage)
+    model
+        .elements()
+        .filter(|e| e.kind == ElementKind::ViewUsage)
 }
 
 /// The Diagram Kind `view` is drawn as, from its own rendering, else the
@@ -56,7 +60,10 @@ pub fn kind(model: &Model, view: &QualifiedName) -> Result<DiagramKind, ViewErro
         .element(view)
         .filter(|e| e.kind == ElementKind::ViewUsage)
         .ok_or_else(|| ViewError::NotAView(view.clone()))?;
-    let unsupported = |reason: String| ViewError::Unsupported { view: view.clone(), reason };
+    let unsupported = |reason: String| ViewError::Unsupported {
+        view: view.clone(),
+        reason,
+    };
 
     let mut standard = None;
     let mut seen = HashSet::new();
@@ -66,7 +73,10 @@ pub fn kind(model: &Model, view: &QualifiedName) -> Result<DiagramKind, ViewErro
             return match rendering.as_str() {
                 TREE => Ok(DiagramKind::General),
                 INTERCONNECTION => Ok(DiagramKind::Interconnection),
-                _ => Err(unsupported(format!("it renders as `{}`", rendering.simple_name()))),
+                _ => Err(unsupported(format!(
+                    "it renders as `{}`",
+                    rendering.simple_name()
+                ))),
             };
         }
         for general in current.typed_by.iter().chain(&current.specializes) {
@@ -75,7 +85,9 @@ pub fn kind(model: &Model, view: &QualifiedName) -> Result<DiagramKind, ViewErro
             }
             match model.element(general) {
                 Some(definition) => queue.push_back(definition),
-                None if standard.is_none() && general.as_str().starts_with("StandardViewDefinitions::") => {
+                None if standard.is_none()
+                    && general.as_str().starts_with("StandardViewDefinitions::") =>
+                {
                     standard = Some(general.clone());
                 }
                 None => {}
@@ -85,7 +97,10 @@ pub fn kind(model: &Model, view: &QualifiedName) -> Result<DiagramKind, ViewErro
     match standard.as_ref().map(QualifiedName::as_str) {
         Some(GENERAL_VIEW) => Ok(DiagramKind::General),
         Some(INTERCONNECTION_VIEW) => Ok(DiagramKind::Interconnection),
-        Some(_) => Err(unsupported(format!("it is a `{}`", standard.as_ref().unwrap().simple_name()))),
+        Some(_) => Err(unsupported(format!(
+            "it is a `{}`",
+            standard.as_ref().unwrap().simple_name()
+        ))),
         None => Err(unsupported("it has no rendering".to_owned())),
     }
 }
@@ -101,13 +116,18 @@ pub fn resolve(model: &Model, view: &QualifiedName) -> Result<ViewContents, View
             for expose in exposes {
                 let target = model.element(&expose.target);
                 let is_package = target.is_some_and(|t| t.kind == ElementKind::Package);
-                let itself = matches!(expose.scope, ExposeScope::Element | ExposeScope::ElementAndDescendants);
+                let itself = matches!(
+                    expose.scope,
+                    ExposeScope::Element | ExposeScope::ElementAndDescendants
+                );
                 if itself && !is_package {
                     shown.extend(target.map(|t| &t.qualified_name));
                 }
                 match expose.scope {
                     // A package isn't drawn, so exposing one shows its members.
-                    ExposeScope::Element if is_package => shown.extend(members(model, &expose.target)),
+                    ExposeScope::Element if is_package => {
+                        shown.extend(members(model, &expose.target))
+                    }
                     ExposeScope::Element => {}
                     ExposeScope::Members => shown.extend(members(model, &expose.target)),
                     ExposeScope::ElementAndDescendants | ExposeScope::Descendants => {
@@ -123,10 +143,17 @@ pub fn resolve(model: &Model, view: &QualifiedName) -> Result<ViewContents, View
             Ok(ViewContents::General(nodes))
         }
         DiagramKind::Interconnection => {
-            let invalid = |reason: String| ViewError::Invalid { view: view.clone(), reason };
+            let invalid = |reason: String| ViewError::Invalid {
+                view: view.clone(),
+                reason,
+            };
             let targets: BTreeSet<&QualifiedName> = exposes.iter().map(|e| &e.target).collect();
             let root = match targets.into_iter().collect::<Vec<_>>().as_slice() {
-                [] => return Err(invalid("it exposes nothing to draw as an Interconnection Diagram".to_owned())),
+                [] => {
+                    return Err(invalid(
+                        "it exposes nothing to draw as an Interconnection Diagram".to_owned(),
+                    ));
+                }
                 [root] => (*root).clone(),
                 many => {
                     let names: Vec<String> = many.iter().map(|n| format!("`{n}`")).collect();
@@ -154,18 +181,38 @@ pub fn file_name(view: &QualifiedName) -> String {
         .simple_name()
         .trim_matches('\'')
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let name = name.trim_start_matches('.');
-    if name.is_empty() { "view".to_owned() } else { name.to_owned() }
+    if name.is_empty() {
+        "view".to_owned()
+    } else {
+        name.to_owned()
+    }
 }
 
 /// Draws `view` as its Model-defined Diagram, with the user's `layout`.
-pub fn build_scene(model: &Model, view: &QualifiedName, layout: &Layout) -> Result<Scene, ViewError> {
+pub fn build_scene(
+    model: &Model,
+    view: &QualifiedName,
+    layout: &Layout,
+) -> Result<Scene, ViewError> {
     match resolve(model, view)? {
         ViewContents::General(nodes) => Ok(build_general_scene(model, &nodes, layout)),
-        ViewContents::Interconnection(root) => build_scene_with_layout(model, DiagramKind::Interconnection, &root, layout)
-            .map_err(|error| ViewError::Invalid { view: view.clone(), reason: error.to_string() }),
+        ViewContents::Interconnection(root) => {
+            build_scene_with_layout(model, DiagramKind::Interconnection, &root, layout).map_err(
+                |error| ViewError::Invalid {
+                    view: view.clone(),
+                    reason: error.to_string(),
+                },
+            )
+        }
     }
 }
 
@@ -184,11 +231,18 @@ pub fn layout_key_exists(model: &Model, view: &QualifiedName, key: &QualifiedNam
     }
 }
 
-fn members<'a>(model: &'a Model, owner: &'a QualifiedName) -> impl Iterator<Item = &'a QualifiedName> {
+fn members<'a>(
+    model: &'a Model,
+    owner: &'a QualifiedName,
+) -> impl Iterator<Item = &'a QualifiedName> {
     model.owned_members(owner).map(|e| &e.qualified_name)
 }
 
-fn descendants<'a>(model: &'a Model, owner: &'a QualifiedName, out: &mut BTreeSet<&'a QualifiedName>) {
+fn descendants<'a>(
+    model: &'a Model,
+    owner: &'a QualifiedName,
+    out: &mut BTreeSet<&'a QualifiedName>,
+) {
     for member in model.owned_members(owner) {
         if out.insert(&member.qualified_name) {
             descendants(model, &member.qualified_name, out);

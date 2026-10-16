@@ -43,7 +43,11 @@ pub struct DiagramStyle {
 
 impl Default for DiagramStyle {
     fn default() -> Self {
-        Self { model_style: true, rules: Vec::new(), legend: false }
+        Self {
+            model_style: true,
+            rules: Vec::new(),
+            legend: false,
+        }
     }
 }
 
@@ -122,9 +126,16 @@ impl Layout {
     /// The Orphaned Layout Entries: elements the Layout mentions that the
     /// Model no longer has, in order.
     pub fn orphaned(&self, model: &Model) -> Vec<&QualifiedName> {
-        let mentioned: BTreeSet<&QualifiedName> =
-            self.nodes.keys().chain(&self.hidden).chain(&self.collapsed).collect();
-        mentioned.into_iter().filter(|e| model.element(e).is_none()).collect()
+        let mentioned: BTreeSet<&QualifiedName> = self
+            .nodes
+            .keys()
+            .chain(&self.hidden)
+            .chain(&self.collapsed)
+            .collect();
+        mentioned
+            .into_iter()
+            .filter(|e| model.element(e).is_none())
+            .collect()
     }
 }
 
@@ -155,13 +166,16 @@ impl DiagramFile {
     pub fn parse(text: &str) -> Result<Self, DiagramFileError> {
         let file: DiagramFile = serde_json::from_str(text)?;
         if file.format_version != FORMAT_VERSION {
-            return Err(DiagramFileError::UnsupportedVersion { found: file.format_version });
+            return Err(DiagramFileError::UnsupportedVersion {
+                found: file.format_version,
+            });
         }
         Ok(file)
     }
 
     pub fn to_text(&self) -> String {
-        let mut text = serde_json::to_string_pretty(self).expect("a Diagram File always serializes");
+        let mut text =
+            serde_json::to_string_pretty(self).expect("a Diagram File always serializes");
         text.push('\n');
         text
     }

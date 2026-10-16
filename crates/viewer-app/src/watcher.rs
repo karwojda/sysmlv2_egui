@@ -30,10 +30,16 @@ impl Watcher {
                 let mut watched: Option<(PathBuf, ChangeDetector)> = None;
                 while !stopping.load(Ordering::SeqCst) {
                     std::thread::sleep(POLL_INTERVAL);
-                    let Some(folder) = shared.lock().expect("the folder lock is never poisoned").clone() else {
+                    let Some(folder) = shared
+                        .lock()
+                        .expect("the folder lock is never poisoned")
+                        .clone()
+                    else {
                         continue;
                     };
-                    let Ok(current) = fingerprint(&folder) else { continue };
+                    let Ok(current) = fingerprint(&folder) else {
+                        continue;
+                    };
                     match &mut watched {
                         Some((path, detector)) if *path == folder => {
                             if detector.observe(current) {
@@ -45,12 +51,19 @@ impl Watcher {
                 }
             })
             .expect("the watcher thread starts");
-        Self { folder, stop, thread: Some(thread) }
+        Self {
+            folder,
+            stop,
+            thread: Some(thread),
+        }
     }
 
     /// Watches `folder` from now on, taking its current files as loaded.
     pub fn watch(&self, folder: PathBuf) {
-        *self.folder.lock().expect("the folder lock is never poisoned") = Some(folder);
+        *self
+            .folder
+            .lock()
+            .expect("the folder lock is never poisoned") = Some(folder);
     }
 }
 

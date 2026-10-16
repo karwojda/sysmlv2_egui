@@ -37,7 +37,12 @@ fn qn(name: &str) -> QualifiedName {
 }
 
 fn rows(element: &str) -> Vec<(&'static str, String)> {
-    properties(&model(), &qn(element)).unwrap().rows.into_iter().map(|p| (p.label, p.value)).collect()
+    properties(&model(), &qn(element))
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|p| (p.label, p.value))
+        .collect()
 }
 
 #[test]
@@ -78,21 +83,40 @@ fn a_connection_shows_its_ends() {
 #[test]
 fn types_owners_and_generals_refer_to_their_elements_when_the_model_has_them() {
     let engine = properties(&model(), &qn("P::Vehicle::engine")).unwrap();
-    let refers = |label: &str| engine.rows.iter().find(|p| p.label == label).and_then(|p| p.refers_to.clone());
+    let refers = |label: &str| {
+        engine
+            .rows
+            .iter()
+            .find(|p| p.label == label)
+            .and_then(|p| p.refers_to.clone())
+    };
     assert_eq!(refers("Type"), Some(qn("P::Engine")));
     assert_eq!(refers("Owner"), Some(qn("P::Vehicle")));
     assert_eq!(refers("Name"), None);
 
     let vehicle = properties(&model(), &qn("P::Vehicle")).unwrap();
-    let general: &Property = vehicle.rows.iter().find(|p| p.label == "Specializes").unwrap();
-    assert_eq!(general.refers_to, None, "P::Base isn't in the Model, so there's nothing to follow");
+    let general: &Property = vehicle
+        .rows
+        .iter()
+        .find(|p| p.label == "Specializes")
+        .unwrap();
+    assert_eq!(
+        general.refers_to, None,
+        "P::Base isn't in the Model, so there's nothing to follow"
+    );
 }
 
 #[test]
 fn the_source_location_is_given_for_opening_in_an_editor() {
-    let source = properties(&model(), &qn("P::Engine")).unwrap().source.unwrap();
+    let source = properties(&model(), &qn("P::Engine"))
+        .unwrap()
+        .source
+        .unwrap();
 
-    assert_eq!((source.file.as_path(), source.line), (Path::new("/models/p.sysml"), 3));
+    assert_eq!(
+        (source.file.as_path(), source.line),
+        (Path::new("/models/p.sysml"), 3)
+    );
 }
 
 #[test]
@@ -103,8 +127,11 @@ fn an_unknown_element_has_no_properties() {
 #[test]
 fn a_view_shows_its_rendering_and_exposes_in_order() {
     let view = properties(&common::views(), &qn("V::overview")).unwrap();
-    let rows: Vec<(&str, String, Option<QualifiedName>)> =
-        view.rows.into_iter().map(|p| (p.label, p.value, p.refers_to)).collect();
+    let rows: Vec<(&str, String, Option<QualifiedName>)> = view
+        .rows
+        .into_iter()
+        .map(|p| (p.label, p.value, p.refers_to))
+        .collect();
 
     assert!(rows.contains(&("Kind", "«view»".to_owned(), None)));
     let exposes: Vec<_> = rows.iter().filter(|r| r.0 == "Exposes").collect();
@@ -126,20 +153,41 @@ fn a_view_shows_its_rendering_and_exposes_in_order() {
 fn a_view_says_how_it_is_drawn_or_why_it_cant_be() {
     let drawn_as = |view: &str| {
         let props = properties(&common::views(), &qn(view)).unwrap();
-        props.rows.into_iter().find(|p| p.label == "Drawn as").map(|p| p.value)
+        props
+            .rows
+            .into_iter()
+            .find(|p| p.label == "Drawn as")
+            .map(|p| p.value)
     };
 
-    assert_eq!(drawn_as("V::vehicle tree").as_deref(), Some("General Diagram"));
-    assert_eq!(drawn_as("V::wiring").as_deref(), Some("Interconnection Diagram"));
-    assert_eq!(drawn_as("V::table").as_deref(), Some("unsupported: it renders as `asElementTable`"));
-    assert_eq!(drawn_as("V::TreeView"), None, "a view definition isn't drawn");
+    assert_eq!(
+        drawn_as("V::vehicle tree").as_deref(),
+        Some("General Diagram")
+    );
+    assert_eq!(
+        drawn_as("V::wiring").as_deref(),
+        Some("Interconnection Diagram")
+    );
+    assert_eq!(
+        drawn_as("V::table").as_deref(),
+        Some("unsupported: it renders as `asElementTable`")
+    );
+    assert_eq!(
+        drawn_as("V::TreeView"),
+        None,
+        "a view definition isn't drawn"
+    );
 }
 
 #[test]
 fn metadata_annotations_are_listed_and_lead_to_their_defs() {
     let airbag = properties(&common::metadata(), &qn("M::Vehicle::airbag")).unwrap();
-    let rows: Vec<(&str, String, Option<QualifiedName>)> =
-        airbag.rows.into_iter().filter(|p| p.label == "Metadata").map(|p| (p.label, p.value, p.refers_to)).collect();
+    let rows: Vec<(&str, String, Option<QualifiedName>)> = airbag
+        .rows
+        .into_iter()
+        .filter(|p| p.label == "Metadata")
+        .map(|p| (p.label, p.value, p.refers_to))
+        .collect();
 
     assert_eq!(
         rows,

@@ -7,14 +7,25 @@ use tempfile::TempDir;
 use viewer_cli::{EXIT_OK, run};
 use viewer_core::scene::Rgb;
 use viewer_core::style::{Condition, Style, StyleRule, apply};
-use viewer_core::{DiagramFile, DiagramKind, FakeBackend, Model, QualifiedName, build_scene, diagram_file, style, svg};
+use viewer_core::{
+    DiagramFile, DiagramKind, FakeBackend, Model, QualifiedName, build_scene, diagram_file, style,
+    svg,
+};
 
 fn model() -> Model {
-    Model::builder().package("P").part_def("P::Engine").part_def("P::Tank").build()
+    Model::builder()
+        .package("P")
+        .part_def("P::Engine")
+        .part_def("P::Tank")
+        .build()
 }
 
 fn rules() -> Vec<StyleRule> {
-    vec![StyleRule { condition: Condition::Kind("part def".to_owned()), fill: Rgb(0x1f, 0x2a, 0x44), label: None }]
+    vec![StyleRule {
+        condition: Condition::Kind("part def".to_owned()),
+        fill: Rgb(0x1f, 0x2a, 0x44),
+        label: None,
+    }]
 }
 
 fn folder_with(style_text: Option<&str>) -> TempDir {
@@ -67,7 +78,10 @@ fn a_broken_style_file_warns_and_exports_unstyled() {
 
     assert_eq!(code, EXIT_OK);
     assert!(stderr.contains("warning: invalid Style file"), "{stderr}");
-    assert!(stderr.contains("Exporting without the Model Style"), "{stderr}");
+    assert!(
+        stderr.contains("Exporting without the Model Style"),
+        "{stderr}"
+    );
     let model = model();
     let plain = build_scene(&model, DiagramKind::General, &QualifiedName::from("P")).unwrap();
     assert_eq!(std::fs::read_to_string(&out).unwrap(), svg::render(&plain));
@@ -98,7 +112,11 @@ fn a_diagram_s_own_style_wins_and_can_switch_the_model_style_off() {
     assert_eq!(code, EXIT_OK, "{stderr}");
     let model = model();
     let plain = build_scene(&model, DiagramKind::General, &QualifiedName::from("P")).unwrap();
-    assert_eq!(std::fs::read_to_string(&out).unwrap(), svg::render(&plain), "Model Style off");
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        svg::render(&plain),
+        "Model Style off"
+    );
 }
 
 #[test]
@@ -113,5 +131,9 @@ fn a_diagram_s_legend_is_exported() {
     let (code, stderr) = export(folder.path(), &out);
 
     assert_eq!(code, EXIT_OK, "{stderr}");
-    assert!(std::fs::read_to_string(&out).unwrap().contains(">«part def»</text>"));
+    assert!(
+        std::fs::read_to_string(&out)
+            .unwrap()
+            .contains(">«part def»</text>")
+    );
 }

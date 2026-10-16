@@ -45,13 +45,26 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
         ..Default::default()
     };
-    let (folder, root, interconnection) = (args.model_folder, args.root.map(QualifiedName::new), args.interconnection);
+    let (folder, root, interconnection) = (
+        args.model_folder,
+        args.root.map(QualifiedName::new),
+        args.interconnection,
+    );
     eframe::run_native(
         "SysML v2 Viewer",
         options,
         Box::new(|cc| {
-            let app = ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::with_config(config)), folder, root);
-            Ok(Box::new(if interconnection { app.prefer_interconnection() } else { app }))
+            let app = ViewerApp::new(
+                &cc.egui_ctx,
+                Box::new(OpenSysmlBackend::with_config(config)),
+                folder,
+                root,
+            );
+            Ok(Box::new(if interconnection {
+                app.prefer_interconnection()
+            } else {
+                app
+            }))
         }),
     )
 }

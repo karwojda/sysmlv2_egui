@@ -24,7 +24,11 @@ pub struct Properties {
 /// element. Only properties the element has are listed.
 pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> {
     let e = model.element(element)?;
-    let text = |label, value: String| Property { label, value, refers_to: None };
+    let text = |label, value: String| Property {
+        label,
+        value,
+        refers_to: None,
+    };
     let link = |label, target: &QualifiedName, value: String| Property {
         label,
         value,
@@ -33,7 +37,14 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
 
     let mut rows = vec![
         text("Kind", format!("«{}»", e.kind.keyword())),
-        text("Name", if e.name.is_empty() { "(unnamed)".to_owned() } else { e.name.clone() }),
+        text(
+            "Name",
+            if e.name.is_empty() {
+                "(unnamed)".to_owned()
+            } else {
+                e.name.clone()
+            },
+        ),
         text("Qualified name", e.qualified_name.to_string()),
     ];
     if let Some(owner) = &e.owner {
@@ -75,13 +86,23 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         rows.push(link("Exposes", &expose.target, expose.to_string()));
     }
     for metadata in &e.metadata {
-        rows.push(link("Metadata", metadata, format!("@{}", metadata.simple_name())));
+        rows.push(link(
+            "Metadata",
+            metadata,
+            format!("@{}", metadata.simple_name()),
+        ));
     }
     if let Some(documentation) = &e.documentation {
         rows.push(text("Documentation", documentation.clone()));
     }
     if let Some(source) = &e.source {
-        rows.push(text("Source", format!("{}:{}", source.file.display(), source.line)));
+        rows.push(text(
+            "Source",
+            format!("{}:{}", source.file.display(), source.line),
+        ));
     }
-    Some(Properties { rows, source: e.source.clone() })
+    Some(Properties {
+        rows,
+        source: e.source.clone(),
+    })
 }

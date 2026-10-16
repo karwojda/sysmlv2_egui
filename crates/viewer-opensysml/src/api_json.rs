@@ -7,7 +7,9 @@ use std::path::PathBuf;
 
 use opensysml::{Connection, ConvertOptions, ConvertSource};
 use serde_json::Value;
-use viewer_core::model::{ConnectionEnd, Element, ElementKind, Expose, ExposeScope, QualifiedName, SourceLocation};
+use viewer_core::model::{
+    ConnectionEnd, Element, ElementKind, Expose, ExposeScope, QualifiedName, SourceLocation,
+};
 
 /// Adds source locations, documentation, conjugation and connection ends
 /// to `elements`, converting one document at a time so each element's file
@@ -23,17 +25,30 @@ pub fn enrich(
     let mut items: HashMap<String, (Value, PathBuf)> = HashMap::new();
     let mut failures = Vec::new();
     for document in parsed.documents() {
-        let options = ConvertOptions { documents: vec![document.clone()], ..ConvertOptions::default() };
+        let options = ConvertOptions {
+            documents: vec![document.clone()],
+            ..ConvertOptions::default()
+        };
         // The service refuses to convert any document of a Model with a
         // syntax error anywhere; the file on its own may still convert,
         // losing only ends that reach into other files.
         let conversion = match connection
-            .convert("api-json", &ConvertSource::Model(parsed.hash().to_owned()), &options)
+            .convert(
+                "api-json",
+                &ConvertSource::Model(parsed.hash().to_owned()),
+                &options,
+            )
             .or_else(|_| {
-                let alone = ConvertOptions { tolerate_syntax_errors: true, ..ConvertOptions::default() };
-                connection.convert("api-json", &ConvertSource::File(PathBuf::from(document)), &alone)
-            })
-        {
+                let alone = ConvertOptions {
+                    tolerate_syntax_errors: true,
+                    ..ConvertOptions::default()
+                };
+                connection.convert(
+                    "api-json",
+                    &ConvertSource::File(PathBuf::from(document)),
+                    &alone,
+                )
+            }) {
             Ok(conversion) => conversion,
             Err(error) => {
                 failures.push((document.clone(), error));
@@ -73,7 +88,13 @@ pub fn enrich(
             Some("BindingConnectorAsUsage") => ElementKind::BindingConnection,
             _ => continue,
         };
-        let Some(name) = item.get("qualifiedName").and_then(Value::as_str).map(QualifiedName::new) else { continue };
+        let Some(name) = item
+            .get("qualifiedName")
+            .and_then(Value::as_str)
+            .map(QualifiedName::new)
+        else {
+            continue;
+        };
         if elements.contains_key(&name) {
             continue;
         }
@@ -100,7 +121,10 @@ pub fn enrich(
             continue;
         };
         if let Some(line) = item.get("sysx:sourceLine").and_then(Value::as_u64) {
-            element.source = Some(SourceLocation { file: file.clone(), line: line as u32 });
+            element.source = Some(SourceLocation {
+                file: file.clone(),
+                line: line as u32,
+            });
         }
         if item.get("sysx:conjugatedTyping").and_then(Value::as_bool) == Some(true) {
             element.conjugated = true;
@@ -113,7 +137,11 @@ pub fn enrich(
                 .iter()
                 .filter_map(|end| end.get("@id").and_then(Value::as_str))
                 .filter_map(|end| end_path(&items, &children, end))
-                .filter_map(|path| path.iter().map(|id| qualified_name(id)).collect::<Option<Vec<_>>>())
+                .filter_map(|path| {
+                    path.iter()
+                        .map(|id| qualified_name(id))
+                        .collect::<Option<Vec<_>>>()
+                })
                 .map(|path| ConnectionEnd { path })
                 .collect();
         }
@@ -127,22 +155,34 @@ pub fn enrich(
                 .filter(|c| c.get("@type").and_then(Value::as_str) == Some("MetadataUsage"))
                 .collect();
             annotations.sort_by_key(|c| member_index(c));
-            element.metadata =
-                annotations.iter().filter_map(|c| first_reference(c, "type")).filter_map(&qualified_name).collect();
+            element.metadata = annotations
+                .iter()
+                .filter_map(|c| first_reference(c, "type"))
+                .filter_map(&qualified_name)
+                .collect();
         }
-        if matches!(element.kind, ElementKind::ViewUsage | ElementKind::ViewDefinition) {
+        if matches!(
+            element.kind,
+            ElementKind::ViewUsage | ElementKind::ViewDefinition
+        ) {
             let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
             let mut owned: Vec<&Value> = children.get(id).cloned().unwrap_or_default();
             owned.sort_by_key(|c| member_index(c));
             for child in owned {
                 match child.get("@type").and_then(Value::as_str) {
                     Some("MembershipExpose" | "NamespaceExpose") => {
-                        element.exposes.extend(expose(&items, child).and_then(|(target, scope)| {
-                            Some(Expose { target: qualified_name(target)?, scope })
-                        }));
+                        element.exposes.extend(expose(&items, child).and_then(
+                            |(target, scope)| {
+                                Some(Expose {
+                                    target: qualified_name(target)?,
+                                    scope,
+                                })
+                            },
+                        ));
                     }
                     Some("RenderingUsage") => {
-                        element.rendering = reference(child, "references").and_then(&qualified_name);
+                        element.rendering =
+                            reference(child, "references").and_then(&qualified_name);
                     }
                     _ => {}
                 }
@@ -168,18 +208,33 @@ pub fn enrich(
 /// expose names a membership (`expose X`, or recursively `X::**`, which
 /// includes X); a namespace expose names the namespace (`X::*`, or
 /// recursively `X::*::**`).
-fn expose<'a>(items: &'a HashMap<String, (Value, PathBuf)>, item: &'a Value) -> Option<(&'a str, ExposeScope)> {
+fn expose<'a>(
+    items: &'a HashMap<String, (Value, PathBuf)>,
+    item: &'a Value,
+) -> Option<(&'a str, ExposeScope)> {
     let recursive = item.get("isRecursive").and_then(Value::as_bool) == Some(true);
     if item.get("@type").and_then(Value::as_str) == Some("NamespaceExpose") {
-        let scope = if recursive { ExposeScope::Descendants } else { ExposeScope::Members };
+        let scope = if recursive {
+            ExposeScope::Descendants
+        } else {
+            ExposeScope::Members
+        };
         return Some((reference(item, "importedNamespace")?, scope));
     }
     let membership = reference(item, "importedMembership")?;
     let target = items
         .get(membership)
         .and_then(|(m, _)| reference(m, "memberElement"))
-        .or_else(|| membership.strip_suffix("_om").filter(|id| items.contains_key(*id)))?;
-    let scope = if recursive { ExposeScope::ElementAndDescendants } else { ExposeScope::Element };
+        .or_else(|| {
+            membership
+                .strip_suffix("_om")
+                .filter(|id| items.contains_key(*id))
+        })?;
+    let scope = if recursive {
+        ExposeScope::ElementAndDescendants
+    } else {
+        ExposeScope::Element
+    };
     Some((target, scope))
 }
 
@@ -195,7 +250,11 @@ fn member_index(item: &Value) -> u32 {
 
 /// The id the first entry of a many-valued reference property points at.
 fn first_reference<'a>(item: &'a Value, property: &str) -> Option<&'a str> {
-    item.get(property)?.as_array()?.first()?.get("@id")?.as_str()
+    item.get(property)?
+        .as_array()?
+        .first()?
+        .get("@id")?
+        .as_str()
 }
 
 /// The ids of the features a connector end reaches: the chain of a
@@ -222,7 +281,10 @@ fn end_path<'a>(
 }
 
 /// The chain an end's reference subsetting points at.
-fn referenced_path<'a>(items: &'a HashMap<String, (Value, PathBuf)>, end: &Value) -> Option<Vec<&'a str>> {
+fn referenced_path<'a>(
+    items: &'a HashMap<String, (Value, PathBuf)>,
+    end: &Value,
+) -> Option<Vec<&'a str>> {
     let referenced = end
         .get("ownedRelationship")?
         .as_array()?
@@ -231,8 +293,15 @@ fn referenced_path<'a>(items: &'a HashMap<String, (Value, PathBuf)>, end: &Value
         .filter_map(|id| items.get(id).map(|(item, _)| item))
         .find(|r| r.get("@type").and_then(Value::as_str) == Some("ReferenceSubsetting"))
         .and_then(|r| reference(r, "referencedFeature"))?;
-    match items.get(referenced).and_then(|(item, _)| item.get("chainingFeature")).and_then(Value::as_array) {
-        Some(chain) => chain.iter().map(|f| f.get("@id").and_then(Value::as_str)).collect(),
+    match items
+        .get(referenced)
+        .and_then(|(item, _)| item.get("chainingFeature"))
+        .and_then(Value::as_array)
+    {
+        Some(chain) => chain
+            .iter()
+            .map(|f| f.get("@id").and_then(Value::as_str))
+            .collect(),
         None => Some(vec![items.get_key_value(referenced)?.0.as_str()]),
     }
 }

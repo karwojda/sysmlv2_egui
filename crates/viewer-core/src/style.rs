@@ -109,7 +109,11 @@ pub fn move_down(rules: &mut [StyleRule], index: usize) {
 
 /// The rule a new row starts as: every part def, in light blue.
 pub fn new_rule() -> StyleRule {
-    StyleRule { condition: Condition::Kind("part def".to_owned()), fill: Rgb(0xdb, 0xe8, 0xf6), label: None }
+    StyleRule {
+        condition: Condition::Kind("part def".to_owned()),
+        fill: Rgb(0xdb, 0xe8, 0xf6),
+        label: None,
+    }
 }
 
 /// One condition and the fill color it gives, with an optional Legend label.
@@ -132,16 +136,25 @@ pub struct Style {
 #[derive(Debug, thiserror::Error)]
 pub enum StyleError {
     #[error("cannot read {path}: {source}")]
-    Unreadable { path: PathBuf, source: std::io::Error },
+    Unreadable {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("invalid Style file {path}: {source}")]
-    Invalid { path: PathBuf, source: serde_json::Error },
+    Invalid {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
     #[error("Style file {path} has format version {found}, expected {FORMAT_VERSION}")]
     UnsupportedVersion { path: PathBuf, found: u32 },
 }
 
 impl Style {
     pub fn new(rules: Vec<StyleRule>) -> Self {
-        Self { format_version: FORMAT_VERSION, rules }
+        Self {
+            format_version: FORMAT_VERSION,
+            rules,
+        }
     }
 
     pub fn to_text(&self) -> String {
@@ -164,9 +177,15 @@ pub fn load(model_folder: &Path) -> Result<Option<Style>, StyleError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(source) => return Err(StyleError::Unreadable { path, source }),
     };
-    let style: Style = serde_json::from_str(&text).map_err(|source| StyleError::Invalid { path: path.clone(), source })?;
+    let style: Style = serde_json::from_str(&text).map_err(|source| StyleError::Invalid {
+        path: path.clone(),
+        source,
+    })?;
     if style.format_version != FORMAT_VERSION {
-        return Err(StyleError::UnsupportedVersion { path, found: style.format_version });
+        return Err(StyleError::UnsupportedVersion {
+            path,
+            found: style.format_version,
+        });
     }
     Ok(Some(style))
 }
@@ -208,8 +227,11 @@ pub fn apply_styles<'a>(
     }
     let used = apply(scene, model, &levels);
     // In rule order, the Diagram's rules first.
-    let used: Vec<&StyleRule> =
-        levels.iter().flat_map(|rules| rules.iter()).filter(|r| used.iter().any(|u| std::ptr::eq(*u, *r))).collect();
+    let used: Vec<&StyleRule> = levels
+        .iter()
+        .flat_map(|rules| rules.iter())
+        .filter(|r| used.iter().any(|u| std::ptr::eq(*u, *r)))
+        .collect();
     if diagram.legend {
         legend(scene, &used);
     }
@@ -218,7 +240,9 @@ pub fn apply_styles<'a>(
 
 /// How a rule reads in the Legend: its label, else its condition.
 pub fn legend_label(rule: &StyleRule) -> String {
-    rule.label.clone().unwrap_or_else(|| rule.condition.describe())
+    rule.label
+        .clone()
+        .unwrap_or_else(|| rule.condition.describe())
 }
 
 /// Draws a Legend of `rules` below the scene's content, aligned to its
@@ -228,16 +252,29 @@ pub fn legend(scene: &mut Scene, rules: &[&StyleRule]) {
         return;
     }
     let labels: Vec<String> = rules.iter().map(|r| legend_label(r)).collect();
-    let widest = labels.iter().map(|l| text_width(l, LABEL_FONT)).fold(0.0, f32::max);
+    let widest = labels
+        .iter()
+        .map(|l| text_width(l, LABEL_FONT))
+        .fold(0.0, f32::max);
     let width = 2.0 * LEGEND_PADDING + SWATCH + LEGEND_PADDING + widest;
     let height = 2.0 * LEGEND_PADDING + LEGEND_ROW * rules.len() as f32 - (LEGEND_ROW - SWATCH);
     let right = scene.x + scene.width - PAGE_MARGIN;
     let top = scene.y + scene.height - PAGE_MARGIN + LEGEND_GAP;
     let left = right - width;
 
-    let mut push = |shape| scene.items.push(Item { depicts: Depicts::Legend, shape });
+    let mut push = |shape| {
+        scene.items.push(Item {
+            depicts: Depicts::Legend,
+            shape,
+        })
+    };
     push(Shape::Rect {
-        rect: Rect { x: left, y: top, width, height },
+        rect: Rect {
+            x: left,
+            y: top,
+            width,
+            height,
+        },
         fill: Fill::Background,
         corner_radius: 0.0,
         dashed: false,
@@ -245,7 +282,12 @@ pub fn legend(scene: &mut Scene, rules: &[&StyleRule]) {
     for (i, (rule, label)) in rules.iter().zip(labels).enumerate() {
         let row_top = top + LEGEND_PADDING + i as f32 * LEGEND_ROW;
         push(Shape::Rect {
-            rect: Rect { x: left + LEGEND_PADDING, y: row_top, width: SWATCH, height: SWATCH },
+            rect: Rect {
+                x: left + LEGEND_PADDING,
+                y: row_top,
+                width: SWATCH,
+                height: SWATCH,
+            },
             fill: Fill::Color(rule.fill),
             corner_radius: 0.0,
             dashed: false,
@@ -269,13 +311,19 @@ pub fn legend(scene: &mut Scene, rules: &[&StyleRule]) {
 /// node's own rect takes its rule's fill, and text inside that rect turns
 /// white when the fill is dark. Returns the rules that colored something,
 /// in the order they were first used.
-pub fn apply<'a>(scene: &mut Scene, model: &Model, levels: &[&'a [StyleRule]]) -> Vec<&'a StyleRule> {
+pub fn apply<'a>(
+    scene: &mut Scene,
+    model: &Model,
+    levels: &[&'a [StyleRule]],
+) -> Vec<&'a StyleRule> {
     let mut used: Vec<&StyleRule> = Vec::new();
     // Each node: what it depicts, its rect, and its fill.
     let mut nodes: Vec<(Depicts, Rect, Rgb)> = Vec::new();
     let mut seen: Vec<&Depicts> = Vec::new();
     for item in &mut scene.items {
-        let (Some(element), Shape::Rect { rect, fill, .. }) = (node_element(&item.depicts), &mut item.shape) else {
+        let (Some(element), Shape::Rect { rect, fill, .. }) =
+            (node_element(&item.depicts), &mut item.shape)
+        else {
             continue;
         };
         // Only a node's first rect is its box.
@@ -283,7 +331,9 @@ pub fn apply<'a>(scene: &mut Scene, model: &Model, levels: &[&'a [StyleRule]]) -
             continue;
         }
         seen.push(&item.depicts);
-        let Some(rule) = model.element(element).and_then(|e| rule_for(e, levels)) else { continue };
+        let Some(rule) = model.element(element).and_then(|e| rule_for(e, levels)) else {
+            continue;
+        };
         *fill = Fill::Color(rule.fill);
         nodes.push((item.depicts.clone(), *rect, rule.fill));
         if !used.iter().any(|u| std::ptr::eq(*u, rule)) {
@@ -291,10 +341,12 @@ pub fn apply<'a>(scene: &mut Scene, model: &Model, levels: &[&'a [StyleRule]]) -
         }
     }
     for item in &mut scene.items {
-        let Shape::Text { position, fill, .. } = &mut item.shape else { continue };
-        let dark = nodes
-            .iter()
-            .any(|(depicts, rect, color)| *depicts == item.depicts && rect.contains(*position) && color.is_dark());
+        let Shape::Text { position, fill, .. } = &mut item.shape else {
+            continue;
+        };
+        let dark = nodes.iter().any(|(depicts, rect, color)| {
+            *depicts == item.depicts && rect.contains(*position) && color.is_dark()
+        });
         if dark {
             *fill = Fill::Background;
         }

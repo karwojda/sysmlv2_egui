@@ -69,7 +69,12 @@ fn structure() -> Model {
 }
 
 fn scene() -> Scene {
-    build_scene(&structure(), DiagramKind::General, &QualifiedName::from("Structure")).unwrap()
+    build_scene(
+        &structure(),
+        DiagramKind::General,
+        &QualifiedName::from("Structure"),
+    )
+    .unwrap()
 }
 
 fn qn(name: &str) -> QualifiedName {
@@ -149,8 +154,14 @@ fn each_kind_shows_its_keyword() {
 fn usages_show_their_type_and_multiplicity() {
     let scene = scene();
 
-    assert_eq!(node_texts(&scene, "Structure::spare")[1], "spare:Engine [0..*]");
-    assert_eq!(node_texts(&scene, "Structure::vehicle")[1], "vehicle:Vehicle");
+    assert_eq!(
+        node_texts(&scene, "Structure::spare")[1],
+        "spare:Engine [0..*]"
+    );
+    assert_eq!(
+        node_texts(&scene, "Structure::vehicle")[1],
+        "vehicle:Vehicle"
+    );
 }
 
 #[test]
@@ -186,7 +197,10 @@ fn ports_show_their_direction_and_conjugation() {
 #[test]
 fn composition_is_a_filled_diamond_at_the_owner_labelled_near_the_part_type() {
     let scene = scene();
-    let edge = Depicts::Composition { owner: qn("Structure::Vehicle"), usage: qn("Structure::Vehicle::tanks") };
+    let edge = Depicts::Composition {
+        owner: qn("Structure::Vehicle"),
+        usage: qn("Structure::Vehicle::tanks"),
+    };
     let owner = scene.node_bounds(&qn("Structure::Vehicle")).unwrap();
 
     let diamond = scene
@@ -200,7 +214,9 @@ fn composition_is_a_filled_diamond_at_the_owner_labelled_near_the_part_type() {
     assert_eq!(diamond.0.len(), 4);
     assert_eq!(diamond.1, Fill::Stroke, "the diamond is filled");
     let tip = diamond.0[0];
-    assert!(tip.y == owner.bottom() || tip.y == owner.y || tip.x == owner.x || tip.x == owner.right());
+    assert!(
+        tip.y == owner.bottom() || tip.y == owner.y || tip.x == owner.x || tip.x == owner.right()
+    );
     assert_eq!(texts(&scene, &edge), ["tanks [1..2]"]);
 }
 
@@ -216,14 +232,39 @@ fn owners_sit_above_the_definitions_of_their_parts() {
 #[test]
 fn a_usage_node_is_joined_to_its_definition_by_a_defined_by_edge() {
     let scene = scene();
-    let edge = Depicts::Typing { usage: qn("Structure::spare"), definition: qn("Structure::Engine") };
+    let edge = Depicts::Typing {
+        usage: qn("Structure::spare"),
+        definition: qn("Structure::Engine"),
+    };
 
     let shapes: Vec<&Shape> = scene.items_depicting(&edge).collect();
 
     // A solid line, a hollow triangle, and a colon of two filled dots.
-    assert!(shapes.iter().any(|s| matches!(s, Shape::Polyline { dashed: false, .. })));
-    assert!(shapes.iter().any(|s| matches!(s, Shape::Polygon { fill: Fill::Background, .. })));
-    assert_eq!(shapes.iter().filter(|s| matches!(s, Shape::Circle { fill: Fill::Stroke, .. })).count(), 2);
+    assert!(
+        shapes
+            .iter()
+            .any(|s| matches!(s, Shape::Polyline { dashed: false, .. }))
+    );
+    assert!(shapes.iter().any(|s| matches!(
+        s,
+        Shape::Polygon {
+            fill: Fill::Background,
+            ..
+        }
+    )));
+    assert_eq!(
+        shapes
+            .iter()
+            .filter(|s| matches!(
+                s,
+                Shape::Circle {
+                    fill: Fill::Stroke,
+                    ..
+                }
+            ))
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -251,7 +292,11 @@ fn connections_between_usage_nodes_are_labelled_edges() {
 
     let shapes: Vec<&Shape> = scene.items_depicting(&edge).collect();
 
-    assert!(shapes.iter().any(|s| matches!(s, Shape::Polyline { dashed: false, .. })));
+    assert!(
+        shapes
+            .iter()
+            .any(|s| matches!(s, Shape::Polyline { dashed: false, .. }))
+    );
     assert_eq!(texts(&scene, &edge), ["link"]);
 }
 
@@ -267,7 +312,12 @@ fn connections_whose_ends_are_not_nodes_are_not_edges() {
 
     let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
 
-    assert_eq!(scene.items_depicting(&Depicts::Connection(qn("P::c"))).count(), 0);
+    assert_eq!(
+        scene
+            .items_depicting(&Depicts::Connection(qn("P::c")))
+            .count(),
+        0
+    );
 }
 
 #[test]
@@ -309,26 +359,52 @@ fn export_matches_the_golden_file() {
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::write(&golden, &svg).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
 
 /// Text box estimate matching the notation's font metrics, for overlap checks.
 fn label_box(shape: &Shape) -> viewer_core::scene::Rect {
-    let Shape::Text { position, text, anchor, font, .. } = shape else { panic!("not a label") };
+    let Shape::Text {
+        position,
+        text,
+        anchor,
+        font,
+        ..
+    } = shape
+    else {
+        panic!("not a label")
+    };
     let width = text.chars().count() as f32 * font.size * 0.56;
     let x = match anchor {
         viewer_core::scene::TextAnchor::Start => position.x,
         viewer_core::scene::TextAnchor::Middle => position.x - width / 2.0,
         viewer_core::scene::TextAnchor::End => position.x - width,
     };
-    viewer_core::scene::Rect { x, y: position.y - font.size, width, height: font.size }
+    viewer_core::scene::Rect {
+        x,
+        y: position.y - font.size,
+        width,
+        height: font.size,
+    }
 }
 
 #[test]
 fn parallel_connections_are_fanned_out_with_separate_labels() {
-    let scene = build_scene(&structure(), DiagramKind::General, &qn("Structure::Vehicle")).unwrap();
+    let scene = build_scene(
+        &structure(),
+        DiagramKind::General,
+        &qn("Structure::Vehicle"),
+    )
+    .unwrap();
     let edge = |name: &str| {
         let depicts = Depicts::Connection(qn(name));
         let shapes: Vec<Shape> = scene.items_depicting(&depicts).cloned().collect();
@@ -336,7 +412,10 @@ fn parallel_connections_are_fanned_out_with_separate_labels() {
             Shape::Polyline { points, .. } => Some(points.clone()),
             _ => None,
         });
-        let label = shapes.iter().find(|s| matches!(s, Shape::Text { .. })).map(label_box);
+        let label = shapes
+            .iter()
+            .find(|s| matches!(s, Shape::Text { .. }))
+            .map(label_box);
         (line.unwrap(), label.unwrap())
     };
 
@@ -345,7 +424,10 @@ fn parallel_connections_are_fanned_out_with_separate_labels() {
 
     assert_ne!(line_a, line_b, "the two connections are drawn apart");
     assert_eq!(line_a.len(), 3, "each bends once");
-    assert!(!label_a.intersects(&label_b), "{label_a:?} overlaps {label_b:?}");
+    assert!(
+        !label_a.intersects(&label_b),
+        "{label_a:?} overlaps {label_b:?}"
+    );
 }
 
 #[test]
@@ -366,27 +448,52 @@ fn a_single_edge_between_two_nodes_stays_straight() {
 
 #[test]
 fn vehicle_export_matches_the_golden_file() {
-    let scene = build_scene(&structure(), DiagramKind::General, &qn("Structure::Vehicle")).unwrap();
+    let scene = build_scene(
+        &structure(),
+        DiagramKind::General,
+        &qn("Structure::Vehicle"),
+    )
+    .unwrap();
     let svg = svg::render(&scene);
     let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/vehicle-general.svg");
 
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::write(&golden, &svg).unwrap();
     }
-    let expected = std::fs::read_to_string(&golden)
-        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
-    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
 
 #[test]
 fn the_page_holds_everything_drawn_including_labels_beside_edges() {
-    let scene = build_scene(&structure(), DiagramKind::General, &qn("Structure::Vehicle")).unwrap();
-    let page = viewer_core::scene::Rect { x: scene.x, y: scene.y, width: scene.width, height: scene.height };
+    let scene = build_scene(
+        &structure(),
+        DiagramKind::General,
+        &qn("Structure::Vehicle"),
+    )
+    .unwrap();
+    let page = viewer_core::scene::Rect {
+        x: scene.x,
+        y: scene.y,
+        width: scene.width,
+        height: scene.height,
+    };
 
     for item in &scene.items {
         if let Shape::Text { .. } = item.shape {
             let label = label_box(&item.shape);
-            assert!(label.x >= page.x && label.right() <= page.right(), "{label:?} sticks out of {page:?}");
+            assert!(
+                label.x >= page.x && label.right() <= page.right(),
+                "{label:?} sticks out of {page:?}"
+            );
         }
     }
 }
@@ -398,20 +505,35 @@ fn with_hand_placed_nodes_no_automatically_routed_edge_passes_through_a_node() {
     // definition.
     let at = |x: f32, y: f32| viewer_core::NodePlacement { x, y, size: None };
     let mut layout = viewer_core::Layout::default();
-    layout.nodes.insert(qn("Structure::Engine"), at(40.0, 300.0));
+    layout
+        .nodes
+        .insert(qn("Structure::Engine"), at(40.0, 300.0));
     layout.nodes.insert(qn("Structure::Tank"), at(300.0, 300.0));
-    layout.nodes.insert(qn("Structure::Vehicle"), at(120.0, 20.0));
+    layout
+        .nodes
+        .insert(qn("Structure::Vehicle"), at(120.0, 20.0));
     for hidden in ["Structure::Fuel", "Structure::Mass", "Structure::FuelLine"] {
         layout.hidden.insert(qn(hidden));
     }
     layout.collapsed.insert(qn("Structure::Vehicle"));
 
-    let scene = viewer_core::build_scene_with_layout(&structure(), DiagramKind::General, &qn("Structure"), &layout).unwrap();
+    let scene = viewer_core::build_scene_with_layout(
+        &structure(),
+        DiagramKind::General,
+        &qn("Structure"),
+        &layout,
+    )
+    .unwrap();
 
-    let nodes: Vec<(&QualifiedName, viewer_core::scene::Rect)> =
-        scene.elements().into_iter().map(|e| (e, scene.node_bounds(e).unwrap())).collect();
+    let nodes: Vec<(&QualifiedName, viewer_core::scene::Rect)> = scene
+        .elements()
+        .into_iter()
+        .map(|e| (e, scene.node_bounds(e).unwrap()))
+        .collect();
     for item in &scene.items {
-        let Shape::Polyline { points, .. } = &item.shape else { continue };
+        let Shape::Polyline { points, .. } = &item.shape else {
+            continue;
+        };
         if matches!(item.depicts, Depicts::Element(_)) {
             continue; // compartment separators
         }
@@ -419,8 +541,14 @@ fn with_hand_placed_nodes_no_automatically_routed_edge_passes_through_a_node() {
             let inside = points.windows(2).any(|s| {
                 (1..200).any(|i| {
                     let t = i as f32 / 200.0;
-                    let (x, y) = (s[0].x + (s[1].x - s[0].x) * t, s[0].y + (s[1].y - s[0].y) * t);
-                    x > rect.x + 1.0 && x < rect.right() - 1.0 && y > rect.y + 1.0 && y < rect.bottom() - 1.0
+                    let (x, y) = (
+                        s[0].x + (s[1].x - s[0].x) * t,
+                        s[0].y + (s[1].y - s[0].y) * t,
+                    );
+                    x > rect.x + 1.0
+                        && x < rect.right() - 1.0
+                        && y > rect.y + 1.0
+                        && y < rect.bottom() - 1.0
                 })
             });
             assert!(!inside, "{:?} passes through {element}", item.depicts);

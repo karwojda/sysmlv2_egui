@@ -11,13 +11,22 @@ const FONT_FAMILY: &str = "sans-serif";
 
 pub fn render(scene: &Scene) -> String {
     let mut out = String::new();
-    let (x, y, w, h) = (num(scene.x), num(scene.y), num(scene.width), num(scene.height));
+    let (x, y, w, h) = (
+        num(scene.x),
+        num(scene.y),
+        num(scene.width),
+        num(scene.height),
+    );
     writeln!(
         out,
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="{x} {y} {w} {h}" font-family="{FONT_FAMILY}">"#
     )
     .unwrap();
-    writeln!(out, r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{BACKGROUND}"/>"#).unwrap();
+    writeln!(
+        out,
+        r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{BACKGROUND}"/>"#
+    )
+    .unwrap();
     for item in &scene.items {
         shape(&mut out, &item.shape);
     }
@@ -27,22 +36,39 @@ pub fn render(scene: &Scene) -> String {
 
 fn shape(out: &mut String, shape: &Shape) {
     match shape {
-        Shape::Rect { rect, fill, corner_radius, dashed } => writeln!(
+        Shape::Rect {
+            rect,
+            fill,
+            corner_radius,
+            dashed,
+        } => writeln!(
             out,
             r#"<rect x="{}" y="{}" width="{}" height="{}"{} fill="{}" stroke="{STROKE}"{}/>"#,
             num(rect.x),
             num(rect.y),
             num(rect.width),
             num(rect.height),
-            if *corner_radius > 0.0 { format!(r#" rx="{}""#, num(*corner_radius)) } else { String::new() },
+            if *corner_radius > 0.0 {
+                format!(r#" rx="{}""#, num(*corner_radius))
+            } else {
+                String::new()
+            },
             fill_color(*fill),
-            if *dashed { r#" stroke-dasharray="6 4""# } else { "" },
+            if *dashed {
+                r#" stroke-dasharray="6 4""#
+            } else {
+                ""
+            },
         ),
         Shape::Polyline { points, dashed } => writeln!(
             out,
             r#"<polyline points="{}" fill="none" stroke="{STROKE}"{}/>"#,
             point_list(points),
-            if *dashed { r#" stroke-dasharray="6 4""# } else { "" },
+            if *dashed {
+                r#" stroke-dasharray="6 4""#
+            } else {
+                ""
+            },
         ),
         Shape::Polygon { points, fill } => writeln!(
             out,
@@ -50,7 +76,11 @@ fn shape(out: &mut String, shape: &Shape) {
             point_list(points),
             fill_color(*fill),
         ),
-        Shape::Circle { center, radius, fill } => writeln!(
+        Shape::Circle {
+            center,
+            radius,
+            fill,
+        } => writeln!(
             out,
             r#"<circle cx="{}" cy="{}" r="{}" fill="{}"/>"#,
             num(center.x),
@@ -58,7 +88,13 @@ fn shape(out: &mut String, shape: &Shape) {
             num(*radius),
             fill_color(*fill),
         ),
-        Shape::Text { position, text, anchor, font, fill } => writeln!(
+        Shape::Text {
+            position,
+            text,
+            anchor,
+            font,
+            fill,
+        } => writeln!(
             out,
             r#"<text x="{}" y="{}" text-anchor="{}" font-size="{}"{}{}{}>{}</text>"#,
             num(position.x),
@@ -69,10 +105,22 @@ fn shape(out: &mut String, shape: &Shape) {
                 TextAnchor::End => "end",
             },
             num(font.size),
-            if font.bold { r#" font-weight="bold""# } else { "" },
-            if font.italic { r#" font-style="italic""# } else { "" },
+            if font.bold {
+                r#" font-weight="bold""#
+            } else {
+                ""
+            },
+            if font.italic {
+                r#" font-style="italic""#
+            } else {
+                ""
+            },
             // Black text is the SVG default, so unstyled output is unchanged.
-            if *fill == Fill::Stroke { String::new() } else { format!(r#" fill="{}""#, fill_color(*fill)) },
+            if *fill == Fill::Stroke {
+                String::new()
+            } else {
+                format!(r#" fill="{}""#, fill_color(*fill))
+            },
             escape(text),
         ),
     }
@@ -101,7 +149,11 @@ fn point_list(points: &[Point]) -> String {
 fn num(value: f32) -> String {
     let text = format!("{:.2}", value);
     let text = text.trim_end_matches('0').trim_end_matches('.');
-    if text == "-0" { "0".to_owned() } else { text.to_owned() }
+    if text == "-0" {
+        "0".to_owned()
+    } else {
+        text.to_owned()
+    }
 }
 
 fn escape(text: &str) -> String {

@@ -6,7 +6,9 @@ use std::path::Path;
 use tempfile::TempDir;
 use viewer_cli::{EXIT_FAILURE, EXIT_OK, run};
 use viewer_core::model::Severity;
-use viewer_core::{DiagramFile, DiagramKind, FakeBackend, Model, ModelBackend, QualifiedName, diagram_file};
+use viewer_core::{
+    DiagramFile, DiagramKind, FakeBackend, Model, ModelBackend, QualifiedName, diagram_file,
+};
 
 fn vehicles() -> Model {
     Model::builder()
@@ -46,7 +48,10 @@ fn export_all(backend: &mut dyn ModelBackend, folder: &Path, out_dir: &Path) -> 
     ];
     let mut stderr = Vec::new();
     let code = run(args, backend, &mut stderr);
-    Outcome { code, stderr: String::from_utf8(stderr).unwrap() }
+    Outcome {
+        code,
+        stderr: String::from_utf8(stderr).unwrap(),
+    }
 }
 
 fn svg_files(dir: &Path) -> Vec<String> {
@@ -67,7 +72,11 @@ fn exports_every_diagram_file_named_after_its_diagram() {
 
     assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
     assert_eq!(svg_files(&out_dir), ["overview.svg", "parts.svg"]);
-    assert!(std::fs::read_to_string(out_dir.join("parts.svg")).unwrap().contains(">Wheel</text>"));
+    assert!(
+        std::fs::read_to_string(out_dir.join("parts.svg"))
+            .unwrap()
+            .contains(">Wheel</text>")
+    );
 }
 
 #[test]
@@ -79,21 +88,41 @@ fn rerunning_on_unchanged_inputs_gives_identical_files() {
     export_all(&mut FakeBackend::new(vehicles()), folder.path(), &second);
 
     for name in svg_files(&first) {
-        assert_eq!(std::fs::read(first.join(&name)).unwrap(), std::fs::read(second.join(&name)).unwrap(), "{name}");
+        assert_eq!(
+            std::fs::read(first.join(&name)).unwrap(),
+            std::fs::read(second.join(&name)).unwrap(),
+            "{name}"
+        );
     }
 }
 
 #[test]
 fn reports_every_failed_diagram_and_still_exports_the_rest() {
-    let folder = model_folder(&[("a-gone", "Vehicles::Gone"), ("overview", "Vehicles"), ("z-gone", "Old")]);
+    let folder = model_folder(&[
+        ("a-gone", "Vehicles::Gone"),
+        ("overview", "Vehicles"),
+        ("z-gone", "Old"),
+    ]);
     let out_dir = folder.path().join("out");
 
     let outcome = export_all(&mut FakeBackend::new(vehicles()), folder.path(), &out_dir);
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("Diagram `a-gone`"), "{}", outcome.stderr);
-    assert!(outcome.stderr.contains("Diagram `z-gone`"), "{}", outcome.stderr);
-    assert!(outcome.stderr.contains("2 of 3 Diagrams failed"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("Diagram `a-gone`"),
+        "{}",
+        outcome.stderr
+    );
+    assert!(
+        outcome.stderr.contains("Diagram `z-gone`"),
+        "{}",
+        outcome.stderr
+    );
+    assert!(
+        outcome.stderr.contains("2 of 3 Diagrams failed"),
+        "{}",
+        outcome.stderr
+    );
     assert_eq!(svg_files(&out_dir), ["overview.svg"]);
 }
 
@@ -109,7 +138,11 @@ fn fails_when_the_model_has_errors() {
     let outcome = export_all(&mut FakeBackend::new(model), folder.path(), &out_dir);
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("error: unexpected ';'"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("error: unexpected ';'"),
+        "{}",
+        outcome.stderr
+    );
     assert!(!out_dir.exists());
 }
 
@@ -126,10 +159,18 @@ impl ModelBackend for UnusedBackend {
 fn a_model_without_diagram_files_or_views_succeeds_and_says_so() {
     let folder = model_folder(&[]);
 
-    let outcome = export_all(&mut FakeBackend::new(vehicles()), folder.path(), &folder.path().join("out"));
+    let outcome = export_all(
+        &mut FakeBackend::new(vehicles()),
+        folder.path(),
+        &folder.path().join("out"),
+    );
 
     assert_eq!(outcome.code, EXIT_OK);
-    assert!(outcome.stderr.contains("no Diagram Files or views"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("no Diagram Files or views"),
+        "{}",
+        outcome.stderr
+    );
     assert!(!folder.path().join("out").exists());
 }
 
@@ -148,10 +189,19 @@ fn ignores_other_files_in_the_diagram_folder() {
 #[test]
 fn diagram_and_all_cannot_be_combined() {
     let folder = model_folder(&[("overview", "Vehicles")]);
-    let args: Vec<OsString> = ["sysml-viewer", "export", ".", "--all", "--out-dir", "x", "--diagram", "overview"]
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    let args: Vec<OsString> = [
+        "sysml-viewer",
+        "export",
+        ".",
+        "--all",
+        "--out-dir",
+        "x",
+        "--diagram",
+        "overview",
+    ]
+    .into_iter()
+    .map(Into::into)
+    .collect();
 
     let code = run(args, &mut UnusedBackend, &mut Vec::new());
 

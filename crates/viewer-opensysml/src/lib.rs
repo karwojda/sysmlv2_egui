@@ -18,7 +18,8 @@ use std::path::{Path, PathBuf};
 
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
 use viewer_core::model::{
-    Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity, SourceLocation,
+    Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity,
+    SourceLocation,
 };
 use viewer_core::{BackendError, ModelBackend};
 
@@ -41,7 +42,10 @@ impl ServiceConfig {
     /// as unset.
     pub fn from_env() -> Self {
         let var = |name| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
-        Self { binary: var(BINARY_VARIABLE).map(PathBuf::from), service: var(SERVICE_VARIABLE) }
+        Self {
+            binary: var(BINARY_VARIABLE).map(PathBuf::from),
+            service: var(SERVICE_VARIABLE),
+        }
     }
 
     fn connect(&self) -> Result<Connection, BackendError> {
@@ -51,10 +55,14 @@ impl ServiceConfig {
                 .and_then(|(host, port)| Some((host, port.parse::<u16>().ok()?)))
                 .filter(|(host, _)| !host.is_empty())
                 .ok_or_else(|| {
-                    BackendError::Unavailable(format!("the sysml-grpc service address `{service}` is not host:port"))
+                    BackendError::Unavailable(format!(
+                        "the sysml-grpc service address `{service}` is not host:port"
+                    ))
                 })?;
             return Connection::external(host, port).map_err(|e| {
-                BackendError::Unavailable(format!("could not reach the sysml-grpc service at {service}: {e}"))
+                BackendError::Unavailable(format!(
+                    "could not reach the sysml-grpc service at {service}: {e}"
+                ))
             });
         }
         // The client skips a configured binary that doesn't exist and
@@ -79,8 +87,12 @@ fn explain_start_failure(error: &opensysml::Error) -> String {
         opensysml::Error::BinaryNotFound { .. }
         | opensysml::Error::BinaryDownload(_)
         | opensysml::Error::UnsupportedPlatform { .. }
-        | opensysml::Error::ChecksumMismatch(_) => format!("could not get the sysml-grpc service: {error}. {remedy}"),
-        opensysml::Error::ServiceStart(_) => format!("the sysml-grpc service did not start: {error}. {remedy}"),
+        | opensysml::Error::ChecksumMismatch(_) => {
+            format!("could not get the sysml-grpc service: {error}. {remedy}")
+        }
+        opensysml::Error::ServiceStart(_) => {
+            format!("the sysml-grpc service did not start: {error}. {remedy}")
+        }
         other => format!("could not start the sysml-grpc service: {other}"),
     }
 }
@@ -106,7 +118,10 @@ impl OpenSysmlBackend {
     }
 
     pub fn with_config(config: ServiceConfig) -> Self {
-        Self { config, connection: None }
+        Self {
+            config,
+            connection: None,
+        }
     }
 
     fn connection(&mut self) -> Result<&Connection, BackendError> {
@@ -122,7 +137,8 @@ impl ModelBackend for OpenSysmlBackend {
         if !folder.is_dir() {
             return Err(BackendError::FolderNotFound(folder.to_path_buf()));
         }
-        let files = viewer_core::watch::model_files(folder).map_err(|e| BackendError::Unavailable(e.to_string()))?;
+        let files = viewer_core::watch::model_files(folder)
+            .map_err(|e| BackendError::Unavailable(e.to_string()))?;
         if files.is_empty() {
             return Ok(Model::default());
         }
@@ -132,10 +148,17 @@ impl ModelBackend for OpenSysmlBackend {
         let parsed = match connection.parse_sources(&documents, &SourcesOptions::default()) {
             Ok(parsed) => parsed,
             // The service refused the whole Model; its diagnostics say why.
-            Err(opensysml::Error::ModelErrors { message, diagnostics }) => {
+            Err(opensysml::Error::ModelErrors {
+                message,
+                diagnostics,
+            }) => {
                 let mut diagnostics: Vec<Diagnostic> = diagnostics.iter().map(diagnostic).collect();
                 if diagnostics.is_empty() {
-                    diagnostics.push(Diagnostic { severity: Severity::Error, message, location: None });
+                    diagnostics.push(Diagnostic {
+                        severity: Severity::Error,
+                        message,
+                        location: None,
+                    });
                 }
                 return Ok(Model::new([], diagnostics));
             }
@@ -146,13 +169,14 @@ impl ModelBackend for OpenSysmlBackend {
         for root in parsed.roots() {
             collect(root, None, &mut elements)?;
         }
-        let mut diagnostics: Vec<Diagnostic> = parsed.diagnostics().iter().map(diagnostic).collect();
+        let mut diagnostics: Vec<Diagnostic> =
+            parsed.diagnostics().iter().map(diagnostic).collect();
         for (document, error) in api_json::enrich(&connection, &parsed, &mut elements) {
             // A file with its own errors already says why; don't repeat it.
             let file = PathBuf::from(&document);
-            let has_errors = diagnostics
-                .iter()
-                .any(|d| d.severity == Severity::Error && d.location.as_ref().is_some_and(|l| l.file == file));
+            let has_errors = diagnostics.iter().any(|d| {
+                d.severity == Severity::Error && d.location.as_ref().is_some_and(|l| l.file == file)
+            });
             if has_errors {
                 continue;
             }
@@ -183,7 +207,10 @@ fn collect(
     // A view's `render` is a fact of the view, not an element of its own.
     let owner_kind = owner.and_then(|o| out.get(o)).map(|e| &e.kind);
     if info.kind == "renderingUsage"
-        && matches!(owner_kind, Some(ElementKind::ViewUsage | ElementKind::ViewDefinition))
+        && matches!(
+            owner_kind,
+            Some(ElementKind::ViewUsage | ElementKind::ViewDefinition)
+        )
     {
         return Ok(());
     }
@@ -205,10 +232,10 @@ fn collect(
             .as_ref()
             .filter(|t| !t.resolved_id.is_empty())
             .map(|t| QualifiedName::new(t.resolved_id.clone()));
-        element.multiplicity = info
-            .multiplicity
-            .as_ref()
-            .map(|m| Multiplicity { lower: m.lower.clone(), upper: m.upper.clone() });
+        element.multiplicity = info.multiplicity.as_ref().map(|m| Multiplicity {
+            lower: m.lower.clone(),
+            upper: m.upper.clone(),
+        });
         element.direction = info.metadata.get("direction").and_then(|d| direction(d));
         out.insert(qualified_name.clone(), element);
         Some(qualified_name)
@@ -266,7 +293,11 @@ fn direction(text: &str) -> Option<Direction> {
 
 fn diagnostic(d: &opensysml::Diagnostic) -> Diagnostic {
     Diagnostic {
-        severity: if d.severity == "error" { Severity::Error } else { Severity::Warning },
+        severity: if d.severity == "error" {
+            Severity::Error
+        } else {
+            Severity::Warning
+        },
         message: d.message.clone(),
         location: d.span.as_ref().map(|span| SourceLocation {
             file: PathBuf::from(&span.file),
@@ -288,14 +319,23 @@ mod tests {
         let message = explain_start_failure(&opensysml::Error::BinaryDownload("offline".into()));
 
         assert!(message.contains("offline"), "{message}");
-        assert!(message.contains("--sysml-binary") && message.contains("--sysml-service"), "{message}");
+        assert!(
+            message.contains("--sysml-binary") && message.contains("--sysml-service"),
+            "{message}"
+        );
     }
 
     #[test]
     fn service_kinds_become_our_kinds_or_sysml_keywords() {
         assert_eq!(element_kind("partDef"), ElementKind::PartDefinition);
         assert_eq!(element_kind("interfaceUsage"), ElementKind::InterfaceUsage);
-        assert_eq!(element_kind("requirementDef"), ElementKind::Unsupported("requirement def".into()));
-        assert_eq!(element_kind("actionUsage"), ElementKind::Unsupported("action".into()));
+        assert_eq!(
+            element_kind("requirementDef"),
+            ElementKind::Unsupported("requirement def".into())
+        );
+        assert_eq!(
+            element_kind("actionUsage"),
+            ElementKind::Unsupported("action".into())
+        );
     }
 }

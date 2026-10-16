@@ -15,9 +15,17 @@ pub const MIN_NODE_SIZE: [f32; 2] = [40.0, 24.0];
 pub enum Edit {
     /// Moves a node by a scene-coordinate offset; it stops at the top and
     /// left of the page (or of the box it's drawn in) at zero.
-    Move { element: QualifiedName, dx: f32, dy: f32 },
+    Move {
+        element: QualifiedName,
+        dx: f32,
+        dy: f32,
+    },
     /// Sets a node's size, no smaller than [`MIN_NODE_SIZE`].
-    Resize { element: QualifiedName, width: f32, height: f32 },
+    Resize {
+        element: QualifiedName,
+        width: f32,
+        height: f32,
+    },
     Hide(QualifiedName),
     Show(QualifiedName),
     ShowAll,
@@ -27,10 +35,17 @@ pub enum Edit {
     /// Sets the bend points of the edge with key `edge` (see
     /// [`crate::scene::Depicts::edge_key`]), in scene coordinates from
     /// source to target. No bends returns it to automatic routing.
-    Route { edge: String, bends: Vec<[f32; 2]> },
+    Route {
+        edge: String,
+        bends: Vec<[f32; 2]>,
+    },
     /// Puts the port with key `port` (its feature path) on `side` of its
     /// box, `offset` along it.
-    MovePort { port: String, side: PortSide, offset: f32 },
+    MovePort {
+        port: String,
+        side: PortSide,
+        offset: f32,
+    },
     /// Opens or closes the part at a feature path in an Interconnection
     /// Diagram.
     Open(String),
@@ -53,7 +68,12 @@ pub fn apply(layout: &mut Layout, model: &Model, scene: &Scene, edit: &Edit) {
 /// node key still names something in the Model, so `Reset` keeps Orphaned
 /// Layout Entries. An edit that changes nothing leaves the Layout exactly
 /// as it was.
-pub fn apply_with(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, scene: &Scene, edit: &Edit) {
+pub fn apply_with(
+    layout: &mut Layout,
+    known: &dyn Fn(&QualifiedName) -> bool,
+    scene: &Scene,
+    edit: &Edit,
+) {
     let mut pinned = layout.clone();
     if *edit != Edit::Reset {
         pin(&mut pinned, scene);
@@ -73,7 +93,11 @@ fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, edit: &Ed
                 placement.y = (placement.y + dy).max(0.0);
             }
         }
-        Edit::Resize { element, width, height } => {
+        Edit::Resize {
+            element,
+            width,
+            height,
+        } => {
             if let Some(placement) = layout.nodes.get_mut(element) {
                 placement.size = Some([width.max(MIN_NODE_SIZE[0]), height.max(MIN_NODE_SIZE[1])]);
             }
@@ -101,7 +125,13 @@ fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, edit: &Ed
             }
         }
         Edit::MovePort { port, side, offset } => {
-            layout.ports.insert(port.clone(), PortPlacement { side: *side, offset: offset.max(0.0) });
+            layout.ports.insert(
+                port.clone(),
+                PortPlacement {
+                    side: *side,
+                    offset: offset.max(0.0),
+                },
+            );
         }
         Edit::Open(path) => {
             layout.opened.insert(path.clone());
@@ -117,7 +147,10 @@ fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, edit: &Ed
             layout.edges.clear();
             // A port is orphaned with the part it's on (a Frame port's part
             // is the root, which is always known).
-            layout.ports.retain(|port, _| port.rsplit_once('.').is_some_and(|(part, _)| orphaned(&QualifiedName::new(part))));
+            layout.ports.retain(|port, _| {
+                port.rsplit_once('.')
+                    .is_some_and(|(part, _)| orphaned(&QualifiedName::new(part)))
+            });
         }
     }
 }
@@ -134,10 +167,11 @@ fn pin(layout: &mut Layout, scene: &Scene) {
         }
         if let Some(bounds) = scene.node_bounds(key) {
             let (ox, oy) = origin.map_or((0.0, 0.0), |o| (o.x, o.y));
-            layout
-                .nodes
-                .entry(key.clone())
-                .or_insert(NodePlacement { x: bounds.x - ox, y: bounds.y - oy, size: None });
+            layout.nodes.entry(key.clone()).or_insert(NodePlacement {
+                x: bounds.x - ox,
+                y: bounds.y - oy,
+                size: None,
+            });
         }
     }
 }

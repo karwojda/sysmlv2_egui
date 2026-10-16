@@ -3,13 +3,37 @@
 use crate::model::{Element, ElementKind, Model, QualifiedName};
 use crate::scene::{Depicts, Fill, Font, Item, Point, Rect, Shape, TextAnchor};
 
-pub(crate) const KEYWORD_FONT: Font = Font { size: 12.0, bold: false, italic: false };
-pub(crate) const NAME_FONT: Font = Font { size: 14.0, bold: true, italic: false };
+pub(crate) const KEYWORD_FONT: Font = Font {
+    size: 12.0,
+    bold: false,
+    italic: false,
+};
+pub(crate) const NAME_FONT: Font = Font {
+    size: 14.0,
+    bold: true,
+    italic: false,
+};
 /// Usage titles are not bold, unlike definition names.
-pub(crate) const USAGE_NAME_FONT: Font = Font { size: 14.0, bold: false, italic: false };
-const COMPARTMENT_TITLE_FONT: Font = Font { size: 11.0, bold: false, italic: true };
-const ROW_FONT: Font = Font { size: 12.0, bold: false, italic: false };
-pub(crate) const LABEL_FONT: Font = Font { size: 11.0, bold: false, italic: false };
+pub(crate) const USAGE_NAME_FONT: Font = Font {
+    size: 14.0,
+    bold: false,
+    italic: false,
+};
+const COMPARTMENT_TITLE_FONT: Font = Font {
+    size: 11.0,
+    bold: false,
+    italic: true,
+};
+const ROW_FONT: Font = Font {
+    size: 12.0,
+    bold: false,
+    italic: false,
+};
+pub(crate) const LABEL_FONT: Font = Font {
+    size: 11.0,
+    bold: false,
+    italic: false,
+};
 pub(crate) const PADDING: f32 = 10.0;
 pub(crate) const LINE_GAP: f32 = 4.0;
 pub(crate) const MIN_NODE_WIDTH: f32 = 120.0;
@@ -52,20 +76,36 @@ pub fn extent(shape: &Shape) -> Rect {
         let min_y = points.iter().map(|p| p.y).fold(f32::INFINITY, f32::min) - pad;
         let max_x = points.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max) + pad;
         let max_y = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max) + pad;
-        Rect { x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y }
+        Rect {
+            x: min_x,
+            y: min_y,
+            width: max_x - min_x,
+            height: max_y - min_y,
+        }
     };
     match shape {
         Shape::Rect { rect, .. } => *rect,
         Shape::Polyline { points, .. } | Shape::Polygon { points, .. } => around(points, 0.0),
         Shape::Circle { center, radius, .. } => around(&[*center], *radius),
-        Shape::Text { position, text, anchor, font, .. } => {
+        Shape::Text {
+            position,
+            text,
+            anchor,
+            font,
+            ..
+        } => {
             let width = text_width(text, *font);
             let x = match anchor {
                 TextAnchor::Start => position.x,
                 TextAnchor::Middle => position.x - width / 2.0,
                 TextAnchor::End => position.x - width,
             };
-            Rect { x, y: position.y - font.size, width, height: font.size * 1.3 }
+            Rect {
+                x,
+                y: position.y - font.size,
+                width,
+                height: font.size * 1.3,
+            }
         }
     }
 }
@@ -86,7 +126,12 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
     ("parts", &[ElementKind::PartUsage]),
     (
         "connections",
-        &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage, ElementKind::FlowUsage, ElementKind::BindingConnection],
+        &[
+            ElementKind::ConnectionUsage,
+            ElementKind::InterfaceUsage,
+            ElementKind::FlowUsage,
+            ElementKind::BindingConnection,
+        ],
     ),
 ];
 
@@ -113,7 +158,11 @@ pub fn node_content(
         .collect();
     NodeContent {
         keyword: format!("«{}»", element.kind.keyword()),
-        title: if usage { usage_label(element) } else { element.name.clone() },
+        title: if usage {
+            usage_label(element)
+        } else {
+            element.name.clone()
+        },
         usage,
         compartments,
     }
@@ -123,7 +172,9 @@ pub fn node_content(
 /// otherwise `name:Type`; empty for an unnamed, untyped connector.
 pub(crate) fn connector_label(element: &Element) -> String {
     match (&element.kind, &element.payload) {
-        (ElementKind::FlowUsage, Some(payload)) => format!("{}:{}", element.name, payload.simple_name()),
+        (ElementKind::FlowUsage, Some(payload)) => {
+            format!("{}:{}", element.name, payload.simple_name())
+        }
         (ElementKind::FlowUsage, None) => element.name.clone(),
         (ElementKind::BindingConnection, _) => "=".to_owned(),
         _ => usage_label(element),
@@ -141,11 +192,21 @@ pub(crate) fn flow_arrow(points: &[Point]) -> Shape {
     let middle = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
     let length = distance(a, b).max(f32::EPSILON);
     let (ux, uy) = ((b.x - a.x) / length, (b.y - a.y) / length);
-    let tip = Point::new(middle.x + ux * FLOW_ARROW_LENGTH / 2.0, middle.y + uy * FLOW_ARROW_LENGTH / 2.0);
-    let base = Point::new(middle.x - ux * FLOW_ARROW_LENGTH / 2.0, middle.y - uy * FLOW_ARROW_LENGTH / 2.0);
+    let tip = Point::new(
+        middle.x + ux * FLOW_ARROW_LENGTH / 2.0,
+        middle.y + uy * FLOW_ARROW_LENGTH / 2.0,
+    );
+    let base = Point::new(
+        middle.x - ux * FLOW_ARROW_LENGTH / 2.0,
+        middle.y - uy * FLOW_ARROW_LENGTH / 2.0,
+    );
     let (nx, ny) = (-uy * FLOW_ARROW_HALF_WIDTH, ux * FLOW_ARROW_HALF_WIDTH);
     Shape::Polygon {
-        points: vec![tip, Point::new(base.x + nx, base.y + ny), Point::new(base.x - nx, base.y - ny)],
+        points: vec![
+            tip,
+            Point::new(base.x + nx, base.y + ny),
+            Point::new(base.x - nx, base.y - ny),
+        ],
         fill: Fill::Stroke,
     }
 }
@@ -174,7 +235,11 @@ fn feature_row(feature: &Element) -> String {
     if feature.kind == ElementKind::BindingConnection {
         // `bind a = b`, with the binding's name first if it has one.
         let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
-        let name = if feature.name.is_empty() { String::new() } else { format!("{} ", feature.name) };
+        let name = if feature.name.is_empty() {
+            String::new()
+        } else {
+            format!("{} ", feature.name)
+        };
         return format!("bind {name}{}", ends.join(" = "));
     }
     if feature.kind == ElementKind::FlowUsage {
@@ -189,7 +254,11 @@ fn feature_row(feature: &Element) -> String {
 }
 
 fn title_font(content: &NodeContent) -> Font {
-    if content.usage { USAGE_NAME_FONT } else { NAME_FONT }
+    if content.usage {
+        USAGE_NAME_FONT
+    } else {
+        NAME_FONT
+    }
 }
 
 fn header_height() -> f32 {
@@ -201,7 +270,8 @@ fn compartment_height(rows: usize) -> f32 {
 }
 
 pub fn node_size(content: &NodeContent) -> (f32, f32) {
-    let mut widest = text_width(&content.keyword, KEYWORD_FONT).max(text_width(&content.title, title_font(content)));
+    let mut widest = text_width(&content.keyword, KEYWORD_FONT)
+        .max(text_width(&content.title, title_font(content)));
     for (title, rows) in &content.compartments {
         widest = widest.max(text_width(title, COMPARTMENT_TITLE_FONT));
         for row in rows {
@@ -223,10 +293,19 @@ pub fn node_size(content: &NodeContent) -> (f32, f32) {
 /// separator, with an italic title and left-aligned rows.
 pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
     let depicts = Depicts::Element(element.qualified_name.clone());
-    let corner_radius = if content.usage { USAGE_CORNER_RADIUS } else { 0.0 };
+    let corner_radius = if content.usage {
+        USAGE_CORNER_RADIUS
+    } else {
+        0.0
+    };
     let keyword_baseline = rect.y + PADDING + KEYWORD_FONT.size;
     let mut shapes = vec![
-        Shape::Rect { rect, fill: Fill::Background, corner_radius, dashed: element.is_reference },
+        Shape::Rect {
+            rect,
+            fill: Fill::Background,
+            corner_radius,
+            dashed: element.is_reference,
+        },
         Shape::Text {
             position: Point::new(rect.center_x(), keyword_baseline),
             text: content.keyword.clone(),
@@ -235,7 +314,10 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
             fill: Fill::Stroke,
         },
         Shape::Text {
-            position: Point::new(rect.center_x(), keyword_baseline + LINE_GAP + NAME_FONT.size),
+            position: Point::new(
+                rect.center_x(),
+                keyword_baseline + LINE_GAP + NAME_FONT.size,
+            ),
             text: content.title.clone(),
             anchor: TextAnchor::Middle,
             font: title_font(content),
@@ -277,7 +359,16 @@ pub fn specialization(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
     let (before, end) = last_segment(&path);
     let mut line = path.clone();
     *line.last_mut().expect("a route has two points") = back_from(end, before, ARROW_LENGTH);
-    tag(depicts, vec![Shape::Polyline { points: line, dashed: false }, triangle(end, before)])
+    tag(
+        depicts,
+        vec![
+            Shape::Polyline {
+                points: line,
+                dashed: false,
+            },
+            triangle(end, before),
+        ],
+    )
 }
 
 /// Defined by: a solid line from the usage ending in a hollow triangle on
@@ -294,7 +385,18 @@ pub fn defined_by(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
     };
     let mut line = path.clone();
     *line.last_mut().expect("a route has two points") = base;
-    tag(depicts, vec![Shape::Polyline { points: line, dashed: false }, triangle(end, before), dot(1.0), dot(-1.0)])
+    tag(
+        depicts,
+        vec![
+            Shape::Polyline {
+                points: line,
+                dashed: false,
+            },
+            triangle(end, before),
+            dot(1.0),
+            dot(-1.0),
+        ],
+    )
 }
 
 /// Composition: a solid line from the owner, starting in a filled diamond,
@@ -315,7 +417,10 @@ pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) 
     let mut line = path.clone();
     line[0] = diamond_back;
     let mut shapes = vec![
-        Shape::Polyline { points: line, dashed: false },
+        Shape::Polyline {
+            points: line,
+            dashed: false,
+        },
         Shape::Polygon {
             points: vec![
                 start,
@@ -349,29 +454,57 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
         let bend = path[path.len() / 2];
         let (dx, dy) = (bend.x - chord_middle.x, bend.y - chord_middle.y);
         if dx.abs() < 0.5 && dy.abs() < 0.5 {
-            (Point::new(bend.x, bend.y - LABEL_OFFSET), TextAnchor::Middle)
+            (
+                Point::new(bend.x, bend.y - LABEL_OFFSET),
+                TextAnchor::Middle,
+            )
         } else if dx.abs() >= dy.abs() {
             let side = dx.signum() * LABEL_OFFSET;
-            let anchor = if dx > 0.0 { TextAnchor::Start } else { TextAnchor::End };
-            (Point::new(bend.x + side, bend.y + LABEL_FONT.size / 3.0), anchor)
+            let anchor = if dx > 0.0 {
+                TextAnchor::Start
+            } else {
+                TextAnchor::End
+            };
+            (
+                Point::new(bend.x + side, bend.y + LABEL_FONT.size / 3.0),
+                anchor,
+            )
         } else if dy > 0.0 {
-            (Point::new(bend.x, bend.y + LABEL_OFFSET + LABEL_FONT.size), TextAnchor::Middle)
+            (
+                Point::new(bend.x, bend.y + LABEL_OFFSET + LABEL_FONT.size),
+                TextAnchor::Middle,
+            )
         } else {
-            (Point::new(bend.x, bend.y - LABEL_OFFSET), TextAnchor::Middle)
+            (
+                Point::new(bend.x, bend.y - LABEL_OFFSET),
+                TextAnchor::Middle,
+            )
         }
     } else {
         let segment = (path.len() - 1) / 2;
         let (a, b) = (path[segment], path[segment + 1]);
-        (Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0 - LABEL_OFFSET), TextAnchor::Middle)
+        (
+            Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0 - LABEL_OFFSET),
+            TextAnchor::Middle,
+        )
     };
     let text = connector_label(element);
-    let mut shapes = vec![Shape::Polyline { points: path.clone(), dashed: false }];
+    let mut shapes = vec![Shape::Polyline {
+        points: path.clone(),
+        dashed: false,
+    }];
     if element.kind == ElementKind::FlowUsage {
         shapes.push(flow_arrow(&path));
     }
     // An unnamed, untyped connection has no label.
     if !text.is_empty() {
-        shapes.push(Shape::Text { position, text, anchor, font: LABEL_FONT, fill: Fill::Stroke });
+        shapes.push(Shape::Text {
+            position,
+            text,
+            anchor,
+            font: LABEL_FONT,
+            fill: Fill::Stroke,
+        });
     }
     tag(depicts, shapes)
 }
@@ -386,7 +519,10 @@ pub fn fan_bends(a: Rect, b: Rect, index: usize, count: usize) -> Vec<Point> {
     }
     let (ca, cb) = (center(a), center(b));
     let (nx, ny) = normal(ca, cb, offset);
-    vec![Point::new((ca.x + cb.x) / 2.0 + nx, (ca.y + cb.y) / 2.0 + ny)]
+    vec![Point::new(
+        (ca.x + cb.x) / 2.0 + nx,
+        (ca.y + cb.y) / 2.0 + ny,
+    )]
 }
 
 /// The path of an edge from `from` to `to` through `bends`: it leaves
@@ -458,7 +594,12 @@ pub fn detour(from: Rect, to: Rect, obstacles: &[Rect]) -> Vec<Point> {
     // A pocket can need two bends: out of it, then around what blocks it.
     let pairs = candidates
         .iter()
-        .flat_map(|a| candidates.iter().filter(move |b| *b != a).map(move |b| vec![*a, *b]))
+        .flat_map(|a| {
+            candidates
+                .iter()
+                .filter(move |b| *b != a)
+                .map(move |b| vec![*a, *b])
+        })
         .collect();
     match (single, best(pairs)) {
         (_, Some((0, _, bends))) => bends,
@@ -476,10 +617,18 @@ fn distance(a: Point, b: Point) -> f32 {
 /// units clear of its border (Liang–Barsky clipping).
 fn crosses(a: Point, b: Point, rect: Rect) -> bool {
     let (x0, y0) = (rect.x - OBSTACLE_CLEARANCE, rect.y - OBSTACLE_CLEARANCE);
-    let (x1, y1) = (rect.right() + OBSTACLE_CLEARANCE, rect.bottom() + OBSTACLE_CLEARANCE);
+    let (x1, y1) = (
+        rect.right() + OBSTACLE_CLEARANCE,
+        rect.bottom() + OBSTACLE_CLEARANCE,
+    );
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let (mut t0, mut t1) = (0.0_f32, 1.0_f32);
-    for (p, q) in [(-dx, a.x - x0), (dx, x1 - a.x), (-dy, a.y - y0), (dy, y1 - a.y)] {
+    for (p, q) in [
+        (-dx, a.x - x0),
+        (dx, x1 - a.x),
+        (-dy, a.y - y0),
+        (dy, y1 - a.y),
+    ] {
         if p == 0.0 {
             if q < 0.0 {
                 return false;
@@ -517,15 +666,24 @@ pub fn spread_ends(rect: Rect, ends: &mut [&mut Point]) {
     for side in 0..4 {
         let horizontal = side < 2;
         let along = |p: &Point| if horizontal { p.x } else { p.y };
-        let (low, high) = if horizontal { (rect.x, rect.right()) } else { (rect.y, rect.bottom()) };
-        let mut on_side: Vec<&mut &mut Point> = ends.iter_mut().filter(|p| side_of(p) == side).collect();
+        let (low, high) = if horizontal {
+            (rect.x, rect.right())
+        } else {
+            (rect.y, rect.bottom())
+        };
+        let mut on_side: Vec<&mut &mut Point> =
+            ends.iter_mut().filter(|p| side_of(p) == side).collect();
         on_side.sort_by(|a, b| along(a).total_cmp(&along(b)));
         for i in 1..on_side.len() {
             let previous = along(on_side[i - 1]);
             let point = &mut on_side[i];
             if along(point) - previous < END_SEPARATION {
                 let moved = (previous + END_SEPARATION).min(high).max(low);
-                if horizontal { point.x = moved } else { point.y = moved }
+                if horizontal {
+                    point.x = moved
+                } else {
+                    point.y = moved
+                }
             }
         }
     }
@@ -538,7 +696,10 @@ fn last_segment(path: &[Point]) -> (Point, Point) {
 fn tag(depicts: Depicts, shapes: Vec<Shape>) -> Vec<Item> {
     shapes
         .into_iter()
-        .map(|shape| Item { depicts: depicts.clone(), shape })
+        .map(|shape| Item {
+            depicts: depicts.clone(),
+            shape,
+        })
         .collect()
 }
 
@@ -569,7 +730,10 @@ fn border_point(rect: Rect, toward: Point) -> Point {
 fn back_from(tip: Point, from: Point, distance: f32) -> Point {
     let (dx, dy) = (from.x - tip.x, from.y - tip.y);
     let length = (dx * dx + dy * dy).sqrt().max(f32::EPSILON);
-    Point::new(tip.x + dx / length * distance, tip.y + dy / length * distance)
+    Point::new(
+        tip.x + dx / length * distance,
+        tip.y + dy / length * distance,
+    )
 }
 
 /// A vector of `length` perpendicular to the line from `a` to `b`.
@@ -584,7 +748,11 @@ fn triangle(tip: Point, from: Point) -> Shape {
     let base = back_from(tip, from, ARROW_LENGTH);
     let (nx, ny) = normal(from, tip, ARROW_HALF_WIDTH);
     Shape::Polygon {
-        points: vec![tip, Point::new(base.x + nx, base.y + ny), Point::new(base.x - nx, base.y - ny)],
+        points: vec![
+            tip,
+            Point::new(base.x + nx, base.y + ny),
+            Point::new(base.x - nx, base.y - ny),
+        ],
         fill: Fill::Background,
     }
 }

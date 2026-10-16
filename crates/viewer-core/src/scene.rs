@@ -40,7 +40,10 @@ impl Rect {
     }
 
     pub fn contains(&self, point: Point) -> bool {
-        point.x >= self.x && point.x <= self.right() && point.y >= self.y && point.y <= self.bottom()
+        point.x >= self.x
+            && point.x <= self.right()
+            && point.y >= self.y
+            && point.y <= self.bottom()
     }
 
     pub fn intersects(&self, other: &Rect) -> bool {
@@ -68,7 +71,9 @@ pub struct Rgb(pub u8, pub u8, pub u8);
 impl Rgb {
     /// Reads `#rrggbb` (either case).
     pub fn parse(text: &str) -> Option<Self> {
-        let hex = text.strip_prefix('#').filter(|h| h.len() == 6 && h.is_ascii())?;
+        let hex = text
+            .strip_prefix('#')
+            .filter(|h| h.len() == 6 && h.is_ascii())?;
         let channel = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
         Some(Rgb(channel(0)?, channel(2)?, channel(4)?))
     }
@@ -78,7 +83,11 @@ impl Rgb {
     pub fn is_dark(self) -> bool {
         let linear = |c: u8| {
             let c = c as f32 / 255.0;
-            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
         };
         let luminance = 0.2126 * linear(self.0) + 0.7152 * linear(self.1) + 0.0722 * linear(self.2);
         luminance < 0.179
@@ -100,7 +109,8 @@ impl serde::Serialize for Rgb {
 impl<'de> serde::Deserialize<'de> for Rgb {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        Rgb::parse(&text).ok_or_else(|| serde::de::Error::custom(format!("`{text}` is not a #rrggbb color")))
+        Rgb::parse(&text)
+            .ok_or_else(|| serde::de::Error::custom(format!("`{text}` is not a #rrggbb color")))
     }
 }
 
@@ -185,12 +195,19 @@ pub enum Depicts {
     /// the root (`rearAxleAssembly.differential`), which keys its Layout
     /// entries; `element` is the part usage. Two usages of one definition
     /// can draw the same inner usage, so the element alone isn't unique.
-    Part { key: QualifiedName, element: QualifiedName },
+    Part {
+        key: QualifiedName,
+        element: QualifiedName,
+    },
     /// A port drawn on a box's border in an Interconnection Diagram: the
     /// box's element (the part usage, or the root for the Frame), the port,
     /// and `key`, the port's feature path from the root (`engine.fuelIn`,
     /// or `power` on the Frame), which keys its Layout entry.
-    Port { part: QualifiedName, port: QualifiedName, key: String },
+    Port {
+        part: QualifiedName,
+        port: QualifiedName,
+        key: String,
+    },
     /// The Legend keying a Style's colors.
     Legend,
 }
@@ -200,9 +217,15 @@ impl Depicts {
     /// Nodes have none: they are keyed by their element.
     pub fn edge_key(&self) -> Option<String> {
         match self {
-            Depicts::Element(_) | Depicts::Part { .. } | Depicts::Port { .. } | Depicts::Legend => None,
-            Depicts::Specialization { specific, general } => Some(format!("specialization {specific} {general}")),
-            Depicts::Typing { usage, definition } => Some(format!("defined-by {usage} {definition}")),
+            Depicts::Element(_) | Depicts::Part { .. } | Depicts::Port { .. } | Depicts::Legend => {
+                None
+            }
+            Depicts::Specialization { specific, general } => {
+                Some(format!("specialization {specific} {general}"))
+            }
+            Depicts::Typing { usage, definition } => {
+                Some(format!("defined-by {usage} {definition}"))
+            }
             Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),
             Depicts::Connection(connection) => Some(format!("connection {connection}")),
         }
@@ -246,20 +269,25 @@ impl Depicts {
 impl Scene {
     /// The rect of the node drawn under `key` (see [`Depicts::node_key`]).
     pub fn node_bounds(&self, key: &QualifiedName) -> Option<Rect> {
-        self.items.iter().find_map(|item| match (item.depicts.node_key(), &item.shape) {
-            (Some(k), Shape::Rect { rect, .. }) if k == key => Some(*rect),
-            _ => None,
-        })
+        self.items
+            .iter()
+            .find_map(|item| match (item.depicts.node_key(), &item.shape) {
+                (Some(k), Shape::Rect { rect, .. }) if k == key => Some(*rect),
+                _ => None,
+            })
     }
 
     /// The rect of the first node drawn for `element`, whatever its key.
     pub fn element_bounds(&self, element: &QualifiedName) -> Option<Rect> {
-        self.items.iter().find_map(|item| match (&item.depicts, &item.shape) {
-            (Depicts::Element(e) | Depicts::Part { element: e, .. }, Shape::Rect { rect, .. }) if e == element => {
-                Some(*rect)
-            }
-            _ => None,
-        })
+        self.items
+            .iter()
+            .find_map(|item| match (&item.depicts, &item.shape) {
+                (
+                    Depicts::Element(e) | Depicts::Part { element: e, .. },
+                    Shape::Rect { rect, .. },
+                ) if e == element => Some(*rect),
+                _ => None,
+            })
     }
 
     /// The element of the node drawn under `key`.
@@ -273,21 +301,29 @@ impl Scene {
 
     /// The key of the node that is topmost at `point`, if any.
     pub fn element_at(&self, point: Point) -> Option<&QualifiedName> {
-        self.items.iter().rev().find_map(|item| match (item.depicts.node_key(), &item.shape) {
-            (Some(key), Shape::Rect { rect, .. }) if rect.contains(point) => Some(key),
-            _ => None,
-        })
+        self.items
+            .iter()
+            .rev()
+            .find_map(|item| match (item.depicts.node_key(), &item.shape) {
+                (Some(key), Shape::Rect { rect, .. }) if rect.contains(point) => Some(key),
+                _ => None,
+            })
     }
 
     /// The port whose square is topmost at `point`, as (box element, port,
     /// port key).
     pub fn port_at(&self, point: Point) -> Option<(&QualifiedName, &QualifiedName, &str)> {
-        self.items.iter().rev().find_map(|item| match (&item.depicts, &item.shape) {
-            (Depicts::Port { part, port, key }, Shape::Rect { rect, .. }) if rect.contains(point) => {
-                Some((part, port, key.as_str()))
-            }
-            _ => None,
-        })
+        self.items
+            .iter()
+            .rev()
+            .find_map(|item| match (&item.depicts, &item.shape) {
+                (Depicts::Port { part, port, key }, Shape::Rect { rect, .. })
+                    if rect.contains(point) =>
+                {
+                    Some((part, port, key.as_str()))
+                }
+                _ => None,
+            })
     }
 
     /// The key of every node in the Diagram, in paint order.
@@ -308,7 +344,8 @@ impl Scene {
     pub fn edges(&self) -> Vec<(&Depicts, &[Point])> {
         let mut edges: Vec<(&Depicts, &[Point])> = Vec::new();
         for item in &self.items {
-            if let (Some(_), Shape::Polyline { points, .. }) = (item.depicts.edge_key(), &item.shape)
+            if let (Some(_), Shape::Polyline { points, .. }) =
+                (item.depicts.edge_key(), &item.shape)
                 && !edges.iter().any(|(d, _)| *d == &item.depicts)
             {
                 edges.push((&item.depicts, points));

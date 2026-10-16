@@ -56,22 +56,41 @@ fn every_view_usage_is_listed_but_not_view_definitions() {
 
     let listed: Vec<&str> = views(&model).map(|v| v.qualified_name.as_str()).collect();
 
-    assert_eq!(listed, ["V::inherited", "V::overview", "V::table", "V::vehicle tree", "V::wiring"]);
+    assert_eq!(
+        listed,
+        [
+            "V::inherited",
+            "V::overview",
+            "V::table",
+            "V::vehicle tree",
+            "V::wiring"
+        ]
+    );
 }
 
 #[test]
 fn a_view_is_drawn_as_its_own_rendering_says() {
     let model = common::views();
 
-    assert_eq!(kind(&model, &qn("V::vehicle tree")), Ok(DiagramKind::General));
-    assert_eq!(kind(&model, &qn("V::wiring")), Ok(DiagramKind::Interconnection));
+    assert_eq!(
+        kind(&model, &qn("V::vehicle tree")),
+        Ok(DiagramKind::General)
+    );
+    assert_eq!(
+        kind(&model, &qn("V::wiring")),
+        Ok(DiagramKind::Interconnection)
+    );
 }
 
 #[test]
 fn a_view_without_a_rendering_uses_its_view_definitions() {
     let model = common::views();
 
-    assert_eq!(kind(&model, &qn("V::inherited")), Ok(DiagramKind::General), "TreeView renders asTreeDiagram");
+    assert_eq!(
+        kind(&model, &qn("V::inherited")),
+        Ok(DiagramKind::General),
+        "TreeView renders asTreeDiagram"
+    );
 }
 
 #[test]
@@ -113,7 +132,10 @@ fn the_standard_view_definitions_decide_when_nothing_renders() {
         .build();
 
     assert_eq!(kind(&model, &qn("P::general")), Ok(DiagramKind::General));
-    assert_eq!(kind(&model, &qn("P::wiring")), Ok(DiagramKind::Interconnection));
+    assert_eq!(
+        kind(&model, &qn("P::wiring")),
+        Ok(DiagramKind::Interconnection)
+    );
 }
 
 #[test]
@@ -126,18 +148,36 @@ fn other_standard_views_and_renderings_are_unsupported_with_a_reason() {
         .view("P::plain")
         .build();
 
-    assert_eq!(unsupported_reason(&model, "P::flow"), "it is a `ActionFlowView`");
-    assert_eq!(unsupported_reason(&model, "P::states"), "it is a `StateTransitionView`");
-    assert_eq!(unsupported_reason(&model, "P::plain"), "it has no rendering");
-    assert_eq!(unsupported_reason(&common::views(), "V::table"), "it renders as `asElementTable`");
+    assert_eq!(
+        unsupported_reason(&model, "P::flow"),
+        "it is a `ActionFlowView`"
+    );
+    assert_eq!(
+        unsupported_reason(&model, "P::states"),
+        "it is a `StateTransitionView`"
+    );
+    assert_eq!(
+        unsupported_reason(&model, "P::plain"),
+        "it has no rendering"
+    );
+    assert_eq!(
+        unsupported_reason(&common::views(), "V::table"),
+        "it renders as `asElementTable`"
+    );
 }
 
 #[test]
 fn only_view_usages_resolve() {
     let model = common::views();
 
-    assert_eq!(kind(&model, &qn("V::TreeView")), Err(ViewError::NotAView(qn("V::TreeView"))));
-    assert_eq!(resolve(&model, &qn("V::Gone")), Err(ViewError::NotAView(qn("V::Gone"))));
+    assert_eq!(
+        kind(&model, &qn("V::TreeView")),
+        Err(ViewError::NotAView(qn("V::TreeView")))
+    );
+    assert_eq!(
+        resolve(&model, &qn("V::Gone")),
+        Err(ViewError::NotAView(qn("V::Gone")))
+    );
 }
 
 fn general(model: &Model, view: &str) -> Vec<QualifiedName> {
@@ -153,50 +193,82 @@ fn tree_view(builder: ModelBuilder) -> ModelBuilder {
 
 #[test]
 fn exposing_an_element_shows_just_that_element() {
-    let model = tree_view(base()).exposes("P::Engine", ExposeScope::Element).build();
+    let model = tree_view(base())
+        .exposes("P::Engine", ExposeScope::Element)
+        .build();
 
     assert_eq!(general(&model, "P::v"), names(&["P::Engine"]));
 }
 
 #[test]
 fn exposing_members_shows_the_drawable_members() {
-    let model = tree_view(base()).exposes("P::Defs", ExposeScope::Members).build();
+    let model = tree_view(base())
+        .exposes("P::Defs", ExposeScope::Members)
+        .build();
 
-    assert_eq!(general(&model, "P::v"), names(&["P::Defs::Frame", "P::Defs::Mass"]), "the item def is unsupported");
+    assert_eq!(
+        general(&model, "P::v"),
+        names(&["P::Defs::Frame", "P::Defs::Mass"]),
+        "the item def is unsupported"
+    );
 }
 
 #[test]
 fn exposing_recursively_shows_the_element_and_everything_beneath_it() {
-    let model = tree_view(base()).exposes("P::vehicle", ExposeScope::ElementAndDescendants).build();
+    let model = tree_view(base())
+        .exposes("P::vehicle", ExposeScope::ElementAndDescendants)
+        .build();
 
     assert_eq!(
         general(&model, "P::v"),
-        names(&["P::vehicle", "P::vehicle::body", "P::vehicle::body::door", "P::vehicle::mass"])
+        names(&[
+            "P::vehicle",
+            "P::vehicle::body",
+            "P::vehicle::body::door",
+            "P::vehicle::mass"
+        ])
     );
 }
 
 #[test]
 fn exposing_descendants_leaves_out_the_element_itself() {
-    let model = tree_view(base()).exposes("P::vehicle", ExposeScope::Descendants).build();
+    let model = tree_view(base())
+        .exposes("P::vehicle", ExposeScope::Descendants)
+        .build();
 
     assert_eq!(
         general(&model, "P::v"),
-        names(&["P::vehicle::body", "P::vehicle::body::door", "P::vehicle::mass"])
+        names(&[
+            "P::vehicle::body",
+            "P::vehicle::body::door",
+            "P::vehicle::mass"
+        ])
     );
 }
 
 #[test]
 fn exposing_a_package_shows_its_members() {
-    let model = tree_view(base()).exposes("P::Defs", ExposeScope::Element).build();
+    let model = tree_view(base())
+        .exposes("P::Defs", ExposeScope::Element)
+        .build();
 
-    assert_eq!(general(&model, "P::v"), names(&["P::Defs::Frame", "P::Defs::Mass"]));
+    assert_eq!(
+        general(&model, "P::v"),
+        names(&["P::Defs::Frame", "P::Defs::Mass"])
+    );
 }
 
 #[test]
 fn connections_and_unsupported_elements_are_not_nodes() {
-    let model = tree_view(base()).exposes("P::Vehicle", ExposeScope::ElementAndDescendants).build();
+    let model = tree_view(base())
+        .exposes("P::Vehicle", ExposeScope::ElementAndDescendants)
+        .build();
 
-    assert_eq!(general(&model, "P::v"), names(&["P::Vehicle", "P::Vehicle::engine"]), "not the connection");
+    assert_eq!(
+        general(&model, "P::v"),
+        names(&["P::Vehicle", "P::Vehicle::engine"]),
+        "not the connection"
+    );
 }
 
 #[test]
@@ -207,12 +279,17 @@ fn several_exposes_combine_without_duplicates() {
         .exposes("P::Defs::Frame", ExposeScope::Element)
         .build();
 
-    assert_eq!(general(&model, "P::v"), names(&["P::Defs::Frame", "P::Defs::Mass", "P::Engine"]));
+    assert_eq!(
+        general(&model, "P::v"),
+        names(&["P::Defs::Frame", "P::Defs::Mass", "P::Engine"])
+    );
 }
 
 #[test]
 fn a_view_exposing_nothing_is_an_empty_general_diagram() {
-    let model = tree_view(base()).exposes("P::Gone", ExposeScope::Members).build();
+    let model = tree_view(base())
+        .exposes("P::Gone", ExposeScope::Members)
+        .build();
 
     assert_eq!(general(&model, "P::v"), Vec::<QualifiedName>::new());
 }
@@ -225,25 +302,41 @@ fn the_fixture_views_resolve_to_their_contents() {
         general(&model, "V::vehicle tree"),
         names(&["V::vehicle", "V::vehicle::body"])
     );
-    assert_eq!(general(&model, "V::overview"), names(&["V::Defs::Frame", "V::Defs::Mass", "V::Engine"]));
-    assert_eq!(resolve(&model, &qn("V::wiring")), Ok(ViewContents::Interconnection(qn("V::Vehicle"))));
+    assert_eq!(
+        general(&model, "V::overview"),
+        names(&["V::Defs::Frame", "V::Defs::Mass", "V::Engine"])
+    );
+    assert_eq!(
+        resolve(&model, &qn("V::wiring")),
+        Ok(ViewContents::Interconnection(qn("V::Vehicle")))
+    );
 }
 
 fn wiring(builder: ModelBuilder) -> ModelBuilder {
-    builder.view("P::w").renders("Views::asInterconnectionDiagram")
+    builder
+        .view("P::w")
+        .renders("Views::asInterconnectionDiagram")
 }
 
 #[test]
 fn an_interconnection_view_is_rooted_at_its_exposed_part_whatever_the_scope() {
-    let model = wiring(base()).exposes("P::vehicle", ExposeScope::ElementAndDescendants).build();
+    let model = wiring(base())
+        .exposes("P::vehicle", ExposeScope::ElementAndDescendants)
+        .build();
 
-    assert_eq!(resolve(&model, &qn("P::w")), Ok(ViewContents::Interconnection(qn("P::vehicle"))));
+    assert_eq!(
+        resolve(&model, &qn("P::w")),
+        Ok(ViewContents::Interconnection(qn("P::vehicle")))
+    );
 }
 
 #[test]
 fn an_interconnection_view_needs_exactly_one_part() {
     let none = wiring(base()).build();
-    assert_eq!(invalid_reason(&none, "P::w"), "it exposes nothing to draw as an Interconnection Diagram");
+    assert_eq!(
+        invalid_reason(&none, "P::w"),
+        "it exposes nothing to draw as an Interconnection Diagram"
+    );
 
     let two = wiring(base())
         .exposes("P::Vehicle", ExposeScope::Element)
@@ -254,6 +347,11 @@ fn an_interconnection_view_needs_exactly_one_part() {
         "an Interconnection Diagram needs exactly one exposed part, but it exposes `P::Engine`, `P::Vehicle`"
     );
 
-    let package = wiring(base()).exposes("P::Defs", ExposeScope::Members).build();
-    assert_eq!(invalid_reason(&package, "P::w"), "`P::Defs` is not a part or part def");
+    let package = wiring(base())
+        .exposes("P::Defs", ExposeScope::Members)
+        .build();
+    assert_eq!(
+        invalid_reason(&package, "P::w"),
+        "`P::Defs` is not a part or part def"
+    );
 }

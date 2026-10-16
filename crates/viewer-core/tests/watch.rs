@@ -61,7 +61,10 @@ fn saving_a_diagram_file_does_not_change_the_fingerprint() {
 }
 
 fn fp(entries: &[(&str, u64)]) -> viewer_core::watch::Fingerprint {
-    entries.iter().map(|(f, size)| (f.into(), (None, *size))).collect()
+    entries
+        .iter()
+        .map(|(f, size)| (f.into(), (None, *size)))
+        .collect()
 }
 
 #[test]
@@ -69,7 +72,10 @@ fn a_change_reloads_once_it_has_held_for_one_more_look() {
     let mut detector = ChangeDetector::new(fp(&[("a", 1)]));
 
     assert!(!detector.observe(fp(&[("a", 1)])), "nothing changed");
-    assert!(!detector.observe(fp(&[("a", 2)])), "changed, not yet settled");
+    assert!(
+        !detector.observe(fp(&[("a", 2)])),
+        "changed, not yet settled"
+    );
     assert!(detector.observe(fp(&[("a", 2)])), "settled: reload");
     assert!(!detector.observe(fp(&[("a", 2)])), "already reloaded");
 }
@@ -107,7 +113,10 @@ fn good(part: &str) -> Model {
 }
 
 fn broken() -> Model {
-    Model::builder().package("P").diagnostic(Severity::Error, "expected a name").build()
+    Model::builder()
+        .package("P")
+        .diagnostic(Severity::Error, "expected a name")
+        .build()
 }
 
 #[test]
@@ -132,7 +141,12 @@ fn the_last_good_model_stays_through_several_broken_reloads_until_a_good_one() {
     let first = accept(None, good("P::A"));
     let still_broken = accept(Some(accept(Some(first), broken())), broken());
     assert!(still_broken.stale);
-    assert!(still_broken.model.element(&QualifiedName::from("P::A")).is_some());
+    assert!(
+        still_broken
+            .model
+            .element(&QualifiedName::from("P::A"))
+            .is_some()
+    );
 
     let fixed = accept(Some(still_broken), good("P::C"));
     assert!(!fixed.stale);
@@ -154,8 +168,16 @@ fn editing_the_model_style_changes_the_fingerprint() {
     write(folder.path(), "a.sysml", "package A;");
     let before = fingerprint(folder.path()).unwrap();
 
-    write(folder.path(), "diagrams/style.json", r#"{"format_version": 1, "rules": []}"#);
+    write(
+        folder.path(),
+        "diagrams/style.json",
+        r#"{"format_version": 1, "rules": []}"#,
+    );
 
     assert_ne!(fingerprint(folder.path()).unwrap(), before);
-    assert_eq!(model_files(folder.path()).unwrap().len(), 1, "but it isn't a Model file");
+    assert_eq!(
+        model_files(folder.path()).unwrap().len(),
+        1,
+        "but it isn't a Model file"
+    );
 }

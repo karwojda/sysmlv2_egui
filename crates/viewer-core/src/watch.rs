@@ -40,7 +40,10 @@ pub type Fingerprint = BTreeMap<PathBuf, (Option<SystemTime>, u64)>;
 pub fn fingerprint(folder: &Path) -> std::io::Result<Fingerprint> {
     let mut fingerprint = Fingerprint::new();
     // The Model Style restyles every Diagram, so editing it counts too.
-    for file in model_files(folder)?.into_iter().chain([crate::style::path_for(folder)]) {
+    for file in model_files(folder)?
+        .into_iter()
+        .chain([crate::style::path_for(folder)])
+    {
         // A file deleted between listing and reading simply drops out.
         if let Ok(metadata) = std::fs::metadata(&file) {
             fingerprint.insert(file, (metadata.modified().ok(), metadata.len()));
@@ -60,7 +63,10 @@ pub struct ChangeDetector {
 impl ChangeDetector {
     /// Starts from the fingerprint of the Model as loaded.
     pub fn new(loaded: Fingerprint) -> Self {
-        Self { loaded: Some(loaded.clone()), seen: Some(loaded) }
+        Self {
+            loaded: Some(loaded.clone()),
+            seen: Some(loaded),
+        }
     }
 
     /// Records the latest fingerprint; true means "reload now".
@@ -90,9 +96,19 @@ pub fn accept(previous: Option<Shown>, loaded: Model) -> Shown {
     let diagnostics = loaded.diagnostics().to_vec();
     match previous {
         // The Model drawn is good, or is itself the last good one kept.
-        Some(previous) if loaded.has_errors() && (previous.stale || !previous.model.has_errors()) => {
-            Shown { model: previous.model, diagnostics, stale: true }
+        Some(previous)
+            if loaded.has_errors() && (previous.stale || !previous.model.has_errors()) =>
+        {
+            Shown {
+                model: previous.model,
+                diagnostics,
+                stale: true,
+            }
         }
-        _ => Shown { model: loaded, diagnostics, stale: false },
+        _ => Shown {
+            model: loaded,
+            diagnostics,
+            stale: false,
+        },
     }
 }

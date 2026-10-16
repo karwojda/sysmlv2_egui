@@ -11,7 +11,9 @@ use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::style::{self, Style};
 use viewer_core::view::{self, ViewError};
-use viewer_core::{DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file, svg};
+use viewer_core::{
+    DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file, svg,
+};
 use viewer_opensysml::ServiceConfig;
 
 pub const EXIT_OK: u8 = 0;
@@ -54,7 +56,9 @@ impl ServiceArgs {
 /// [`run`]; if `args` don't parse, the environment's (and `run` reports the
 /// problem).
 pub fn service_config(args: &[OsString]) -> ServiceConfig {
-    Cli::try_parse_from(args).map(|cli| cli.service.config()).unwrap_or_else(|_| ServiceConfig::from_env())
+    Cli::try_parse_from(args)
+        .map(|cli| cli.service.config())
+        .unwrap_or_else(|_| ServiceConfig::from_env())
 }
 
 #[derive(Subcommand)]
@@ -85,7 +89,11 @@ enum Command {
 
 /// Runs the tool with `args` (program name first), loading Models through
 /// `backend`. Messages go to `stderr`; the result is the process exit code.
-pub fn run(args: impl IntoIterator<Item = OsString>, backend: &mut dyn ModelBackend, stderr: &mut dyn Write) -> u8 {
+pub fn run(
+    args: impl IntoIterator<Item = OsString>,
+    backend: &mut dyn ModelBackend,
+    stderr: &mut dyn Write,
+) -> u8 {
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         // Help and version go to stdout; usage errors to `stderr`.
@@ -99,15 +107,23 @@ pub fn run(args: impl IntoIterator<Item = OsString>, backend: &mut dyn ModelBack
         }
     };
     let result = match cli.command {
-        Command::Export { model_folder, diagram: Some(name), out: Some(out), .. } => {
-            export_one(&model_folder, &name, &out, backend, stderr)
-        }
-        Command::Export { model_folder, view: Some(name), out: Some(out), .. } => {
-            export_view(&model_folder, &name, &out, backend, stderr)
-        }
-        Command::Export { model_folder, out_dir: Some(out_dir), .. } => {
-            export_all(&model_folder, &out_dir, backend, stderr)
-        }
+        Command::Export {
+            model_folder,
+            diagram: Some(name),
+            out: Some(out),
+            ..
+        } => export_one(&model_folder, &name, &out, backend, stderr),
+        Command::Export {
+            model_folder,
+            view: Some(name),
+            out: Some(out),
+            ..
+        } => export_view(&model_folder, &name, &out, backend, stderr),
+        Command::Export {
+            model_folder,
+            out_dir: Some(out_dir),
+            ..
+        } => export_all(&model_folder, &out_dir, backend, stderr),
         Command::Export { .. } => {
             unreachable!("clap enforces --diagram or --view with --out, or --all with --out-dir")
         }
@@ -166,12 +182,20 @@ fn find_view(model: &Model, name: &str) -> Result<QualifiedName, Failure> {
     if let Some(view) = views.iter().find(|v| v.as_str() == name) {
         return Ok((*view).clone());
     }
-    match views.iter().filter(|v| v.simple_name() == name).collect::<Vec<_>>().as_slice() {
+    match views
+        .iter()
+        .filter(|v| v.simple_name() == name)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         [view] => Ok((**view).clone()),
         [] => Err(Failure(format!("the Model has no view named `{name}`"))),
         many => {
             let names: Vec<String> = many.iter().map(|v| format!("`{v}`")).collect();
-            Err(Failure(format!("`{name}` names several views ({}); use the qualified name", names.join(", "))))
+            Err(Failure(format!(
+                "`{name}` names several views ({}); use the qualified name",
+                names.join(", ")
+            )))
         }
     }
 }
@@ -186,8 +210,12 @@ fn export_all(
     backend: &mut dyn ModelBackend,
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
-    let names = diagram_file::names_in(model_folder)
-        .map_err(|e| Failure(format!("cannot list Diagram Files in {}: {e}", model_folder.display())))?;
+    let names = diagram_file::names_in(model_folder).map_err(|e| {
+        Failure(format!(
+            "cannot list Diagram Files in {}: {e}",
+            model_folder.display()
+        ))
+    })?;
     let model = load_model(model_folder, backend, stderr)?;
 
     // What to write, by output name, and what each output came from.
@@ -197,8 +225,11 @@ fn export_all(
         origin.insert(name.clone(), format!("Diagram File `{name}`"));
         jobs.push((name.clone(), read_diagram(model_folder, name)));
     }
-    let saved_views: Vec<DiagramSource> =
-        jobs.iter().filter_map(|(_, file)| file.as_ref().ok()).map(|f| f.source.clone()).collect();
+    let saved_views: Vec<DiagramSource> = jobs
+        .iter()
+        .filter_map(|(_, file)| file.as_ref().ok())
+        .map(|f| f.source.clone())
+        .collect();
     for element in view::views(&model) {
         let view = &element.qualified_name;
         if let Err(ViewError::Unsupported { reason, .. }) = view::kind(&model, view) {
@@ -218,7 +249,11 @@ fn export_all(
         jobs.push((name.clone(), Ok(DiagramFile::of(name, source))));
     }
     if jobs.is_empty() {
-        let _ = writeln!(stderr, "no Diagram Files or views in {}; nothing to Export", model_folder.display());
+        let _ = writeln!(
+            stderr,
+            "no Diagram Files or views in {}; nothing to Export",
+            model_folder.display()
+        );
         return Ok(());
     }
 
@@ -236,7 +271,10 @@ fn export_all(
         }
     }
     if failed > 0 {
-        return Err(Failure(format!("{failed} of {} Diagrams failed to Export", jobs.len())));
+        return Err(Failure(format!(
+            "{failed} of {} Diagrams failed to Export",
+            jobs.len()
+        )));
     }
     Ok(())
 }
@@ -249,13 +287,21 @@ fn read_diagram(model_folder: &Path, name: &str) -> Result<DiagramFile, Failure>
 }
 
 /// Loads the Model and prints its diagnostics; a Model with errors fails.
-fn load_model(model_folder: &Path, backend: &mut dyn ModelBackend, stderr: &mut dyn Write) -> Result<Model, Failure> {
-    let model = backend.load(model_folder).map_err(|e| Failure(e.to_string()))?;
+fn load_model(
+    model_folder: &Path,
+    backend: &mut dyn ModelBackend,
+    stderr: &mut dyn Write,
+) -> Result<Model, Failure> {
+    let model = backend
+        .load(model_folder)
+        .map_err(|e| Failure(e.to_string()))?;
     for diagnostic in model.diagnostics() {
         let _ = writeln!(stderr, "{}", DiagnosticLine(diagnostic));
     }
     if model.has_errors() {
-        return Err(Failure("the Model has errors; nothing was Exported".to_owned()));
+        return Err(Failure(
+            "the Model has errors; nothing was Exported".to_owned(),
+        ));
     }
     Ok(model)
 }
@@ -264,21 +310,31 @@ fn load_model(model_folder: &Path, backend: &mut dyn ModelBackend, stderr: &mut 
 /// Diagrams are drawn without it.
 fn load_style(model_folder: &Path, stderr: &mut dyn Write) -> Option<Style> {
     style::load(model_folder).unwrap_or_else(|error| {
-        let _ = writeln!(stderr, "warning: {error}; Exporting without the Model Style");
+        let _ = writeln!(
+            stderr,
+            "warning: {error}; Exporting without the Model Style"
+        );
         None
     })
 }
 
-fn render_to(model: &Model, diagram: &DiagramFile, style: Option<&Style>, out: &Path) -> Result<(), Failure> {
+fn render_to(
+    model: &Model,
+    diagram: &DiagramFile,
+    style: Option<&Style>,
+    out: &Path,
+) -> Result<(), Failure> {
     let mut scene = diagram
         .source
         .build_scene(model, &diagram.layout)
         .map_err(|e| Failure(format!("Diagram `{}`: {e}", diagram.name)))?;
     style::apply_styles(&mut scene, model, style, &diagram.style);
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent).map_err(|e| Failure(format!("cannot create {}: {e}", parent.display())))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Failure(format!("cannot create {}: {e}", parent.display())))?;
     }
-    std::fs::write(out, svg::render(&scene)).map_err(|e| Failure(format!("cannot write {}: {e}", out.display())))
+    std::fs::write(out, svg::render(&scene))
+        .map_err(|e| Failure(format!("cannot write {}: {e}", out.display())))
 }
 
 #[derive(Debug)]

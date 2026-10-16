@@ -10,8 +10,12 @@ use viewer_app::loader::Loader;
 use viewer_core::{BackendError, FakeBackend, Model, ModelBackend, QualifiedName};
 
 fn wait_for_load(loader: &Loader, notified: &mpsc::Receiver<()>) -> viewer_app::loader::Loaded {
-    notified.recv_timeout(Duration::from_secs(5)).expect("the loader notifies");
-    loader.poll().expect("a result is ready after the notification")
+    notified
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the loader notifies");
+    loader
+        .poll()
+        .expect("a result is ready after the notification")
 }
 
 #[test]
@@ -26,7 +30,13 @@ fn delivers_the_loaded_model_for_the_folder_asked_for() {
     let loaded = wait_for_load(&loader, &notified);
 
     assert_eq!(loaded.folder, PathBuf::from("models/p"));
-    assert!(loaded.result.unwrap().element(&QualifiedName::from("P")).is_some());
+    assert!(
+        loaded
+            .result
+            .unwrap()
+            .element(&QualifiedName::from("P"))
+            .is_some()
+    );
 }
 
 #[test]
@@ -44,7 +54,10 @@ fn delivers_backend_errors() {
 
     loader.load(PathBuf::from("missing"));
 
-    assert!(matches!(wait_for_load(&loader, &notified).result, Err(BackendError::FolderNotFound(_))));
+    assert!(matches!(
+        wait_for_load(&loader, &notified).result,
+        Err(BackendError::FolderNotFound(_))
+    ));
 }
 
 #[test]
@@ -65,5 +78,8 @@ fn dropping_the_loader_drops_the_backend() {
 
     drop(loader);
 
-    assert!(dropped.load(Ordering::SeqCst), "the backend, and so the sidecar, is released");
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "the backend, and so the sidecar, is released"
+    );
 }

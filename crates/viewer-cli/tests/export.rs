@@ -6,7 +6,9 @@ use std::path::Path;
 use tempfile::TempDir;
 use viewer_cli::{EXIT_FAILURE, EXIT_OK, run};
 use viewer_core::model::Severity;
-use viewer_core::{DiagramFile, DiagramKind, FakeBackend, Model, QualifiedName, build_scene, diagram_file, svg};
+use viewer_core::{
+    DiagramFile, DiagramKind, FakeBackend, Model, QualifiedName, build_scene, diagram_file, svg,
+};
 
 fn vehicles() -> Model {
     Model::builder()
@@ -53,7 +55,10 @@ fn export(model: Model, folder: &Path, diagram: &str, out: &Path) -> Outcome {
     ];
     let mut stderr = Vec::new();
     let code = run(args, &mut FakeBackend::new(model), &mut stderr);
-    Outcome { code, stderr: String::from_utf8(stderr).unwrap() }
+    Outcome {
+        code,
+        stderr: String::from_utf8(stderr).unwrap(),
+    }
 }
 
 #[test]
@@ -64,7 +69,8 @@ fn writes_the_diagram_as_svg() {
     let outcome = export(vehicles(), folder.path(), "overview", &out);
 
     assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
-    let expected = svg::render(&build_scene(&vehicles(), DiagramKind::General, &"Vehicles".into()).unwrap());
+    let expected =
+        svg::render(&build_scene(&vehicles(), DiagramKind::General, &"Vehicles".into()).unwrap());
     assert_eq!(std::fs::read_to_string(&out).unwrap(), expected);
 }
 
@@ -91,7 +97,11 @@ fn fails_and_lists_diagnostics_when_the_model_has_errors() {
     let outcome = export(model, folder.path(), "overview", &out);
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("error: unexpected ';'"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("error: unexpected ';'"),
+        "{}",
+        outcome.stderr
+    );
     assert!(!out.exists(), "nothing is written for a broken Model");
 }
 
@@ -107,7 +117,11 @@ fn reports_warnings_but_still_exports() {
     let outcome = export(model, folder.path(), "overview", &out);
 
     assert_eq!(outcome.code, EXIT_OK);
-    assert!(outcome.stderr.contains("warning: unused import"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("warning: unused import"),
+        "{}",
+        outcome.stderr
+    );
     assert!(out.is_file());
 }
 
@@ -119,8 +133,16 @@ fn fails_and_names_the_diagram_when_its_root_element_is_gone() {
     let outcome = export(vehicles(), folder.path(), "engines", &out);
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("Diagram `engines`"), "{}", outcome.stderr);
-    assert!(outcome.stderr.contains("Vehicles::Engines"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("Diagram `engines`"),
+        "{}",
+        outcome.stderr
+    );
+    assert!(
+        outcome.stderr.contains("Vehicles::Engines"),
+        "{}",
+        outcome.stderr
+    );
     assert!(!out.exists());
 }
 
@@ -128,11 +150,24 @@ fn fails_and_names_the_diagram_when_its_root_element_is_gone() {
 fn fails_clearly_when_the_diagram_file_does_not_exist() {
     let folder = model_folder(&[]);
 
-    let outcome = export(vehicles(), folder.path(), "missing", &folder.path().join("x.svg"));
+    let outcome = export(
+        vehicles(),
+        folder.path(),
+        "missing",
+        &folder.path().join("x.svg"),
+    );
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("cannot read Diagram File"), "{}", outcome.stderr);
-    assert!(outcome.stderr.contains("missing.diagram.json"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("cannot read Diagram File"),
+        "{}",
+        outcome.stderr
+    );
+    assert!(
+        outcome.stderr.contains("missing.diagram.json"),
+        "{}",
+        outcome.stderr
+    );
 }
 
 #[test]
@@ -140,10 +175,19 @@ fn fails_clearly_when_the_diagram_file_is_invalid() {
     let folder = model_folder(&[]);
     save(folder.path(), "broken", "{ not json");
 
-    let outcome = export(vehicles(), folder.path(), "broken", &folder.path().join("x.svg"));
+    let outcome = export(
+        vehicles(),
+        folder.path(),
+        "broken",
+        &folder.path().join("x.svg"),
+    );
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("invalid Diagram File"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("invalid Diagram File"),
+        "{}",
+        outcome.stderr
+    );
 }
 
 /// Runs the real binary, headless, against a real Model.
@@ -151,11 +195,16 @@ fn fails_clearly_when_the_diagram_file_is_invalid() {
 #[ignore = "needs the sysml-grpc service"]
 fn the_real_binary_exports_a_real_model() {
     let folder = TempDir::new().unwrap();
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../viewer-opensysml/tests/fixtures/vehicles");
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../viewer-opensysml/tests/fixtures/vehicles");
     for file in ["vehicles.sysml", "fleet.sysml"] {
         std::fs::copy(fixture.join(file), folder.path().join(file)).unwrap();
     }
-    save(folder.path(), "overview", &general("overview", "Vehicles").to_text());
+    save(
+        folder.path(),
+        "overview",
+        &general("overview", "Vehicles").to_text(),
+    );
     let out = folder.path().join("overview.svg");
 
     let status = std::process::Command::new(env!("CARGO_BIN_EXE_sysml-viewer"))
@@ -171,7 +220,10 @@ fn the_real_binary_exports_a_real_model() {
     assert!(status.success());
     let svg = std::fs::read_to_string(&out).unwrap();
     assert!(svg.contains(">ElectricCar</text>"));
-    assert!(!svg.contains(">Wheel</text>"), "nested package contents are not drawn");
+    assert!(
+        !svg.contains(">Wheel</text>"),
+        "nested package contents are not drawn"
+    );
 }
 
 #[test]
@@ -179,9 +231,16 @@ fn honours_the_diagram_files_layout() {
     let mut diagram = general("overview", "Vehicles");
     diagram.layout.nodes.insert(
         QualifiedName::from("Vehicles::Car"),
-        viewer_core::NodePlacement { x: 412.0, y: 300.0, size: Some([177.0, 66.0]) },
+        viewer_core::NodePlacement {
+            x: 412.0,
+            y: 300.0,
+            size: Some([177.0, 66.0]),
+        },
     );
-    diagram.layout.hidden.insert(QualifiedName::from("Vehicles::Vehicle"));
+    diagram
+        .layout
+        .hidden
+        .insert(QualifiedName::from("Vehicles::Vehicle"));
     let folder = model_folder(&[diagram]);
     let out = folder.path().join("overview.svg");
 
@@ -189,16 +248,33 @@ fn honours_the_diagram_files_layout() {
 
     assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
     let svg = std::fs::read_to_string(&out).unwrap();
-    assert!(svg.contains(r#"<rect x="412" y="300" width="177" height="66""#), "{svg}");
-    assert!(!svg.contains(">Vehicle</text>"), "hidden elements are not drawn");
+    assert!(
+        svg.contains(r#"<rect x="412" y="300" width="177" height="66""#),
+        "{svg}"
+    );
+    assert!(
+        !svg.contains(">Vehicle</text>"),
+        "hidden elements are not drawn"
+    );
 }
 
 #[test]
 fn service_flags_are_read_before_the_backend_is_built_and_win_over_the_environment() {
-    let args: Vec<OsString> = ["sysml-viewer", "export", "m", "--all", "--out-dir", "o", "--sysml-binary", "/opt/sysml-grpc", "--sysml-service", "localhost:50051"]
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    let args: Vec<OsString> = [
+        "sysml-viewer",
+        "export",
+        "m",
+        "--all",
+        "--out-dir",
+        "o",
+        "--sysml-binary",
+        "/opt/sysml-grpc",
+        "--sysml-service",
+        "localhost:50051",
+    ]
+    .into_iter()
+    .map(Into::into)
+    .collect();
 
     let config = viewer_cli::service_config(&args);
 
@@ -250,22 +326,42 @@ fn exports_an_interconnection_diagram() {
         .end(&["P::System::source", "P::Source::out"])
         .end(&["P::System::sink", "P::Sink::in"])
         .build();
-    let folder = model_folder(&[DiagramFile::new("wiring", DiagramKind::Interconnection, QualifiedName::from("P::System"))]);
+    let folder = model_folder(&[DiagramFile::new(
+        "wiring",
+        DiagramKind::Interconnection,
+        QualifiedName::from("P::System"),
+    )]);
     let out = folder.path().join("wiring.svg");
 
     let outcome = export(model, folder.path(), "wiring", &out);
 
     assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
     let svg = std::fs::read_to_string(&out).unwrap();
-    assert!(svg.contains(">source:Source</text>") && svg.contains(">link</text>"), "{svg}");
+    assert!(
+        svg.contains(">source:Source</text>") && svg.contains(">link</text>"),
+        "{svg}"
+    );
 }
 
 #[test]
 fn fails_and_names_the_diagram_when_an_interconnection_root_is_not_a_part() {
-    let folder = model_folder(&[DiagramFile::new("wiring", DiagramKind::Interconnection, QualifiedName::from("Vehicles"))]);
+    let folder = model_folder(&[DiagramFile::new(
+        "wiring",
+        DiagramKind::Interconnection,
+        QualifiedName::from("Vehicles"),
+    )]);
 
-    let outcome = export(vehicles(), folder.path(), "wiring", &folder.path().join("wiring.svg"));
+    let outcome = export(
+        vehicles(),
+        folder.path(),
+        "wiring",
+        &folder.path().join("wiring.svg"),
+    );
 
     assert_eq!(outcome.code, EXIT_FAILURE);
-    assert!(outcome.stderr.contains("Diagram `wiring`") && outcome.stderr.contains("part"), "{}", outcome.stderr);
+    assert!(
+        outcome.stderr.contains("Diagram `wiring`") && outcome.stderr.contains("part"),
+        "{}",
+        outcome.stderr
+    );
 }

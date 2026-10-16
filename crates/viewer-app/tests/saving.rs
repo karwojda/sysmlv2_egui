@@ -22,7 +22,14 @@ fn qn(name: &str) -> QualifiedName {
 fn moved() -> (Model, OpenDiagram) {
     let model = model();
     let mut diagram = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
-    diagram.edit(&model, &Edit::Move { element: qn("P::Car"), dx: 40.0, dy: 25.0 });
+    diagram.edit(
+        &model,
+        &Edit::Move {
+            element: qn("P::Car"),
+            dx: 40.0,
+            dy: 25.0,
+        },
+    );
     (model, diagram)
 }
 
@@ -57,7 +64,12 @@ fn an_edit_that_changes_nothing_leaves_it_saved() {
 fn saving_writes_a_diagram_file_that_reopens_with_the_same_layout() {
     let folder = TempDir::new().unwrap();
     let (model, mut diagram) = moved();
-    let car = diagram.scene.as_ref().unwrap().node_bounds(&qn("P::Car")).unwrap();
+    let car = diagram
+        .scene
+        .as_ref()
+        .unwrap()
+        .node_bounds(&qn("P::Car"))
+        .unwrap();
 
     diagram.save_as(folder.path(), "overview").unwrap();
 
@@ -65,7 +77,10 @@ fn saving_writes_a_diagram_file_that_reopens_with_the_same_layout() {
     assert_eq!(diagram.title(), "overview");
     let text = std::fs::read_to_string(diagram_file::path_for(folder.path(), "overview")).unwrap();
     let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
-    assert_eq!(reopened.scene.unwrap().node_bounds(&qn("P::Car")).unwrap(), car);
+    assert_eq!(
+        reopened.scene.unwrap().node_bounds(&qn("P::Car")).unwrap(),
+        car
+    );
     assert_eq!(diagram_file::names_in(folder.path()).unwrap(), ["overview"]);
 }
 
@@ -77,9 +92,19 @@ fn saving_writes_only_the_diagram_file() {
 
     diagram.save_as(folder.path(), "overview").unwrap();
 
-    assert_eq!(std::fs::read_to_string(folder.path().join("model.sysml")).unwrap(), "package P;");
-    let entries: Vec<_> = std::fs::read_dir(folder.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
-    assert_eq!(entries.len(), 2, "only the model file and the diagrams folder: {entries:?}");
+    assert_eq!(
+        std::fs::read_to_string(folder.path().join("model.sysml")).unwrap(),
+        "package P;"
+    );
+    let entries: Vec<_> = std::fs::read_dir(folder.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(
+        entries.len(),
+        2,
+        "only the model file and the diagrams folder: {entries:?}"
+    );
 }
 
 #[test]
@@ -111,7 +136,12 @@ fn a_saved_diagram_is_rebuilt_with_its_layout_when_the_model_reloads() {
     let folder = TempDir::new().unwrap();
     let (_, mut diagram) = moved();
     diagram.save_as(folder.path(), "overview").unwrap();
-    let car = diagram.scene.as_ref().unwrap().node_bounds(&qn("P::Car")).unwrap();
+    let car = diagram
+        .scene
+        .as_ref()
+        .unwrap()
+        .node_bounds(&qn("P::Car"))
+        .unwrap();
     let grown = Model::builder()
         .package("P")
         .part_def("P::Vehicle")

@@ -2,7 +2,8 @@
 
 use viewer_core::scene::{Depicts, Point, Rect, Shape};
 use viewer_core::{
-    DiagramFile, DiagramKind, Layout, Model, NodePlacement, QualifiedName, Scene, build_scene, build_scene_with_layout,
+    DiagramFile, DiagramKind, Layout, Model, NodePlacement, QualifiedName, Scene, build_scene,
+    build_scene_with_layout,
 };
 
 fn model() -> Model {
@@ -29,7 +30,11 @@ fn build(layout: &Layout) -> Scene {
 }
 
 fn placed(x: f32, y: f32, width: f32, height: f32) -> NodePlacement {
-    NodePlacement { x, y, size: Some([width, height]) }
+    NodePlacement {
+        x,
+        y,
+        size: Some([width, height]),
+    }
 }
 
 fn bounds(scene: &Scene, name: &str) -> Rect {
@@ -46,18 +51,32 @@ fn an_empty_layout_changes_nothing() {
 #[test]
 fn saved_nodes_are_drawn_exactly_where_and_as_big_as_saved() {
     let mut layout = Layout::default();
-    layout.nodes.insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
+    layout
+        .nodes
+        .insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
 
     let scene = build(&layout);
 
-    assert_eq!(bounds(&scene, "P::Vehicle"), Rect { x: 300.0, y: 40.0, width: 260.0, height: 140.0 });
+    assert_eq!(
+        bounds(&scene, "P::Vehicle"),
+        Rect {
+            x: 300.0,
+            y: 40.0,
+            width: 260.0,
+            height: 140.0
+        }
+    );
 }
 
 #[test]
 fn new_nodes_are_placed_below_saved_ones_without_moving_or_overlapping_them() {
     let mut layout = Layout::default();
-    layout.nodes.insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
-    layout.nodes.insert(qn("P::Engine"), placed(40.0, 60.0, 150.0, 60.0));
+    layout
+        .nodes
+        .insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
+    layout
+        .nodes
+        .insert(qn("P::Engine"), placed(40.0, 60.0, 150.0, 60.0));
 
     let scene = build(&layout);
 
@@ -67,7 +86,10 @@ fn new_nodes_are_placed_below_saved_ones_without_moving_or_overlapping_them() {
     for new in ["P::Car", "P::Truck"] {
         let rect = bounds(&scene, new);
         assert!(rect.y > saved[0].bottom(), "{new} is below the saved nodes");
-        assert!(saved.iter().all(|s| !s.intersects(&rect)), "{new} overlaps a saved node");
+        assert!(
+            saved.iter().all(|s| !s.intersects(&rect)),
+            "{new} overlaps a saved node"
+        );
     }
     assert!(!bounds(&scene, "P::Car").intersects(&bounds(&scene, "P::Truck")));
 }
@@ -77,7 +99,14 @@ fn a_node_saved_without_a_size_keeps_its_natural_size() {
     let automatic = build_scene(&model(), DiagramKind::General, &qn("P")).unwrap();
     let natural = bounds(&automatic, "P::Vehicle");
     let mut layout = Layout::default();
-    layout.nodes.insert(qn("P::Vehicle"), NodePlacement { x: 500.0, y: 30.0, size: None });
+    layout.nodes.insert(
+        qn("P::Vehicle"),
+        NodePlacement {
+            x: 500.0,
+            y: 30.0,
+            size: None,
+        },
+    );
 
     let moved = bounds(&build(&layout), "P::Vehicle");
 
@@ -88,7 +117,9 @@ fn a_node_saved_without_a_size_keeps_its_natural_size() {
 #[test]
 fn the_scene_grows_to_hold_saved_nodes() {
     let mut layout = Layout::default();
-    layout.nodes.insert(qn("P::Engine"), placed(1500.0, 900.0, 150.0, 60.0));
+    layout
+        .nodes
+        .insert(qn("P::Engine"), placed(1500.0, 900.0, 150.0, 60.0));
 
     let scene = build(&layout);
 
@@ -98,20 +129,29 @@ fn the_scene_grows_to_hold_saved_nodes() {
 #[test]
 fn entries_for_elements_the_model_lacks_are_ignored_and_reported_as_orphaned() {
     let mut layout = Layout::default();
-    layout.nodes.insert(qn("P::Renamed"), placed(10.0, 10.0, 100.0, 50.0));
+    layout
+        .nodes
+        .insert(qn("P::Renamed"), placed(10.0, 10.0, 100.0, 50.0));
     layout.hidden.insert(qn("P::Gone"));
-    layout.nodes.insert(qn("P::Engine"), placed(40.0, 60.0, 150.0, 60.0));
+    layout
+        .nodes
+        .insert(qn("P::Engine"), placed(40.0, 60.0, 150.0, 60.0));
 
     let scene = build(&layout);
 
     assert!(scene.node_bounds(&qn("P::Renamed")).is_none());
-    assert_eq!(layout.orphaned(&model()), [&qn("P::Gone"), &qn("P::Renamed")]);
+    assert_eq!(
+        layout.orphaned(&model()),
+        [&qn("P::Gone"), &qn("P::Renamed")]
+    );
 }
 
 #[test]
 fn orphaned_entries_survive_a_save_round_trip() {
     let mut file = DiagramFile::new("p", DiagramKind::General, qn("P"));
-    file.layout.nodes.insert(qn("P::Renamed"), placed(10.0, 10.0, 100.0, 50.0));
+    file.layout
+        .nodes
+        .insert(qn("P::Renamed"), placed(10.0, 10.0, 100.0, 50.0));
 
     let reread = DiagramFile::parse(&file.to_text()).unwrap();
 
@@ -126,9 +166,15 @@ fn hidden_elements_and_their_edges_are_left_out() {
     let scene = build(&layout);
 
     assert!(scene.node_bounds(&qn("P::Vehicle")).is_none());
-    let edge = Depicts::Specialization { specific: qn("P::Car"), general: qn("P::Vehicle") };
+    let edge = Depicts::Specialization {
+        specific: qn("P::Car"),
+        general: qn("P::Vehicle"),
+    };
     assert_eq!(scene.items_depicting(&edge).count(), 0);
-    let composition = Depicts::Composition { owner: qn("P::Vehicle"), usage: qn("P::Vehicle::engine") };
+    let composition = Depicts::Composition {
+        owner: qn("P::Vehicle"),
+        usage: qn("P::Vehicle::engine"),
+    };
     assert_eq!(scene.items_depicting(&composition).count(), 0);
 }
 
@@ -152,9 +198,15 @@ fn collapsed_elements_are_drawn_without_compartments() {
 
 #[test]
 fn saved_edge_routes_bend_through_their_points() {
-    let edge = Depicts::Specialization { specific: qn("P::Car"), general: qn("P::Vehicle") };
+    let edge = Depicts::Specialization {
+        specific: qn("P::Car"),
+        general: qn("P::Vehicle"),
+    };
     let mut layout = Layout::default();
-    layout.edges.insert(edge.edge_key().unwrap(), vec![[700.0, 500.0], [720.0, 30.0]]);
+    layout.edges.insert(
+        edge.edge_key().unwrap(),
+        vec![[700.0, 500.0], [720.0, 30.0]],
+    );
 
     let scene = build(&layout);
 
@@ -165,12 +217,18 @@ fn saved_edge_routes_bend_through_their_points() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(line[1..3], [Point::new(700.0, 500.0), Point::new(720.0, 30.0)]);
+    assert_eq!(
+        line[1..3],
+        [Point::new(700.0, 500.0), Point::new(720.0, 30.0)]
+    );
 }
 
 #[test]
 fn edges_without_a_saved_route_stay_straight() {
-    let edge = Depicts::Specialization { specific: qn("P::Truck"), general: qn("P::Vehicle") };
+    let edge = Depicts::Specialization {
+        specific: qn("P::Truck"),
+        general: qn("P::Vehicle"),
+    };
 
     let scene = build(&Layout::default());
 
@@ -187,8 +245,17 @@ fn edges_without_a_saved_route_stay_straight() {
 #[test]
 fn a_layout_is_stored_one_sorted_entry_per_element() {
     let mut file = DiagramFile::new("p", DiagramKind::General, qn("P"));
-    file.layout.nodes.insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
-    file.layout.nodes.insert(qn("P::Engine"), NodePlacement { x: 40.5, y: 60.0, size: None });
+    file.layout
+        .nodes
+        .insert(qn("P::Vehicle"), placed(300.0, 40.0, 260.0, 140.0));
+    file.layout.nodes.insert(
+        qn("P::Engine"),
+        NodePlacement {
+            x: 40.5,
+            y: 60.0,
+            size: None,
+        },
+    );
     file.layout.hidden.insert(qn("P::Truck"));
 
     assert_eq!(
