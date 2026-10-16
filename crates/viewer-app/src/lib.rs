@@ -589,6 +589,14 @@ impl ViewerApp {
             if ui.button("Reset layout").on_hover_text("Back to the automatic arrangement").clicked() {
                 edits.push(Edit::Reset);
             }
+            let mut legend = self.diagrams[active].style.legend;
+            if ui.checkbox(&mut legend, "Legend").on_hover_text("Key the Style's colors on the Diagram").changed()
+                && let Some(model) = &self.model
+            {
+                let diagram = &mut self.diagrams[active];
+                let style = viewer_core::DiagramStyle { legend, ..diagram.style.clone() };
+                diagram.set_style(model, style);
+            }
             ui.separator();
 
             ui.add(egui::TextEdit::singleline(&mut self.export_path).desired_width(260.0));

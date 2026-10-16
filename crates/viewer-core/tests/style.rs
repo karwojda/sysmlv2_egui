@@ -307,3 +307,93 @@ fn a_diagram_style_layers_over_the_model_style_or_switches_it_off() {
     viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &diagram);
     assert_eq!(fill_of(&scene, "V::Powertrain::Engine"), Fill::Background, "Model Style off");
 }
+
+fn legend_texts(scene: &Scene) -> Vec<String> {
+    scene
+        .items_depicting(&Depicts::Legend)
+        .filter_map(|s| match s {
+            Shape::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn with_legend(rules: Vec<StyleRule>, model_rules: Vec<StyleRule>) -> (Model, Scene, Scene) {
+    use viewer_core::DiagramStyle;
+    let model = model();
+    let plain = general(&model, "V::Powertrain");
+    let mut scene = plain.clone();
+    let diagram = DiagramStyle { rules, legend: true, ..DiagramStyle::default() };
+    viewer_core::style::apply_styles(&mut scene, &model, Some(&Style::new(model_rules)), &diagram);
+    (model, plain, scene)
+}
+
+#[test]
+fn the_legend_lists_only_rules_that_colored_something_in_rule_order_diagram_first() {
+    let (_, _, scene) = with_legend(
+        vec![StyleRule { label: Some("Safety-critical".to_owned()), ..metadata("V::Safety", RED) }],
+        vec![kind("attribute def", GREEN), kind("part def", BLUE), package("V::Elsewhere", NAVY)],
+    );
+
+    assert_eq!(legend_texts(&scene), ["Safety-critical", "«part def»"]);
+}
+
+#[test]
+fn legend_labels_default_to_the_condition() {
+    let (_, _, scene) = with_legend(vec![package("V::Powertrain", GREEN), metadata("V::Safety", NAVY)], vec![]);
+
+    assert_eq!(legend_texts(&scene), ["Powertrain", "@Safety"], "kind rules read «part def»");
+}
+
+#[test]
+fn the_legend_sits_bottom_right_outside_the_nodes_and_grows_the_page() {
+    let (_, plain, scene) = with_legend(vec![], vec![kind("part def", BLUE)]);
+
+    let legend = scene
+        .items_depicting(&Depicts::Legend)
+        .find_map(|s| match s {
+            Shape::Rect { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .unwrap();
+    let nodes_bottom = scene
+        .items
+        .iter()
+        .filter(|i| i.depicts != Depicts::Legend)
+        .map(|i| i.shape.extent().bottom())
+        .fold(0.0, f32::max);
+    assert!(legend.y > nodes_bottom, "below everything else");
+    assert!(legend.bottom() < scene.y + scene.height, "on the page");
+    assert!(legend.right() <= scene.x + scene.width - 19.0, "right-aligned within the margin");
+    assert!(scene.height > plain.height);
+    let others = |s: &Scene| s.items.iter().filter(|i| i.depicts != Depicts::Legend).map(|i| i.shape.extent()).collect::<Vec<_>>();
+    assert_eq!(others(&scene), others(&plain), "nothing else moves");
+}
+
+#[test]
+fn no_legend_without_the_switch_or_without_colors() {
+    use viewer_core::DiagramStyle;
+    let model = model();
+    let mut off = general(&model, "V::Powertrain");
+    viewer_core::style::apply_styles(&mut off, &model, Some(&Style::new(vec![kind("part def", BLUE)])), &DiagramStyle::default());
+    assert!(off.items_depicting(&Depicts::Legend).next().is_none());
+
+    let (_, plain, nothing) = with_legend(vec![], vec![kind("attribute def", BLUE)]);
+    assert!(nothing.items_depicting(&Depicts::Legend).next().is_none());
+    assert_eq!(nothing.height, plain.height);
+}
+
+#[test]
+fn a_styled_diagram_with_a_legend_matches_the_golden_file() {
+    use viewer_core::DiagramStyle;
+    let model = common::metadata();
+    let mut scene = general(&model, "M");
+    let model_style = Style::new(vec![
+        StyleRule { label: Some("Safety-critical".to_owned()), ..metadata("M::Safety", RED) },
+        metadata("M::Supplier", NAVY),
+        kind("part def", BLUE),
+    ]);
+    viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &DiagramStyle { legend: true, ..DiagramStyle::default() });
+
+    assert_golden("styled-legend.svg", &scene);
+}

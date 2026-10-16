@@ -100,3 +100,18 @@ fn a_diagram_s_own_style_wins_and_can_switch_the_model_style_off() {
     let plain = build_scene(&model, DiagramKind::General, &QualifiedName::from("P")).unwrap();
     assert_eq!(std::fs::read_to_string(&out).unwrap(), svg::render(&plain), "Model Style off");
 }
+
+#[test]
+fn a_diagram_s_legend_is_exported() {
+    let folder = folder_with(Some(&Style::new(rules()).to_text()));
+    let path = diagram_file::path_for(folder.path(), "overview");
+    let mut file = DiagramFile::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    file.style.legend = true;
+    std::fs::write(&path, file.to_text()).unwrap();
+    let out = folder.path().join("overview.svg");
+
+    let (code, stderr) = export(folder.path(), &out);
+
+    assert_eq!(code, EXIT_OK, "{stderr}");
+    assert!(std::fs::read_to_string(&out).unwrap().contains(">«part def»</text>"));
+}

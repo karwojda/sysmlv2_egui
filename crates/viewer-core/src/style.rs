@@ -7,7 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::diagram_file::{DiagramStyle, FOLDER};
 use crate::model::{Element, Model, QualifiedName};
-use crate::scene::{Depicts, Fill, Rect, Rgb, Scene, Shape};
+use crate::notation::{LABEL_FONT, text_width};
+use crate::scene::{Depicts, Fill, Item, Point, Rect, Rgb, Scene, Shape, TextAnchor};
+
+/// Legend geometry.
+const LEGEND_GAP: f32 = 16.0;
+const LEGEND_PADDING: f32 = 8.0;
+const LEGEND_ROW: f32 = 18.0;
+const SWATCH: f32 = 12.0;
+/// Room kept around the nodes, as the builders keep.
+const PAGE_MARGIN: f32 = 20.0;
 
 /// The Model Style's file name, inside the Diagram File folder.
 const FILE_NAME: &str = "style.json";
@@ -153,7 +162,63 @@ pub fn apply_styles<'a>(
     if let Some(style) = model_style.filter(|_| diagram.model_style) {
         levels.push(&style.rules);
     }
-    apply(scene, model, &levels)
+    let used = apply(scene, model, &levels);
+    // In rule order, the Diagram's rules first.
+    let used: Vec<&StyleRule> =
+        levels.iter().flat_map(|rules| rules.iter()).filter(|r| used.iter().any(|u| std::ptr::eq(*u, *r))).collect();
+    if diagram.legend {
+        legend(scene, &used);
+    }
+    used
+}
+
+/// How a rule reads in the Legend: its label, else its condition.
+pub fn legend_label(rule: &StyleRule) -> String {
+    rule.label.clone().unwrap_or_else(|| rule.condition.describe())
+}
+
+/// Draws a Legend of `rules` below the scene's content, aligned to its
+/// right edge, and grows the page to hold it. No rules, no Legend.
+pub fn legend(scene: &mut Scene, rules: &[&StyleRule]) {
+    if rules.is_empty() {
+        return;
+    }
+    let labels: Vec<String> = rules.iter().map(|r| legend_label(r)).collect();
+    let widest = labels.iter().map(|l| text_width(l, LABEL_FONT)).fold(0.0, f32::max);
+    let width = 2.0 * LEGEND_PADDING + SWATCH + LEGEND_PADDING + widest;
+    let height = 2.0 * LEGEND_PADDING + LEGEND_ROW * rules.len() as f32 - (LEGEND_ROW - SWATCH);
+    let right = scene.x + scene.width - PAGE_MARGIN;
+    let top = scene.y + scene.height - PAGE_MARGIN + LEGEND_GAP;
+    let left = right - width;
+
+    let mut push = |shape| scene.items.push(Item { depicts: Depicts::Legend, shape });
+    push(Shape::Rect {
+        rect: Rect { x: left, y: top, width, height },
+        fill: Fill::Background,
+        corner_radius: 0.0,
+        dashed: false,
+    });
+    for (i, (rule, label)) in rules.iter().zip(labels).enumerate() {
+        let row_top = top + LEGEND_PADDING + i as f32 * LEGEND_ROW;
+        push(Shape::Rect {
+            rect: Rect { x: left + LEGEND_PADDING, y: row_top, width: SWATCH, height: SWATCH },
+            fill: Fill::Color(rule.fill),
+            corner_radius: 0.0,
+            dashed: false,
+        });
+        push(Shape::Text {
+            position: Point::new(left + 2.0 * LEGEND_PADDING + SWATCH, row_top + SWATCH - 1.5),
+            text: label,
+            anchor: TextAnchor::Start,
+            font: LABEL_FONT,
+            fill: Fill::Stroke,
+        });
+    }
+    let new_left = scene.x.min((left - PAGE_MARGIN).floor());
+    let new_bottom = top + height + PAGE_MARGIN;
+    scene.width += scene.x - new_left;
+    scene.x = new_left;
+    scene.height = (new_bottom - scene.y).ceil().max(scene.height);
 }
 
 /// Colors the scene's nodes by the rule `levels` (see [`rule_for`]): each

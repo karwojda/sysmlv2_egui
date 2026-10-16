@@ -191,6 +191,8 @@ pub enum Depicts {
     /// and `key`, the port's feature path from the root (`engine.fuelIn`,
     /// or `power` on the Frame), which keys its Layout entry.
     Port { part: QualifiedName, port: QualifiedName, key: String },
+    /// The Legend keying a Style's colors.
+    Legend,
 }
 
 impl Depicts {
@@ -198,7 +200,7 @@ impl Depicts {
     /// Nodes have none: they are keyed by their element.
     pub fn edge_key(&self) -> Option<String> {
         match self {
-            Depicts::Element(_) | Depicts::Part { .. } | Depicts::Port { .. } => None,
+            Depicts::Element(_) | Depicts::Part { .. } | Depicts::Port { .. } | Depicts::Legend => None,
             Depicts::Specialization { specific, general } => Some(format!("specialization {specific} {general}")),
             Depicts::Typing { usage, definition } => Some(format!("defined-by {usage} {definition}")),
             Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),
