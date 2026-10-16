@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2};
-use viewer_core::scene::{Depicts, Fill, Point, Shape, TextAnchor};
+use viewer_core::scene::{Depicts, Fill, Point, Rect, Shape, TextAnchor};
 use viewer_core::editing::{self, Edit};
 use viewer_core::{
     DiagramError, DiagramFile, DiagramKind, Layout, Model, QualifiedName, Scene, build_scene_with_layout, diagram_file,
@@ -35,6 +35,9 @@ pub struct OpenDiagram {
     pub view: View,
     /// Fit the Diagram to the canvas on the next paint.
     pub needs_fit: bool,
+    /// The canvas size the view was last fitted to automatically, while the
+    /// user hasn't panned or zoomed since: the view refits if it changes.
+    pub fitted_to: Option<Vec2>,
 }
 
 impl OpenDiagram {
@@ -57,6 +60,7 @@ impl OpenDiagram {
             dirty: false,
             view: View::default(),
             needs_fit: true,
+            fitted_to: None,
         }
     }
 
@@ -70,7 +74,9 @@ impl OpenDiagram {
     pub fn edit(&mut self, model: &Model, edit: &Edit) {
         let Ok(scene) = &self.scene else { return };
         let before = self.layout.clone();
-        editing::apply(&mut self.layout, model, scene, edit);
+        let (kind, root) = (self.kind, &self.root);
+        let known = |key: &QualifiedName| viewer_core::layout_key_exists(model, kind, root, key);
+        editing::apply_with(&mut self.layout, &known, scene, edit);
         if self.layout != before {
             self.dirty = true;
             self.refresh(model);
@@ -139,6 +145,8 @@ pub const EDGE_TOLERANCE: f32 = 5.0;
 pub enum Grab {
     /// A node's resize handle, which sits on its corner, half outside it.
     Resize(QualifiedName),
+    /// A port, by its key (feature path), on the box with key `on`.
+    Port { key: String, on: QualifiedName },
     /// An existing bend of an edge, by its index among the edge's bends.
     Bend { edge: Depicts, index: usize },
     Move(QualifiedName),
@@ -151,11 +159,14 @@ pub enum Grab {
 }
 
 /// Decides what a press at `pos` grabs, most specific first: resize
-/// handles (they overhang their node), bends, nodes, edge lines, else the
-/// canvas. Edges hidden behind a node lose to the node.
+/// handles (they overhang their node), ports, bends, nodes, edge lines,
+/// else the canvas. Edges hidden behind a node lose to the node. In an
+/// Interconnection Diagram the Frame itself can't be moved or resized, so
+/// pressing on it pans.
 pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
     let screen = |p: Point| view.to_screen(origin, p);
-    let handle = scene.elements().into_iter().rev().find(|element| {
+    let movable = |key: &QualifiedName| scene.origins.is_empty() || scene.origins.contains_key(key);
+    let handle = scene.elements().into_iter().filter(|k| movable(k)).rev().find(|element| {
         scene.node_bounds(element).is_some_and(|b| {
             let corner = screen(Point::new(b.right(), b.bottom()));
             (pos - corner).x.abs() <= RESIZE_HANDLE && (pos - corner).y.abs() <= RESIZE_HANDLE
@@ -164,6 +175,14 @@ pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
     if let Some(element) = handle {
         return Grab::Resize(element.clone());
     }
+    if let Some((_, _, key)) = scene.port_at(view.to_scene(origin, pos)) {
+        // A port's box: the part its key leads to, or the Frame.
+        let on = match key.rsplit_once('.') {
+            Some((part, _)) => QualifiedName::new(part),
+            None => scene.elements().into_iter().find(|k| !movable(k)).cloned().unwrap_or_else(|| QualifiedName::new("")),
+        };
+        return Grab::Port { key: key.to_owned(), on };
+    }
     let edges = scene.edges();
     for (edge, path) in edges.iter().rev() {
         let inner = &path[1..path.len() - 1];
@@ -171,7 +190,7 @@ pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
             return Grab::Bend { edge: (*edge).clone(), index };
         }
     }
-    if let Some(element) = scene.element_at(view.to_scene(origin, pos)) {
+    if let Some(element) = scene.element_at(view.to_scene(origin, pos)).filter(|k| movable(k)) {
         return Grab::Move(element.clone());
     }
     for (edge, path) in edges.iter().rev() {
@@ -228,8 +247,8 @@ impl View {
 }
 
 /// Paints `scene` with its top-left at `origin + view.pan`, outlining the
-/// node of `highlight`.
-pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, highlight: Option<&QualifiedName>) {
+/// node rect `highlight`.
+pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, highlight: Option<Rect>) {
     let z = view.zoom;
     let at = |p: Point| view.to_screen(origin, p);
     let stroke = Stroke::new(z.max(0.5), STROKE);
@@ -287,7 +306,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
         }
     }
 
-    if let Some(bounds) = highlight.and_then(|e| scene.node_bounds(e)) {
+    if let Some(bounds) = highlight {
         let r = egui::Rect::from_min_size(at(Point::new(bounds.x, bounds.y)), Vec2::new(bounds.width, bounds.height) * z);
         painter.rect_stroke(r, 2.0, Stroke::new(2.0, HIGHLIGHT), StrokeKind::Outside);
     }

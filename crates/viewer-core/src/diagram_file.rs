@@ -44,6 +44,27 @@ pub struct Layout {
     /// the root (`rearAxleAssembly`, `rearAxleAssembly.differential`).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub opened: BTreeSet<String>,
+    /// In an Interconnection Diagram, ports moved by hand, by feature path
+    /// from the root (`engine.fuelIn`; a Frame port by its name).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ports: BTreeMap<String, PortPlacement>,
+}
+
+/// Which side of its box a port sits on, and how far along it (from the
+/// left or top end).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PortPlacement {
+    pub side: PortSide,
+    pub offset: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PortSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
 }
 
 /// Where a node sits, in scene coordinates, and its size if the user set
@@ -63,6 +84,7 @@ impl Layout {
             && self.hidden.is_empty()
             && self.collapsed.is_empty()
             && self.opened.is_empty()
+            && self.ports.is_empty()
     }
 
     /// The Orphaned Layout Entries: elements the Layout mentions that the

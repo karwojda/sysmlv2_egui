@@ -61,5 +61,5 @@ fn an_interconnection_diagram_saves_and_reopens_as_one() {
     assert!(text.contains(r#""kind": "interconnection""#));
     let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
     assert_eq!(reopened.kind, DiagramKind::Interconnection);
-    assert!(reopened.scene.unwrap().node_bounds(&qn("P::Vehicle::engine")).is_some());
+    assert!(reopened.scene.unwrap().element_bounds(&qn("P::Vehicle::engine")).is_some());
 }

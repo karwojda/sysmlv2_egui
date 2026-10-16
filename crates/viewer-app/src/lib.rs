@@ -65,6 +65,8 @@ enum Drag {
     Pan,
     Move(QualifiedName),
     Resize(QualifiedName),
+    /// A port (by key) dragged along the border of the box with key `on`.
+    Port { key: String, on: QualifiedName },
     Bend { key: String, index: usize, bends: Vec<[f32; 2]> },
 }
 
@@ -463,7 +465,7 @@ impl ViewerApp {
 
     fn toolbar(&mut self, ui: &mut egui::Ui, active: usize) {
         let mut edits = Vec::new();
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("Fit").clicked() {
                 self.diagrams[active].needs_fit = true;
             }
@@ -546,11 +548,16 @@ impl ViewerApp {
                 return;
             }
         };
-        if diagram.needs_fit {
-            diagram.view =
-                View::fit(egui::vec2(scene.x, scene.y), egui::vec2(scene.width, scene.height), response.rect.size());
+        // Fit on request, and keep refitting while the canvas settles (side
+        // panels appear) until the user pans or zooms.
+        let size = response.rect.size();
+        let resized = diagram.fitted_to.is_some_and(|fitted| (fitted - size).length() > 1.0);
+        if diagram.needs_fit || resized {
+            diagram.view = View::fit(egui::vec2(scene.x, scene.y), egui::vec2(scene.width, scene.height), size);
             diagram.needs_fit = false;
+            diagram.fitted_to = Some(size);
         }
+        let view_before = diagram.view;
         let view = diagram.view;
         let bends_of = |edge: &Depicts| -> Vec<[f32; 2]> {
             scene
@@ -569,10 +576,9 @@ impl ViewerApp {
         if response.drag_started_by(egui::PointerButton::Primary)
             && let Some(start) = ui.input(|i| i.pointer.press_origin()).or(response.interact_pointer_pos())
         {
-            // Interconnection Layouts can't be edited yet: drags only pan.
-            let grab = if diagram.kind == DiagramKind::Interconnection { Grab::Pan } else { grab_at(scene, view, origin, start) };
-            self.drag = Some(match grab {
+            self.drag = Some(match grab_at(scene, view, origin, start) {
                 Grab::Resize(element) => Drag::Resize(element),
+                Grab::Port { key, on } => Drag::Port { key, on },
                 Grab::Move(element) => Drag::Move(element),
                 Grab::Pan => Drag::Pan,
                 Grab::Bend { edge, index } => {
@@ -606,6 +612,14 @@ impl ViewerApp {
                     bends[*index][1] += delta.y;
                     edit = Some(Edit::Route { edge: key.clone(), bends: bends.clone() });
                 }
+                // A dragged port follows the pointer round its box's border.
+                Some(Drag::Port { key, on }) => {
+                    if let (Some(rect), Some(pointer)) = (scene.node_bounds(on), response.interact_pointer_pos()) {
+                        let p = view.to_scene(origin, pointer);
+                        let (side, offset) = nearest_side(rect, p);
+                        edit = Some(Edit::MovePort { port: key.clone(), side, offset });
+                    }
+                }
                 Some(Drag::Pan) | None => diagram.view.pan += response.drag_delta(),
             }
         }
@@ -621,37 +635,42 @@ impl ViewerApp {
             }
         }
 
+        if diagram.view != view_before {
+            diagram.fitted_to = None;
+        }
         let hover = response.hover_pos().map(|p| grab_at(scene, view, origin, p));
+        // The hovered node by key (its Layout key) and by element.
         let (hovered, hovered_edge) = match &hover {
             Some(Grab::Resize(e) | Grab::Move(e)) => (Some(e.clone()), None),
             Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => (None, Some(edge.clone())),
             _ => (None, None),
         };
+        let hovered_element = hovered.as_ref().and_then(|k| scene.element_of(k)).cloned();
         // Double-clicking a bend removes it; double-clicking a part, or a
         // part def, opens its Interconnection Diagram.
         let pointer_scene = response.hover_pos().map(|p| view.to_scene(origin, p));
         let mut open = None;
         if response.double_clicked()
             && let Some(Grab::Bend { edge, index }) = &hover
-            && diagram.kind == DiagramKind::General
         {
             let mut bends = bends_of(edge);
             bends.remove(*index);
             edit = Some(Edit::Route { edge: edge.edge_key().expect("an edge has a key"), bends });
         } else if response.double_clicked()
-            && let (Some(element), Some(model)) = (&hovered, &self.model)
+            && let (Some(element), Some(model)) = (&hovered_element, &self.model)
             && model.element(element).is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
             && !(diagram.kind == DiagramKind::Interconnection && &diagram.root == element)
         {
             open = Some(element.clone());
         } else if response.clicked() {
             // A port, else a part or node, else a connection.
-            let port = pointer_scene.and_then(|p| scene.port_at(p)).map(|(_, port)| port.clone());
+            let port = pointer_scene.and_then(|p| scene.port_at(p)).map(|(_, port, _)| port.clone());
             let connection = match &hovered_edge {
                 Some(Depicts::Connection(c)) => Some(c.clone()),
                 _ => None,
             };
-            select = Some(port.or(hovered.clone()).or(connection));
+            let node = pointer_scene.and_then(|p| scene.element_at(p)).and_then(|k| scene.element_of(k)).cloned();
+            select = Some(port.or(node).or(connection));
         }
         if response.secondary_clicked() {
             self.context_target = match &hover {
@@ -661,7 +680,14 @@ impl ViewerApp {
             };
         }
 
-        let highlight = hovered.as_ref().or(self.selected.as_ref());
+        // Highlight the hovered node, else the selected element's node.
+        let selected_key = self
+            .selected
+            .as_ref()
+            .and_then(|sel| scene.elements().into_iter().find(|k| scene.element_of(k) == Some(sel)))
+            .cloned();
+        let highlight_key = hovered.clone().or(selected_key);
+        let highlight = highlight_key.as_ref().and_then(|k| scene.node_bounds(k));
         let clipped = painter.with_clip_rect(response.rect);
         canvas::paint(&clipped, scene, view, origin, highlight);
         let accent = egui::Color32::from_rgb(0x1f, 0x6f, 0xeb);
@@ -684,8 +710,9 @@ impl ViewerApp {
                 }
             }
         }
-        // The resize handle, only where resizing works (General Diagrams).
-        if let Some(bounds) = highlight.and_then(|e| scene.node_bounds(e)).filter(|_| diagram.kind == DiagramKind::General) {
+        // The resize handle, on nodes that can be resized (not the Frame).
+        let resizable = highlight_key.as_ref().is_some_and(|k| scene.origins.is_empty() || scene.origins.contains_key(k));
+        if let Some(bounds) = highlight.filter(|_| resizable) {
             let corner = view.to_screen(origin, viewer_core::scene::Point::new(bounds.right(), bounds.bottom()));
             let handle = egui::Rect::from_center_size(corner, egui::vec2(RESIZE_HANDLE, RESIZE_HANDLE) * 0.8);
             clipped.rect_filled(handle, 1.0, accent);
@@ -706,8 +733,8 @@ impl ViewerApp {
         if response.hover_pos().is_some() {
             let cursor = match (&self.drag, &hover) {
                 (Some(Drag::Resize(_)), _) | (None, Some(Grab::Resize(_))) => egui::CursorIcon::ResizeNwSe,
-                (Some(Drag::Move(_) | Drag::Bend { .. }), _) => egui::CursorIcon::Grabbing,
-                (None, Some(Grab::Move(_) | Grab::Bend { .. })) => egui::CursorIcon::Grab,
+                (Some(Drag::Move(_) | Drag::Bend { .. } | Drag::Port { .. }), _) => egui::CursorIcon::Grabbing,
+                (None, Some(Grab::Move(_) | Grab::Bend { .. } | Grab::Port { .. })) => egui::CursorIcon::Grab,
                 (None, Some(Grab::Segment { .. })) => egui::CursorIcon::PointingHand,
                 _ => egui::CursorIcon::Default,
             };
@@ -716,41 +743,55 @@ impl ViewerApp {
 
         let target = self.context_target.clone();
         let collapsed = matches!(&target, ContextTarget::Node(e) if diagram.layout.collapsed.contains(e));
-        let editable = diagram.kind == DiagramKind::General;
+        let interconnection = diagram.kind == DiagramKind::Interconnection;
         let opens_interconnection = |element: &QualifiedName| {
             self.model.as_ref().and_then(|m| m.element(element)).is_some_and(|e| DiagramKind::Interconnection.accepts_root(e))
-                && !(diagram.kind == DiagramKind::Interconnection && &diagram.root == element)
+                && !(interconnection && &diagram.root == element)
+        };
+        // In an Interconnection Diagram, a part whose type has parts can be
+        // opened in place.
+        let opens_in_place = |element: &QualifiedName| {
+            self.model.as_ref().is_some_and(|m| {
+                m.element(element)
+                    .and_then(|e| e.typed_by.as_ref())
+                    .is_some_and(|d| m.owned_members(d).any(|p| p.kind == viewer_core::ElementKind::PartUsage))
+            })
         };
         let mut open_from_menu = None;
         response.context_menu(|ui| match &target {
-            ContextTarget::Node(element) if !editable => {
+            ContextTarget::Node(key) => {
+                let element = scene.element_of(key).cloned().unwrap_or_else(|| key.clone());
                 ui.label(egui::RichText::new(element.as_str()).weak());
-                if opens_interconnection(element) && ui.button("Open Interconnection Diagram").clicked() {
+                if opens_interconnection(&element) && ui.button("Open Interconnection Diagram").clicked() {
                     open_from_menu = Some(element.clone());
                     ui.close();
                 }
-            }
-            ContextTarget::Edge(_) | ContextTarget::Canvas if !editable => {
-                ui.weak("Editing Interconnection Diagrams is coming soon.");
-            }
-            ContextTarget::Node(element) => {
-                if opens_interconnection(element) && ui.button("Open Interconnection Diagram").clicked() {
-                    open_from_menu = Some(element.clone());
-                    ui.close();
+                if interconnection && opens_in_place(&element) {
+                    let open = diagram.layout.opened.contains(key.as_str());
+                    let (label, toggle) = if open {
+                        ("Close", Edit::Close(key.to_string()))
+                    } else {
+                        ("Open in place", Edit::Open(key.to_string()))
+                    };
+                    if ui.button(label).clicked() {
+                        edit = Some(toggle);
+                        ui.close();
+                    }
                 }
-                ui.label(egui::RichText::new(element.as_str()).weak());
                 if ui.button("Hide").clicked() {
-                    edit = Some(Edit::Hide(element.clone()));
+                    edit = Some(Edit::Hide(key.clone()));
                     ui.close();
                 }
-                let (label, toggle) = if collapsed {
-                    ("Expand", Edit::Expand(element.clone()))
-                } else {
-                    ("Collapse", Edit::Collapse(element.clone()))
-                };
-                if ui.button(label).clicked() {
-                    edit = Some(toggle);
-                    ui.close();
+                if !interconnection {
+                    let (label, toggle) = if collapsed {
+                        ("Expand", Edit::Expand(key.clone()))
+                    } else {
+                        ("Collapse", Edit::Collapse(key.clone()))
+                    };
+                    if ui.button(label).clicked() {
+                        edit = Some(toggle);
+                        ui.close();
+                    }
                 }
             }
             ContextTarget::Edge(edge) => {
@@ -773,7 +814,7 @@ impl ViewerApp {
             }
         });
         if self.drag.is_none() {
-            if let Some(element) = &hovered {
+            if let Some(element) = &hovered_element {
                 response.on_hover_text_at_pointer(element.as_str());
             } else if hovered_edge.is_some() {
                 response.on_hover_text_at_pointer("Drag to bend · double-click a bend to remove it");
@@ -907,6 +948,23 @@ fn browser_entry(
     }
 }
 
+/// The side of `rect` nearest `p`, and how far along it `p` is.
+fn nearest_side(rect: viewer_core::scene::Rect, p: viewer_core::scene::Point) -> (viewer_core::PortSide, f32) {
+    use viewer_core::PortSide;
+    let distances = [
+        (PortSide::Top, (p.y - rect.y).abs()),
+        (PortSide::Bottom, (p.y - rect.bottom()).abs()),
+        (PortSide::Left, (p.x - rect.x).abs()),
+        (PortSide::Right, (p.x - rect.right()).abs()),
+    ];
+    let side = distances.iter().min_by(|a, b| a.1.total_cmp(&b.1)).expect("four sides").0;
+    let offset = match side {
+        PortSide::Top | PortSide::Bottom => (p.x - rect.x).clamp(0.0, rect.width),
+        PortSide::Left | PortSide::Right => (p.y - rect.y).clamp(0.0, rect.height),
+    };
+    (side, offset)
+}
+
 /// The kind of Diagram to open for a root named on the command line: an
 /// Interconnection Diagram if asked for (and it fits), else a General
 /// Diagram where one fits, else an Interconnection Diagram (part usages).
@@ -972,5 +1030,22 @@ impl eframe::App for ViewerApp {
             .default_size(280.0)
             .show(ui, |ui| self.properties_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.diagram_area(ui));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::nearest_side;
+    use viewer_core::PortSide;
+    use viewer_core::scene::{Point, Rect};
+
+    #[test]
+    fn a_dragged_port_goes_to_the_nearest_side_at_the_pointers_position_along_it() {
+        let rect = Rect { x: 100.0, y: 50.0, width: 200.0, height: 80.0 };
+
+        assert_eq!(nearest_side(rect, Point::new(160.0, 45.0)), (PortSide::Top, 60.0));
+        assert_eq!(nearest_side(rect, Point::new(305.0, 90.0)), (PortSide::Right, 40.0));
+        assert_eq!(nearest_side(rect, Point::new(120.0, 128.0)), (PortSide::Bottom, 20.0));
+        assert_eq!(nearest_side(rect, Point::new(90.0, 500.0)), (PortSide::Left, 80.0), "clamped to the side's length");
     }
 }

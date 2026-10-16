@@ -65,24 +65,36 @@ fn interconnection(root: &str) -> Scene {
     build_scene(&vehicle(), DiagramKind::Interconnection, &qn(root)).unwrap()
 }
 
-fn texts(scene: &Scene, depicts: &Depicts) -> Vec<String> {
+fn port_items<'a>(scene: &'a Scene, part: &str, port: &str) -> Vec<&'a Shape> {
     scene
-        .items_depicting(depicts)
-        .filter_map(|s| match s {
-            Shape::Text { text, .. } => Some(text.clone()),
-            _ => None,
-        })
+        .items
+        .iter()
+        .filter(|i| matches!(&i.depicts, Depicts::Port { part: p, port: q, .. } if *p == qn(part) && *q == qn(port)))
+        .map(|i| &i.shape)
         .collect()
 }
 
 fn port_square(scene: &Scene, part: &str, port: &str) -> Rect {
-    scene
-        .items_depicting(&Depicts::Port { part: qn(part), port: qn(port) })
+    port_items(scene, part, port)
+        .into_iter()
         .find_map(|s| match s {
             Shape::Rect { rect, .. } => Some(*rect),
             _ => None,
         })
         .unwrap_or_else(|| panic!("no port {port} on {part}"))
+}
+
+/// The texts drawn for the node of `element`, whether the Frame or a part.
+fn node_texts(scene: &Scene, element: &str) -> Vec<String> {
+    scene
+        .items
+        .iter()
+        .filter(|i| matches!(&i.depicts, Depicts::Element(e) | Depicts::Part { element: e, .. } if *e == qn(element)))
+        .filter_map(|i| match &i.shape {
+            Shape::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 fn centre(r: Rect) -> Point {
@@ -93,28 +105,28 @@ fn centre(r: Rect) -> Point {
 fn the_frame_holds_the_definitions_parts() {
     let scene = interconnection("S::Vehicle");
 
-    assert_eq!(texts(&scene, &Depicts::Element(qn("S::Vehicle"))), ["«part def»", "Vehicle"]);
-    let frame = scene.node_bounds(&qn("S::Vehicle")).unwrap();
+    assert_eq!(node_texts(&scene, "S::Vehicle"), ["«part def»", "Vehicle"]);
+    let frame = scene.element_bounds(&qn("S::Vehicle")).unwrap();
     for part in ["S::Vehicle::engine", "S::Vehicle::tanks", "S::Vehicle::controller"] {
-        let rect = scene.node_bounds(&qn(part)).unwrap();
+        let rect = scene.element_bounds(&qn(part)).unwrap();
         assert!(rect.x > frame.x && rect.right() < frame.right() && rect.y > frame.y && rect.bottom() < frame.bottom(), "{part} inside");
     }
-    assert!(scene.node_bounds(&qn("S::Vehicle::mass")).is_none(), "attributes are not parts");
+    assert!(scene.element_bounds(&qn("S::Vehicle::mass")).is_none(), "attributes are not parts");
 }
 
 #[test]
 fn parts_are_labelled_with_their_type_and_multiplicity() {
     let scene = interconnection("S::Vehicle");
 
-    assert_eq!(texts(&scene, &Depicts::Element(qn("S::Vehicle::tanks"))), ["«part»", "tanks:Tank [1..2]"]);
+    assert_eq!(node_texts(&scene, "S::Vehicle::tanks"), ["«part»", "tanks:Tank [1..2]"]);
 }
 
 #[test]
 fn a_part_usage_root_shows_the_parts_of_its_definition() {
     let scene = interconnection("S::car");
 
-    assert_eq!(texts(&scene, &Depicts::Element(qn("S::car"))), ["«part»", "car:Vehicle"]);
-    assert!(scene.node_bounds(&qn("S::Vehicle::engine")).is_some());
+    assert_eq!(node_texts(&scene, "S::car"), ["«part»", "car:Vehicle"]);
+    assert!(scene.element_bounds(&qn("S::Vehicle::engine")).is_some());
 }
 
 #[test]
@@ -128,8 +140,8 @@ fn only_parts_can_be_roots() {
 #[test]
 fn in_ports_sit_on_top_out_ports_at_the_bottom() {
     let scene = interconnection("S::Vehicle");
-    let engine = scene.node_bounds(&qn("S::Vehicle::engine")).unwrap();
-    let tanks = scene.node_bounds(&qn("S::Vehicle::tanks")).unwrap();
+    let engine = scene.element_bounds(&qn("S::Vehicle::engine")).unwrap();
+    let tanks = scene.element_bounds(&qn("S::Vehicle::tanks")).unwrap();
 
     assert_eq!(centre(port_square(&scene, "S::Vehicle::engine", "S::Engine::fuelIn")).y, engine.y);
     assert_eq!(centre(port_square(&scene, "S::Vehicle::tanks", "S::Tank::fuelOut")).y, tanks.bottom());
@@ -139,7 +151,13 @@ fn in_ports_sit_on_top_out_ports_at_the_bottom() {
 fn ports_are_labelled_with_name_and_type() {
     let scene = interconnection("S::Vehicle");
 
-    let label = texts(&scene, &Depicts::Port { part: qn("S::Vehicle::engine"), port: qn("S::Engine::fuelIn") });
+    let label: Vec<String> = port_items(&scene, "S::Vehicle::engine", "S::Engine::fuelIn")
+        .into_iter()
+        .filter_map(|s| match s {
+            Shape::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
 
     assert_eq!(label, ["fuelIn : ~FuelPort"]);
 }
@@ -148,16 +166,16 @@ fn ports_are_labelled_with_name_and_type() {
 fn flow_runs_top_to_bottom_from_out_to_in() {
     let scene = interconnection("S::Vehicle");
 
-    let tanks = scene.node_bounds(&qn("S::Vehicle::tanks")).unwrap();
-    let engine = scene.node_bounds(&qn("S::Vehicle::engine")).unwrap();
+    let tanks = scene.element_bounds(&qn("S::Vehicle::tanks")).unwrap();
+    let engine = scene.element_bounds(&qn("S::Vehicle::engine")).unwrap();
     assert!(tanks.bottom() < engine.y, "tanks feed the engine from above");
 }
 
 #[test]
 fn undirected_ports_face_what_they_connect_to() {
     let scene = interconnection("S::Vehicle");
-    let engine = centre(scene.node_bounds(&qn("S::Vehicle::engine")).unwrap());
-    let controller = centre(scene.node_bounds(&qn("S::Vehicle::controller")).unwrap());
+    let engine = centre(scene.element_bounds(&qn("S::Vehicle::engine")).unwrap());
+    let controller = centre(scene.element_bounds(&qn("S::Vehicle::controller")).unwrap());
 
     let status = centre(port_square(&scene, "S::Vehicle::engine", "S::Engine::status"));
 
@@ -211,7 +229,7 @@ fn parts_do_not_overlap() {
     let scene = interconnection("S::Vehicle");
     let parts: Vec<Rect> = ["S::Vehicle::engine", "S::Vehicle::tanks", "S::Vehicle::controller"]
         .iter()
-        .map(|p| scene.node_bounds(&qn(p)).unwrap())
+        .map(|p| scene.element_bounds(&qn(p)).unwrap())
         .collect();
 
     for (i, a) in parts.iter().enumerate() {
@@ -251,7 +269,7 @@ fn finds_the_port_under_a_point() {
 
     let found = scene.port_at(centre(square));
 
-    assert_eq!(found, Some((&qn("S::Vehicle::engine"), &qn("S::Engine::fuelIn"))));
+    assert_eq!(found, Some((&qn("S::Vehicle::engine"), &qn("S::Engine::fuelIn"), "engine.fuelIn")));
     assert_eq!(scene.port_at(Point::new(square.x - 20.0, square.y - 20.0)), None);
 }
 
@@ -293,7 +311,7 @@ fn no_two_labels_overlap() {
 #[test]
 fn closed_parts_are_wide_enough_for_their_port_labels_side_by_side() {
     let scene = drivetrain("D::Vehicle");
-    let engine = scene.node_bounds(&qn("D::Vehicle::engine")).unwrap();
+    let engine = scene.element_bounds(&qn("D::Vehicle::engine")).unwrap();
     let top_labels: f32 = scene
         .items
         .iter()
@@ -332,7 +350,7 @@ fn polyline(scene: &Scene, connection: &str) -> Vec<Point> {
 #[test]
 fn the_roots_own_ports_sit_on_the_frame_border() {
     let scene = drivetrain("D::Vehicle");
-    let frame = scene.node_bounds(&qn("D::Vehicle")).unwrap();
+    let frame = scene.element_bounds(&qn("D::Vehicle")).unwrap();
 
     let power = centre(port_square(&scene, "D::Vehicle", "D::Vehicle::power"));
 
@@ -371,7 +389,7 @@ fn a_connection_ending_at_a_part_attaches_to_its_border_facing_the_other_end() {
         .end(&["P::System::sink"])
         .build();
     let scene = build_scene(&model, DiagramKind::Interconnection, &qn("P::System")).unwrap();
-    let sink = scene.node_bounds(&qn("P::System::sink")).unwrap();
+    let sink = scene.element_bounds(&qn("P::System::sink")).unwrap();
     let feed = polyline(&scene, "P::System::feed");
 
     let at_sink = *feed.last().unwrap();
@@ -396,14 +414,14 @@ fn drivetrain_opened(paths: &[&str]) -> Scene {
 #[test]
 fn an_opened_part_shows_its_parts_inside_its_box() {
     let scene = drivetrain_opened(&["rearAxleAssembly"]);
-    let axle = scene.node_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
+    let axle = scene.element_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
 
     for inner in ["D::AxleAssembly::differential", "D::AxleAssembly::leftWheel", "D::AxleAssembly::rightWheel"] {
-        let rect = scene.node_bounds(&qn(inner)).unwrap_or_else(|| panic!("{inner} is drawn"));
+        let rect = scene.element_bounds(&qn(inner)).unwrap_or_else(|| panic!("{inner} is drawn"));
         assert!(rect.x > axle.x && rect.right() < axle.right() && rect.y > axle.y && rect.bottom() < axle.bottom(), "{inner} inside");
     }
     let closed = drivetrain("D::Vehicle");
-    assert!(closed.node_bounds(&qn("D::AxleAssembly::differential")).is_none(), "closed by default");
+    assert!(closed.element_bounds(&qn("D::AxleAssembly::differential")).is_none(), "closed by default");
 }
 
 #[test]
@@ -420,7 +438,7 @@ fn an_opened_part_draws_its_own_connections_including_from_its_own_ports() {
 #[test]
 fn an_end_inside_a_closed_part_attaches_to_its_border_and_to_the_port_once_opened() {
     let closed = drivetrain("D::Vehicle");
-    let axle = closed.node_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
+    let axle = closed.element_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
     let to_axle = *polyline(&closed, "D::Vehicle::leftDrive").last().unwrap();
     assert!(to_axle.y == axle.y || to_axle.y == axle.bottom() || to_axle.x == axle.x || to_axle.x == axle.right());
 
@@ -442,7 +460,7 @@ fn opened_parts_are_saved_and_unknown_ones_kept() {
     assert_eq!(reread, file);
     assert!(file.to_text().contains(r#""opened": ["#));
     let scene = viewer_core::build_scene_with_layout(&common::drivetrain(), DiagramKind::Interconnection, &qn("D::Vehicle"), &file.layout).unwrap();
-    assert!(scene.node_bounds(&qn("D::AxleAssembly::differential")).is_some());
+    assert!(scene.element_bounds(&qn("D::AxleAssembly::differential")).is_some());
 }
 
 #[test]
@@ -478,12 +496,12 @@ fn two_usages_of_the_same_definition_open_independently() {
 
     let scene = viewer_core::build_scene_with_layout(&model, DiagramKind::Interconnection, &qn("P::Pack"), &layout).unwrap();
 
-    let front = scene.node_bounds(&qn("P::Pack::front")).unwrap();
-    let rear = scene.node_bounds(&qn("P::Pack::rear")).unwrap();
+    let front = scene.element_bounds(&qn("P::Pack::front")).unwrap();
+    let rear = scene.element_bounds(&qn("P::Pack::rear")).unwrap();
     let cells: Vec<Rect> = scene
         .items
         .iter()
-        .filter(|i| i.depicts == Depicts::Element(qn("P::Module::cell")))
+        .filter(|i| matches!(&i.depicts, Depicts::Part { element, .. } if *element == qn("P::Module::cell")))
         .filter_map(|i| match i.shape {
             Shape::Rect { rect, .. } => Some(rect),
             _ => None,
@@ -506,7 +524,7 @@ fn connectors_are_right_angled_and_never_pass_through_a_box_they_dont_connect() 
             .items
             .iter()
             .filter_map(|item| match (&item.depicts, &item.shape) {
-                (Depicts::Element(e), Shape::Rect { rect, .. }) => Some((e.clone(), *rect)),
+                (Depicts::Element(e) | Depicts::Part { element: e, .. }, Shape::Rect { rect, .. }) => Some((e.clone(), *rect)),
                 _ => None,
             })
             .collect();

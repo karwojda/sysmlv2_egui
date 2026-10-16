@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use crate::diagram::{DiagramError, page};
-use crate::diagram_file::Layout;
+use crate::diagram_file::{Layout, PortPlacement, PortSide};
 use crate::layout;
 use crate::model::{Direction, Element, ElementKind, Model, QualifiedName};
 use crate::notation::{
@@ -113,6 +113,8 @@ struct Wire<'a> {
 /// A part's box (or the Frame), with the parts drawn inside it.
 struct BoxNode<'a> {
     element: &'a Element,
+    /// Feature path from the root (empty for the Frame): its Layout key.
+    path: String,
     ports: Vec<PortSlot<'a>>,
     children: Vec<BoxNode<'a>>,
     wires: Vec<Wire<'a>>,
@@ -146,14 +148,16 @@ pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Sce
     };
 
     let mut frame = open_box(model, root_element, definition, "", layout);
-    size(&mut frame);
+    size(&mut frame, layout);
     place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
     place_own_ports(&mut frame);
     place_child_ports(&mut frame, true);
+    apply_port_overrides(&mut frame, layout);
 
     let mut items = Vec::new();
     let mut rects = Vec::new();
-    draw_boxes(&frame, true, &mut items, &mut rects);
+    let mut origins = BTreeMap::new();
+    draw_boxes(&frame, true, &mut items, &mut rects, &mut origins);
     let mut ports = Vec::new();
     draw_ports(&frame, &mut ports);
     // Connector labels keep clear of box titles, port labels and each other.
@@ -163,9 +167,39 @@ pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Sce
         .filter(|i| matches!(i.shape, Shape::Text { .. }))
         .map(|i| i.shape.extent())
         .collect();
-    draw_connectors(&frame, &mut items, &mut taken);
+    draw_connectors(&frame, layout, &mut items, &mut taken);
     items.extend(ports);
-    Ok(page(items, &rects))
+    let mut scene = page(items, &rects);
+    scene.origins = origins;
+    Ok(scene)
+}
+
+/// The Layout key of a feature under the box at `path`.
+fn feature_path(path: &str, name: &str) -> String {
+    if path.is_empty() { name.to_owned() } else { format!("{path}.{name}") }
+}
+
+/// Whether `path` (`rearAxleAssembly.differential`) still leads from
+/// `root` through part usages, each typed by a part definition on the way.
+pub fn path_exists(model: &Model, root: &QualifiedName, path: &str) -> bool {
+    let Some(root) = model.element(root) else { return false };
+    let mut definition = match root.kind {
+        ElementKind::PartDefinition => Some(root),
+        _ => definition_of(model, root),
+    };
+    let mut segments = path.split('.').peekable();
+    while let Some(name) = segments.next() {
+        let Some(d) = definition else { return false };
+        let Some(usage) = model.owned_members(&d.qualified_name).find(|e| e.kind == ElementKind::PartUsage && e.name == name)
+        else {
+            return false;
+        };
+        definition = definition_of(model, usage);
+        if segments.peek().is_some() && definition.is_none() {
+            return false;
+        }
+    }
+    true
 }
 
 fn definition_of<'a>(model: &'a Model, usage: &Element) -> Option<&'a Element> {
@@ -180,16 +214,19 @@ fn definition_of<'a>(model: &'a Model, usage: &Element) -> Option<&'a Element> {
 /// names its path, else closed) and the wires between them. `path` is this
 /// box's feature path from the root (empty for the Frame).
 fn open_box<'a>(model: &'a Model, element: &'a Element, definition: &'a Element, path: &str, layout: &Layout) -> BoxNode<'a> {
-    let mut node = closed_box(model, element, Some(definition));
+    let mut node = closed_box(model, element, Some(definition), path);
     node.children = model
         .owned_members(&definition.qualified_name)
         .filter(|e| e.kind == ElementKind::PartUsage)
-        .map(|usage| {
-            let child_path = if path.is_empty() { usage.name.clone() } else { format!("{path}.{}", usage.name) };
-            match definition_of(model, usage) {
-                Some(d) if layout.opened.contains(&child_path) => open_box(model, usage, d, &child_path, layout),
-                d => closed_box(model, usage, d),
+        .filter_map(|usage| {
+            let child_path = feature_path(path, &usage.name);
+            if layout.hidden.contains(&QualifiedName::new(child_path.clone())) {
+                return None;
             }
+            Some(match definition_of(model, usage) {
+                Some(d) if layout.opened.contains(&child_path) => open_box(model, usage, d, &child_path, layout),
+                d => closed_box(model, usage, d, &child_path),
+            })
         })
         .collect();
     node.wires = wires(model, definition, &node);
@@ -198,7 +235,7 @@ fn open_box<'a>(model: &'a Model, element: &'a Element, definition: &'a Element,
 
 /// A box with only its ports: its definition's, then any it declares
 /// itself.
-fn closed_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a Element>) -> BoxNode<'a> {
+fn closed_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a Element>, path: &str) -> BoxNode<'a> {
     let own = (definition.map(|d| &d.qualified_name) != Some(&element.qualified_name))
         .then(|| model.owned_members(&element.qualified_name))
         .into_iter()
@@ -210,7 +247,14 @@ fn closed_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a
         .filter(|e| e.kind == ElementKind::PortUsage)
         .map(|port| PortSlot { port, side: Side::Bottom, offset: 0.0 })
         .collect();
-    BoxNode { element, ports, children: Vec::new(), wires: Vec::new(), rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 } }
+    BoxNode {
+        element,
+        path: path.to_owned(),
+        ports,
+        children: Vec::new(),
+        wires: Vec::new(),
+        rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 },
+    }
 }
 
 /// The definition's connections and interfaces whose two ends resolve
@@ -318,19 +362,22 @@ fn label_stack_below(node: &BoxNode, c: usize) -> f32 {
 }
 
 /// Sizes a box from the inside out, placing its children relative to its
-/// top-left corner.
-fn size(node: &mut BoxNode) {
+/// top-left corner: where the Layout saved them, the rest arranged
+/// automatically below those.
+fn size(node: &mut BoxNode, layout: &Layout) {
     let title_width = text_width(&title(node.element), USAGE_NAME_FONT).max(text_width("«part def»", KEYWORD_FONT));
     let ports_width = edge_room(node, Direction::In).max(edge_room(node, Direction::Out));
+    let saved = layout.nodes.get(&QualifiedName::new(node.path.clone())).and_then(|p| p.size);
     if node.children.is_empty() {
         let width = (title_width + 2.0 * PADDING).max(MIN_NODE_WIDTH).max(ports_width);
         let height = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
-        node.rect.width = width.ceil();
-        node.rect.height = height.ceil();
+        let [width, height] = saved.unwrap_or([width.ceil(), height.ceil()]);
+        node.rect.width = width;
+        node.rect.height = height;
         return;
     }
     for child in &mut node.children {
-        size(child);
+        size(child, layout);
     }
     // Layers top to bottom from each wire's `out` end to its `in` end, with
     // room for port labels above and below every child, and below it for
@@ -351,14 +398,41 @@ fn size(node: &mut BoxNode) {
         })
         .collect();
     let content = Point::new(BOX_PADDING, TITLE_BAND + BOX_PADDING);
-    for (child, placed) in node.children.iter_mut().zip(layout::layered(&sizes, &edges)) {
-        child.rect.x = placed.x + content.x;
-        child.rect.y = placed.y + content.y + LABEL_ROOM;
+    // Saved children keep their place; the rest are laid out among
+    // themselves and set below the saved ones.
+    let placement = |c: &BoxNode| layout.nodes.get(&QualifiedName::new(c.path.clone())).map(|p| Point::new(p.x, p.y));
+    let unplaced: Vec<usize> = (0..node.children.len()).filter(|&c| placement(&node.children[c]).is_none()).collect();
+    let local = |c: usize| unplaced.iter().position(|&u| u == c);
+    let unplaced_sizes: Vec<(f32, f32)> = unplaced.iter().map(|&c| sizes[c]).collect();
+    let unplaced_edges: Vec<(usize, usize)> = edges.iter().filter_map(|&(a, b)| Some((local(a)?, local(b)?))).collect();
+    let auto = layout::layered(&unplaced_sizes, &unplaced_edges);
+    let saved_bottom = node
+        .children
+        .iter()
+        .zip(&below)
+        .filter_map(|(c, b)| placement(c).map(|p| p.y + c.rect.height + b))
+        .fold(None, |acc: Option<f32>, y| Some(acc.map_or(y, |a| a.max(y))));
+    let auto_top = saved_bottom.map_or(content.y, |bottom| bottom.max(content.y));
+    for c in 0..node.children.len() {
+        let position = match placement(&node.children[c]) {
+            Some(p) => p,
+            None => {
+                let placed = auto[local(c).expect("an unplaced child has an automatic place")];
+                Point::new(placed.x + content.x, placed.y + auto_top + LABEL_ROOM)
+            }
+        };
+        node.children[c].rect.x = position.x;
+        node.children[c].rect.y = position.y;
     }
     let right = node.children.iter().map(|c| c.rect.right()).fold(content.x, f32::max);
     let bottom = node.children.iter().zip(&below).map(|(c, b)| c.rect.bottom() + b).fold(content.y, f32::max);
-    node.rect.width = (right + BOX_PADDING).max(title_width + 2.0 * PADDING).max(ports_width).max(MIN_NODE_WIDTH).ceil();
-    node.rect.height = (bottom + BOX_PADDING).ceil();
+    let width = (right + BOX_PADDING).max(title_width + 2.0 * PADDING).max(ports_width).max(MIN_NODE_WIDTH).ceil();
+    let height = (bottom + BOX_PADDING).ceil();
+    // A saved size can make a box with parts bigger, never smaller than
+    // what it holds.
+    let [width, height] = saved.map_or([width, height], |[w, h]| [w.max(width), h.max(height)]);
+    node.rect.width = width;
+    node.rect.height = height;
 }
 
 /// Turns child positions relative to their box into absolute ones.
@@ -560,6 +634,30 @@ fn align_own_ports(node: &mut BoxNode) {
     }
 }
 
+fn side_of(side: PortSide) -> Side {
+    match side {
+        PortSide::Top => Side::Top,
+        PortSide::Bottom => Side::Bottom,
+        PortSide::Left => Side::Left,
+        PortSide::Right => Side::Right,
+    }
+}
+
+/// Puts ports moved by hand where the Layout saved them, kept on their box.
+fn apply_port_overrides(node: &mut BoxNode, layout: &Layout) {
+    let rect = node.rect;
+    for slot in &mut node.ports {
+        if let Some(PortPlacement { side, offset }) = layout.ports.get(&feature_path(&node.path, &slot.port.name)) {
+            slot.side = side_of(*side);
+            let length = if slot.side.vertical() { rect.width } else { rect.height };
+            slot.offset = offset.clamp(0.0, length);
+        }
+    }
+    for child in &mut node.children {
+        apply_port_overrides(child, layout);
+    }
+}
+
 fn texts(depicts: &Depicts, rect: Rect, keyword: &str, title: String) -> Vec<Item> {
     let keyword_baseline = rect.y + PADDING + KEYWORD_FONT.size;
     [
@@ -583,15 +681,26 @@ fn texts(depicts: &Depicts, rect: Rect, keyword: &str, title: String) -> Vec<Ite
 
 /// Boxes from the outside in: each a rounded box with its keyword above
 /// its title (the Frame's corners rounder).
-fn draw_boxes(node: &BoxNode, frame: bool, items: &mut Vec<Item>, rects: &mut Vec<Rect>) {
-    let depicts = Depicts::Element(node.element.qualified_name.clone());
+fn draw_boxes(
+    node: &BoxNode,
+    frame: bool,
+    items: &mut Vec<Item>,
+    rects: &mut Vec<Rect>,
+    origins: &mut BTreeMap<QualifiedName, Point>,
+) {
+    let depicts = if frame {
+        Depicts::Element(node.element.qualified_name.clone())
+    } else {
+        Depicts::Part { key: QualifiedName::new(node.path.clone()), element: node.element.qualified_name.clone() }
+    };
     let radius = if frame { 2.0 * USAGE_CORNER_RADIUS } else { USAGE_CORNER_RADIUS };
     items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: node.rect, fill: Fill::Background, corner_radius: radius } });
     let keyword = format!("«{}»", node.element.kind.keyword());
     items.extend(texts(&depicts, node.rect, &keyword, title(node.element)));
     rects.push(node.rect);
     for child in &node.children {
-        draw_boxes(child, false, items, rects);
+        origins.insert(QualifiedName::new(child.path.clone()), Point::new(node.rect.x, node.rect.y));
+        draw_boxes(child, false, items, rects, origins);
     }
 }
 
@@ -599,7 +708,11 @@ fn draw_boxes(node: &BoxNode, frame: bool, items: &mut Vec<Item>, rects: &mut Ve
 /// outside the box.
 fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
     for slot in &node.ports {
-        let depicts = Depicts::Port { part: node.element.qualified_name.clone(), port: slot.port.qualified_name.clone() };
+        let depicts = Depicts::Port {
+            part: node.element.qualified_name.clone(),
+            port: slot.port.qualified_name.clone(),
+            key: feature_path(&node.path, &slot.port.name),
+        };
         let p = port_point(node.rect, slot);
         let square = Rect { x: p.x - PORT_SIZE / 2.0, y: p.y - PORT_SIZE / 2.0, width: PORT_SIZE, height: PORT_SIZE };
         let beside = PORT_SIZE / 2.0 + 3.0;
@@ -645,7 +758,7 @@ fn end_point(node: &BoxNode, end: &End, toward: Point) -> (Point, Side, bool) {
 /// across the gap between them. Each label goes beside the middle of its
 /// connector's longest run, stepping up or down a line until it clears the
 /// labels in `taken`.
-fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>) {
+fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken: &mut Vec<Rect>) {
     for wire in &node.wires {
         let leave = |end: &End, other: &End| {
             let (point, side, inward) = end_point(node, end, rough_point(node, other));
@@ -676,7 +789,21 @@ fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>)
             let checked = if points.len() == 2 { points } else { &points[1..points.len() - 1] };
             checked.windows(2).all(|s| !blocked.iter().any(|r| segment_crosses(s[0], s[1], *r)))
         };
-        let points = if clear(&simple) {
+        let depicts = Depicts::Connection(wire.connection.qualified_name.clone());
+        let saved = depicts.edge_key().and_then(|key| layout.edges.get(&key));
+        let points = if let Some(bends) = saved {
+            // Bends set by hand win, joined with right angles.
+            let mut points = vec![a, a1];
+            for &[x, y] in bends {
+                let last = *points.last().expect("starts with two points");
+                points.push(Point::new(x, last.y));
+                points.push(Point::new(x, y));
+            }
+            let last = *points.last().expect("starts with two points");
+            points.extend([Point::new(b1.x, last.y), b1, b]);
+            points.dedup();
+            points
+        } else if clear(&simple) {
             simple
         } else {
             match route(a1, b1, &blocked) {
@@ -710,12 +837,11 @@ fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>)
             .find(|shape| !taken.iter().any(|r| r.intersects(&shape.extent())))
             .unwrap_or_else(|| label_at(0.0));
         taken.push(label.extent());
-        let depicts = Depicts::Connection(wire.connection.qualified_name.clone());
         items.push(Item { depicts: depicts.clone(), shape: Shape::Polyline { points, dashed: false } });
         items.push(Item { depicts, shape: label });
     }
     for child in &node.children {
-        draw_connectors(child, items, taken);
+        draw_connectors(child, layout, items, taken);
     }
 }
 

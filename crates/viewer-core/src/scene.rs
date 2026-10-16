@@ -2,6 +2,8 @@
 //! paint these items in order and add no notation of their own, so every
 //! renderer produces the same picture.
 
+use std::collections::BTreeMap;
+
 use crate::model::QualifiedName;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -129,10 +131,16 @@ pub enum Depicts {
     },
     /// A connection or interface usage, by its qualified name.
     Connection(QualifiedName),
-    /// A port drawn on a part's border in an Interconnection Diagram: the
-    /// part (usage, or the root for the Frame) and the port. Parts of the
-    /// same type share port names, so the port alone isn't unique.
-    Port { part: QualifiedName, port: QualifiedName },
+    /// A part in an Interconnection Diagram: `key` is its feature path from
+    /// the root (`rearAxleAssembly.differential`), which keys its Layout
+    /// entries; `element` is the part usage. Two usages of one definition
+    /// can draw the same inner usage, so the element alone isn't unique.
+    Part { key: QualifiedName, element: QualifiedName },
+    /// A port drawn on a box's border in an Interconnection Diagram: the
+    /// box's element (the part usage, or the root for the Frame), the port,
+    /// and `key`, the port's feature path from the root (`engine.fuelIn`,
+    /// or `power` on the Frame), which keys its Layout entry.
+    Port { part: QualifiedName, port: QualifiedName, key: String },
 }
 
 impl Depicts {
@@ -140,7 +148,7 @@ impl Depicts {
     /// Nodes have none: they are keyed by their element.
     pub fn edge_key(&self) -> Option<String> {
         match self {
-            Depicts::Element(_) | Depicts::Port { .. } => None,
+            Depicts::Element(_) | Depicts::Part { .. } | Depicts::Port { .. } => None,
             Depicts::Specialization { specific, general } => Some(format!("specialization {specific} {general}")),
             Depicts::Typing { usage, definition } => Some(format!("defined-by {usage} {definition}")),
             Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),
@@ -165,44 +173,82 @@ pub struct Scene {
     pub height: f32,
     /// Painted in order; later items are on top.
     pub items: Vec<Item>,
+    /// For nodes positioned inside another box (Interconnection Diagrams),
+    /// that box's top-left corner, by node key: their Layout positions are
+    /// relative to it. Nodes not listed are positioned on the page.
+    pub origins: BTreeMap<QualifiedName, Point>,
+}
+
+impl Depicts {
+    /// The key a node is drawn and laid out under: its element in a General
+    /// Diagram, its feature path for a part in an Interconnection Diagram.
+    pub fn node_key(&self) -> Option<&QualifiedName> {
+        match self {
+            Depicts::Element(e) => Some(e),
+            Depicts::Part { key, .. } => Some(key),
+            _ => None,
+        }
+    }
 }
 
 impl Scene {
-    /// The frame of the node drawn for `element`, if it is in the Diagram.
-    pub fn node_bounds(&self, element: &QualifiedName) -> Option<Rect> {
+    /// The rect of the node drawn under `key` (see [`Depicts::node_key`]).
+    pub fn node_bounds(&self, key: &QualifiedName) -> Option<Rect> {
+        self.items.iter().find_map(|item| match (item.depicts.node_key(), &item.shape) {
+            (Some(k), Shape::Rect { rect, .. }) if k == key => Some(*rect),
+            _ => None,
+        })
+    }
+
+    /// The rect of the first node drawn for `element`, whatever its key.
+    pub fn element_bounds(&self, element: &QualifiedName) -> Option<Rect> {
         self.items.iter().find_map(|item| match (&item.depicts, &item.shape) {
-            (Depicts::Element(e), Shape::Rect { rect, .. }) if e == element => Some(*rect),
+            (Depicts::Element(e) | Depicts::Part { element: e, .. }, Shape::Rect { rect, .. }) if e == element => {
+                Some(*rect)
+            }
             _ => None,
         })
     }
 
-    /// The element whose node is topmost at `point`, if any.
+    /// The element of the node drawn under `key`.
+    pub fn element_of(&self, key: &QualifiedName) -> Option<&QualifiedName> {
+        self.items.iter().find_map(|item| match &item.depicts {
+            Depicts::Element(e) if e == key => Some(e),
+            Depicts::Part { key: k, element } if k == key => Some(element),
+            _ => None,
+        })
+    }
+
+    /// The key of the node that is topmost at `point`, if any.
     pub fn element_at(&self, point: Point) -> Option<&QualifiedName> {
-        self.items.iter().rev().find_map(|item| match (&item.depicts, &item.shape) {
-            (Depicts::Element(e), Shape::Rect { rect, .. }) if rect.contains(point) => Some(e),
+        self.items.iter().rev().find_map(|item| match (item.depicts.node_key(), &item.shape) {
+            (Some(key), Shape::Rect { rect, .. }) if rect.contains(point) => Some(key),
             _ => None,
         })
     }
 
-    /// The port whose square is topmost at `point`, as (part, port).
-    pub fn port_at(&self, point: Point) -> Option<(&QualifiedName, &QualifiedName)> {
+    /// The port whose square is topmost at `point`, as (box element, port,
+    /// port key).
+    pub fn port_at(&self, point: Point) -> Option<(&QualifiedName, &QualifiedName, &str)> {
         self.items.iter().rev().find_map(|item| match (&item.depicts, &item.shape) {
-            (Depicts::Port { part, port }, Shape::Rect { rect, .. }) if rect.contains(point) => Some((part, port)),
+            (Depicts::Port { part, port, key }, Shape::Rect { rect, .. }) if rect.contains(point) => {
+                Some((part, port, key.as_str()))
+            }
             _ => None,
         })
     }
 
-    /// Every element that has a node in the Diagram, in paint order.
+    /// The key of every node in the Diagram, in paint order.
     pub fn elements(&self) -> Vec<&QualifiedName> {
-        let mut elements = Vec::new();
+        let mut keys = Vec::new();
         for item in &self.items {
-            if let Depicts::Element(e) = &item.depicts
-                && !elements.contains(&e)
+            if let Some(key) = item.depicts.node_key()
+                && !keys.contains(&key)
             {
-                elements.push(e);
+                keys.push(key);
             }
         }
-        elements
+        keys
     }
 
     /// Every edge with the path of its line, in paint order. A path's inner

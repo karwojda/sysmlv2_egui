@@ -50,6 +50,16 @@ pub enum DiagramError {
     UnsuitableRoot { root: QualifiedName, kind: &'static str },
 }
 
+/// Whether a Layout key of a Diagram of `kind` rooted at `root` still names
+/// something in the Model: an element (General), or a feature path from the
+/// root (Interconnection).
+pub fn layout_key_exists(model: &Model, kind: DiagramKind, root: &QualifiedName, key: &QualifiedName) -> bool {
+    match kind {
+        DiagramKind::General => model.element(key).is_some(),
+        DiagramKind::Interconnection => crate::interconnection::path_exists(model, root, key.as_str()),
+    }
+}
+
 /// Builds the scene for a Diagram of `kind` rooted at `root`, arranged
 /// automatically.
 pub fn build_scene(model: &Model, kind: DiagramKind, root: &QualifiedName) -> Result<Scene, DiagramError> {
@@ -240,7 +250,7 @@ pub(crate) fn page(items: Vec<Item>, rects: &[Rect]) -> Scene {
         right = right.max((e.right() + EDGE_PADDING).ceil());
         bottom = bottom.max((e.bottom() + EDGE_PADDING).ceil());
     }
-    Scene { x: left, y: top, width: right - left, height: bottom - top, items }
+    Scene { x: left, y: top, width: right - left, height: bottom - top, items, origins: Default::default() }
 }
 
 /// What `edge` depicts, and the indices of the nodes it runs from and to.
