@@ -100,13 +100,13 @@ pub fn enrich(
         }
         let mut element = Element::new(name.clone(), kind);
         element.name = String::new();
-        element.typed_by = first_reference(item, "type").and_then(&qualified_name);
+        element.typed_by = first_reference(item, "type").and_then(qualified_name);
         elements.insert(name, element);
     }
 
     for (item, file) in items.values() {
         if item.get("@type").and_then(Value::as_str) == Some("Documentation") {
-            let owner = reference(item, "owner").and_then(&qualified_name);
+            let owner = reference(item, "owner").and_then(qualified_name);
             let body = item.get("body").and_then(Value::as_str).map(str::trim);
             if let (Some(element), Some(body)) = (owner.and_then(|o| elements.get_mut(&o)), body) {
                 element.documentation = Some(body.to_owned());
@@ -181,8 +181,7 @@ pub fn enrich(
                         ));
                     }
                     Some("RenderingUsage") => {
-                        element.rendering =
-                            reference(child, "references").and_then(&qualified_name);
+                        element.rendering = reference(child, "references").and_then(qualified_name);
                     }
                     _ => {}
                 }
@@ -197,7 +196,7 @@ pub fn enrich(
                 .flatten()
                 .find(|c| c.get("@type").and_then(Value::as_str) == Some("PayloadFeature"))
                 .and_then(|c| first_reference(c, "type"))
-                .and_then(&qualified_name);
+                .and_then(qualified_name);
             element.payload = payload.or_else(|| element.typed_by.clone());
         }
     }
