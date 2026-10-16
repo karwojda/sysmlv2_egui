@@ -101,6 +101,14 @@ pub enum Shape {
     },
 }
 
+impl Shape {
+    /// The area the shape covers. Text is estimated from its length, as
+    /// the layout does, so it doesn't depend on installed fonts.
+    pub fn extent(&self) -> Rect {
+        crate::notation::extent(self)
+    }
+}
+
 /// What a scene item depicts, for hit-testing and selection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Depicts {

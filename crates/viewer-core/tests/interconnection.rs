@@ -254,3 +254,67 @@ fn finds_the_port_under_a_point() {
     assert_eq!(found, Some((&qn("S::Vehicle::engine"), &qn("S::Engine::fuelIn"))));
     assert_eq!(scene.port_at(Point::new(square.x - 20.0, square.y - 20.0)), None);
 }
+
+mod common;
+
+/// Every pair of labels whose estimated boxes overlap.
+fn overlapping_labels(scene: &Scene) -> Vec<(String, String)> {
+    let labels: Vec<(String, Rect)> = scene
+        .items
+        .iter()
+        .filter_map(|item| match &item.shape {
+            Shape::Text { text, .. } => Some((text.clone(), item.shape.extent())),
+            _ => None,
+        })
+        .collect();
+    let mut overlaps = Vec::new();
+    for (i, (a, ra)) in labels.iter().enumerate() {
+        for (b, rb) in &labels[i + 1..] {
+            if ra.intersects(rb) {
+                overlaps.push((a.clone(), b.clone()));
+            }
+        }
+    }
+    overlaps
+}
+
+fn drivetrain(root: &str) -> Scene {
+    build_scene(&common::drivetrain(), DiagramKind::Interconnection, &qn(root)).unwrap()
+}
+
+#[test]
+fn no_two_labels_overlap() {
+    for (name, scene) in [("vehicle", interconnection("S::Vehicle")), ("drivetrain", drivetrain("D::Vehicle"))] {
+        let overlaps = overlapping_labels(&scene);
+        assert!(overlaps.is_empty(), "{name}: {overlaps:?}");
+    }
+}
+
+#[test]
+fn closed_parts_are_wide_enough_for_their_port_labels_side_by_side() {
+    let scene = drivetrain("D::Vehicle");
+    let engine = scene.node_bounds(&qn("D::Vehicle::engine")).unwrap();
+    let top_labels: f32 = scene
+        .items
+        .iter()
+        .filter(|item| matches!(&item.depicts, Depicts::Port { part, .. } if part == &qn("D::Vehicle::engine")))
+        .filter_map(|item| match &item.shape {
+            Shape::Text { position, .. } if position.y < engine.y => Some(item.shape.extent().width),
+            _ => None,
+        })
+        .sum();
+
+    assert!(engine.width >= top_labels, "{} < {top_labels}", engine.width);
+}
+
+#[test]
+fn drivetrain_matches_the_golden_file() {
+    let svg = svg::render(&drivetrain("D::Vehicle"));
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/drivetrain-interconnection.svg");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &svg).unwrap();
+    }
+    let expected = std::fs::read_to_string(&golden)
+        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
+    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+}

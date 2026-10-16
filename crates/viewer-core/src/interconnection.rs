@@ -26,7 +26,7 @@ const CONNECTOR_STUB: f32 = 16.0;
 /// How close two ports must be across the connector to count as in line.
 const ALIGNED: f32 = 2.0;
 /// Vertical distance between stacked connector labels.
-const LABEL_STACK: f32 = LABEL_FONT.size + 2.0;
+const LABEL_STACK: f32 = LABEL_FONT.size * 1.3 + 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Side {
@@ -96,11 +96,17 @@ pub fn build(model: &Model, root: &QualifiedName, _layout: &Layout) -> Result<Sc
     let wires = wires(model, definition, &parts);
 
     // Sizes, then layers top to bottom from each wire's `out` end to its
-    // `in` end, with room for port labels above and below every part.
-    let sizes: Vec<(f32, f32)> = parts.iter().map(|p| {
-        let (w, h) = part_size(p);
-        (w, h + 2.0 * LABEL_ROOM)
-    }).collect();
+    // `in` end, with room for port labels above and below every part, and
+    // below it for the stacked labels of connectors leaving it.
+    let below: Vec<f32> = (0..parts.len()).map(|p| LABEL_ROOM + label_stack_below(&parts, &wires, p)).collect();
+    let sizes: Vec<(f32, f32)> = parts
+        .iter()
+        .enumerate()
+        .map(|(p, part)| {
+            let (w, h) = part_size(part);
+            (w, h + LABEL_ROOM + below[p])
+        })
+        .collect();
     let edges: Vec<(usize, usize)> = wires
         .iter()
         .filter(|w| w.a.0 != w.b.0)
@@ -108,16 +114,17 @@ pub fn build(model: &Model, root: &QualifiedName, _layout: &Layout) -> Result<Sc
         .collect();
     let title_width = text_width(&frame_title(root_element), USAGE_NAME_FONT) + 2.0 * PADDING;
     let origin = Point::new(notation_margin() + FRAME_PADDING, notation_margin() + FRAME_TITLE + FRAME_PADDING);
-    for (part, placed) in parts.iter_mut().zip(layout::layered(&sizes, &edges)) {
+    for ((part, placed), below) in parts.iter_mut().zip(layout::layered(&sizes, &edges)).zip(&below) {
         part.rect = Rect {
             x: placed.x + origin.x,
             y: placed.y + origin.y + LABEL_ROOM,
             width: placed.width,
-            height: placed.height - 2.0 * LABEL_ROOM,
+            height: placed.height - LABEL_ROOM - below,
         };
     }
     let content_right = parts.iter().map(|p| p.rect.right()).fold(origin.x, f32::max);
-    let content_bottom = parts.iter().map(|p| p.rect.bottom() + LABEL_ROOM).fold(origin.y, f32::max);
+    let content_bottom =
+        parts.iter().zip(&below).map(|(p, below)| p.rect.bottom() + below).fold(origin.y, f32::max);
     let frame = Rect {
         x: notation_margin(),
         y: notation_margin(),
@@ -172,6 +179,20 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, parts: &[PartBox<'a>]) -
             _ => None,
         })
         .collect()
+}
+
+/// Extra room below part `p` for the labels of connectors leaving it that
+/// stack because they share their ports.
+fn label_stack_below(parts: &[PartBox], wires: &[Wire], p: usize) -> f32 {
+    let mut counts: BTreeMap<((usize, usize), (usize, usize)), usize> = BTreeMap::new();
+    for wire in wires {
+        let (from, to) = if flows_from_b(parts, wire) { (wire.b, wire.a) } else { (wire.a, wire.b) };
+        if from.0 == p {
+            *counts.entry((from, to)).or_default() += 1;
+        }
+    }
+    let deepest = counts.values().copied().max().unwrap_or(1).max(1);
+    (deepest - 1) as f32 * LABEL_STACK
 }
 
 fn direction(parts: &[PartBox], (part, port): (usize, usize)) -> Option<Direction> {
@@ -389,16 +410,17 @@ fn connectors(parts: &[PartBox], wires: &[Wire]) -> Vec<Item> {
             .max_by(|x, y| seg_len(*x).total_cmp(&seg_len(*y)))
             .expect("a connector has segments");
         let middle = Point::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
+        // Beside a vertical run; above a horizontal one, stacking upward.
+        let (position, anchor) = if from.x == to.x {
+            (Point::new(middle.x + LABEL_OFFSET, middle.y + LABEL_FONT.size / 3.0 + stacked * LABEL_STACK), TextAnchor::Start)
+        } else {
+            (Point::new(middle.x, middle.y - LABEL_OFFSET + stacked * LABEL_STACK - (count - 1.0) / 2.0 * LABEL_STACK), TextAnchor::Middle)
+        };
         let depicts = Depicts::Connection(wire.connection.qualified_name.clone());
         items.push(Item { depicts: depicts.clone(), shape: Shape::Polyline { points, dashed: false } });
         items.push(Item {
             depicts,
-            shape: Shape::Text {
-                position: Point::new(middle.x + LABEL_OFFSET, middle.y + stacked * LABEL_STACK),
-                text: notation::usage_label(wire.connection),
-                anchor: TextAnchor::Start,
-                font: LABEL_FONT,
-            },
+            shape: Shape::Text { position, text: notation::usage_label(wire.connection), anchor, font: LABEL_FONT },
         });
     }
     items
