@@ -27,15 +27,16 @@ pub fn render(scene: &Scene) -> String {
 
 fn shape(out: &mut String, shape: &Shape) {
     match shape {
-        Shape::Rect { rect, fill, corner_radius } => writeln!(
+        Shape::Rect { rect, fill, corner_radius, dashed } => writeln!(
             out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}"{} fill="{}" stroke="{STROKE}"/>"#,
+            r#"<rect x="{}" y="{}" width="{}" height="{}"{} fill="{}" stroke="{STROKE}"{}/>"#,
             num(rect.x),
             num(rect.y),
             num(rect.width),
             num(rect.height),
             if *corner_radius > 0.0 { format!(r#" rx="{}""#, num(*corner_radius)) } else { String::new() },
             fill_color(*fill),
+            if *dashed { r#" stroke-dasharray="6 4""# } else { "" },
         ),
         Shape::Polyline { points, dashed } => writeln!(
             out,

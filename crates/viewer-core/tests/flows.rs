@@ -226,3 +226,43 @@ fn the_general_diagram_lists_bindings_as_bind_a_equals_b() {
     assert!(rows.contains(&"bind tank.level = engine.fuelLevel".to_owned()), "{rows:?}");
     assert!(rows.contains(&"bind tank.fuelOut = engine.fuelIn".to_owned()), "{rows:?}");
 }
+
+fn box_dashed(scene: &Scene, element: &str) -> bool {
+    scene
+        .items
+        .iter()
+        .find_map(|i| match (&i.depicts, &i.shape) {
+            (Depicts::Element(e) | Depicts::Part { element: e, .. }, Shape::Rect { dashed, .. }) if *e == qn(element) => {
+                Some(*dashed)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{element} is drawn"))
+}
+
+#[test]
+fn reference_parts_are_dashed_in_both_diagram_kinds() {
+    let interconnection = scene(DiagramKind::Interconnection, "F::Vehicle");
+    assert!(box_dashed(&interconnection, "F::Vehicle::driver"));
+    assert!(!box_dashed(&interconnection, "F::Vehicle::tank"));
+
+    let general = scene(DiagramKind::General, "F::Vehicle");
+    assert!(box_dashed(&general, "F::Vehicle::driver"));
+    assert!(!box_dashed(&general, "F::Vehicle::engine"));
+}
+
+#[test]
+fn a_dashed_box_is_exported_with_a_dash_pattern() {
+    let svg = viewer_core::svg::render(&scene(DiagramKind::Interconnection, "F::Vehicle"));
+
+    assert_eq!(svg.matches(r#"stroke-dasharray="6 4"/>"#).count(), 1, "only the reference part is dashed");
+}
+
+#[test]
+fn the_properties_panel_marks_reference_parts() {
+    let driver = properties(&common::flows(), &qn("F::Vehicle::driver")).unwrap();
+    let tank = properties(&common::flows(), &qn("F::Vehicle::tank")).unwrap();
+
+    assert!(driver.rows.iter().any(|p| p.label == "Reference" && p.value == "yes"));
+    assert!(!tank.rows.iter().any(|p| p.label == "Reference"));
+}

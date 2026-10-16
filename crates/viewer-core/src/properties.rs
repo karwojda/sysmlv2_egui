@@ -41,6 +41,9 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         let conjugate = if e.conjugated { "~" } else { "" };
         rows.push(link("Type", definition, format!("{conjugate}{definition}")));
     }
+    if e.is_reference {
+        rows.push(text("Reference", "yes".to_owned()));
+    }
     if let Some(multiplicity) = &e.multiplicity {
         rows.push(text("Multiplicity", multiplicity.to_string()));
     }

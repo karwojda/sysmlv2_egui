@@ -705,7 +705,12 @@ fn draw_boxes(
         Depicts::Part { key: QualifiedName::new(node.path.clone()), element: node.element.qualified_name.clone() }
     };
     let radius = if frame { 2.0 * USAGE_CORNER_RADIUS } else { USAGE_CORNER_RADIUS };
-    items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: node.rect, fill: Fill::Background, corner_radius: radius } });
+    // A reference part (not owned) is dashed.
+    let dashed = !frame && node.element.is_reference;
+    items.push(Item {
+        depicts: depicts.clone(),
+        shape: Shape::Rect { rect: node.rect, fill: Fill::Background, corner_radius: radius, dashed },
+    });
     let keyword = format!("«{}»", node.element.kind.keyword());
     items.extend(texts(&depicts, node.rect, &keyword, title(node.element)));
     rects.push(node.rect);
@@ -733,7 +738,7 @@ fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
             Side::Left => (Point::new(p.x - beside, p.y - LABEL_OFFSET), TextAnchor::End),
             Side::Right => (Point::new(p.x + beside, p.y - LABEL_OFFSET), TextAnchor::Start),
         };
-        items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: square, fill: Fill::Background, corner_radius: 0.0 } });
+        items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: square, fill: Fill::Background, corner_radius: 0.0, dashed: false } });
         items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT } });
     }
     for child in &node.children {

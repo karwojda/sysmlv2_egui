@@ -221,7 +221,7 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
     let corner_radius = if content.usage { USAGE_CORNER_RADIUS } else { 0.0 };
     let keyword_baseline = rect.y + PADDING + KEYWORD_FONT.size;
     let mut shapes = vec![
-        Shape::Rect { rect, fill: Fill::Background, corner_radius },
+        Shape::Rect { rect, fill: Fill::Background, corner_radius, dashed: element.is_reference },
         Shape::Text {
             position: Point::new(rect.center_x(), keyword_baseline),
             text: content.keyword.clone(),

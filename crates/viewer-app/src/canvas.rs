@@ -263,9 +263,15 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
 
     for item in &scene.items {
         match &item.shape {
-            Shape::Rect { rect, fill: f, corner_radius } => {
+            Shape::Rect { rect, fill: f, corner_radius, dashed } => {
                 let r = egui::Rect::from_min_size(at(Point::new(rect.x, rect.y)), Vec2::new(rect.width, rect.height) * z);
-                painter.rect(r, corner_radius * z, fill(*f), stroke, StrokeKind::Middle);
+                if *dashed {
+                    // egui has no dashed rect: fill it, then dash its outline.
+                    painter.rect_filled(r, corner_radius * z, fill(*f));
+                    painter.extend(egui::Shape::dashed_line(&rounded_outline(r, corner_radius * z), stroke, 6.0 * z, 4.0 * z));
+                } else {
+                    painter.rect(r, corner_radius * z, fill(*f), stroke, StrokeKind::Middle);
+                }
             }
             Shape::Polyline { points, dashed } => {
                 let points: Vec<Pos2> = points.iter().map(|p| at(*p)).collect();
@@ -310,6 +316,27 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, view: View, origin: Pos2, h
         let r = egui::Rect::from_min_size(at(Point::new(bounds.x, bounds.y)), Vec2::new(bounds.width, bounds.height) * z);
         painter.rect_stroke(r, 2.0, Stroke::new(2.0, HIGHLIGHT), StrokeKind::Outside);
     }
+}
+
+/// The outline of a rounded rectangle as a closed path, each corner a
+/// short arc.
+fn rounded_outline(r: egui::Rect, radius: f32) -> Vec<Pos2> {
+    let radius = radius.min(r.width() / 2.0).min(r.height() / 2.0);
+    let corners = [
+        (Pos2::new(r.right() - radius, r.top() + radius), -90.0_f32),
+        (Pos2::new(r.right() - radius, r.bottom() - radius), 0.0),
+        (Pos2::new(r.left() + radius, r.bottom() - radius), 90.0),
+        (Pos2::new(r.left() + radius, r.top() + radius), 180.0),
+    ];
+    let mut points = Vec::new();
+    for (centre, start) in corners {
+        for step in 0..=4 {
+            let angle = (start + step as f32 * 22.5).to_radians();
+            points.push(centre + Vec2::new(angle.cos(), angle.sin()) * radius);
+        }
+    }
+    points.push(points[0]);
+    points
 }
 
 #[cfg(test)]

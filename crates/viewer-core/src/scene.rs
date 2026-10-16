@@ -80,6 +80,8 @@ pub enum Shape {
         fill: Fill,
         /// Zero for square corners (definitions); rounded for usages.
         corner_radius: f32,
+        /// A dashed outline, for reference parts.
+        dashed: bool,
     },
     Polyline {
         points: Vec<Point>,
