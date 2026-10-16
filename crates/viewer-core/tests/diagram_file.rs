@@ -1,6 +1,6 @@
 //! Diagram Files are readable, stable text that round-trips.
 
-use viewer_core::{DiagramFile, DiagramFileError, DiagramKind, QualifiedName};
+use viewer_core::{DiagramFile, DiagramFileError, DiagramKind, DiagramSource, QualifiedName};
 
 #[test]
 fn is_readable_json_with_a_fixed_key_order() {
@@ -36,4 +36,33 @@ fn rejects_an_unknown_format_version() {
         DiagramFile::parse(&text),
         Err(DiagramFileError::UnsupportedVersion { found: 99 })
     ));
+}
+
+#[test]
+fn a_model_defined_diagram_refers_to_its_view_instead_of_a_kind_and_root() {
+    let file = DiagramFile::of("vehicle-tree", DiagramSource::View { view: QualifiedName::from("V::vehicle tree") });
+
+    assert_eq!(
+        file.to_text(),
+        r#"{
+  "format_version": 1,
+  "name": "vehicle-tree",
+  "view": "V::vehicle tree",
+  "layout": {}
+}
+"#
+    );
+    assert_eq!(DiagramFile::parse(&file.to_text()).unwrap(), file);
+}
+
+#[test]
+fn a_tool_defined_file_still_reads_as_a_kind_and_root() {
+    let text = "{\"format_version\": 1, \"name\": \"x\", \"kind\": \"interconnection\", \"root\": \"P::V\", \"layout\": {}}";
+
+    let file = DiagramFile::parse(text).unwrap();
+
+    assert_eq!(
+        file.source,
+        DiagramSource::Tool { kind: DiagramKind::Interconnection, root: QualifiedName::from("P::V") }
+    );
 }

@@ -143,11 +143,12 @@ fn a_saved_route_is_kept_on_a_tree_edge() {
 }
 
 #[test]
-fn layout_keys_of_elements_gone_from_the_model_are_orphaned() {
+fn layout_keys_of_elements_not_exposed_are_orphaned() {
     let model = parts_tree();
 
     assert!(layout_key_exists(&model, &qn("P::tree"), &qn("P::vehicle::body")));
     assert!(!layout_key_exists(&model, &qn("P::tree"), &qn("P::vehicle::gone")));
+    assert!(!layout_key_exists(&model, &qn("P::tree"), &qn("P::Engine")), "in the Model, but not exposed");
 }
 
 #[test]
@@ -181,4 +182,11 @@ fn assert_golden(name: &str, scene: &Scene) {
 #[test]
 fn a_tree_view_matches_the_golden_file() {
     assert_golden("views-tree.svg", &tree(&Layout::default()));
+}
+
+#[test]
+fn an_interconnection_view_matches_the_golden_file() {
+    let scene = build_scene(&common::views(), &qn("V::wiring"), &Layout::default()).unwrap();
+
+    assert_golden("views-wiring.svg", &scene);
 }

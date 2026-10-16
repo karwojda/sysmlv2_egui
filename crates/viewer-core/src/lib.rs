@@ -20,7 +20,7 @@ pub mod view;
 pub mod watch;
 
 pub use backend::{BackendError, FakeBackend, ModelBackend};
-pub use diagram::{DiagramError, DiagramKind, build_general_scene, build_scene, build_scene_with_layout, layout_key_exists};
+pub use diagram::{DiagramError, DiagramKind, DiagramSource, build_general_scene, build_scene, build_scene_with_layout, layout_key_exists};
 pub use diagram_file::{DiagramFile, DiagramFileError, Layout, NodePlacement, PortPlacement, PortSide};
 pub use model::{Diagnostic, Element, ElementKind, Model, QualifiedName, Severity, SourceLocation};
 pub use scene::Scene;

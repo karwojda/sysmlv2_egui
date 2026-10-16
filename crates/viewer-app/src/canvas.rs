@@ -8,8 +8,7 @@ use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2
 use viewer_core::scene::{Depicts, Fill, Point, Rect, Shape, TextAnchor};
 use viewer_core::editing::{self, Edit};
 use viewer_core::{
-    DiagramError, DiagramFile, DiagramKind, Layout, Model, QualifiedName, Scene, build_scene_with_layout, diagram_file,
-    svg,
+    DiagramError, DiagramFile, DiagramKind, DiagramSource, Layout, Model, QualifiedName, Scene, diagram_file, svg,
 };
 
 const STROKE: Color32 = Color32::BLACK;
@@ -25,8 +24,10 @@ const DESCENT: f32 = 0.22;
 /// it is viewed. `name` is set once it has been saved as a Diagram File;
 /// until then it is an ad hoc Diagram that leaves no file behind.
 pub struct OpenDiagram {
-    pub kind: DiagramKind,
-    pub root: QualifiedName,
+    pub source: DiagramSource,
+    /// The Diagram Kind it was last drawn as; a view's can change with the
+    /// Model, and is unknown while the view can't be drawn.
+    pub kind: Option<DiagramKind>,
     pub layout: Layout,
     pub name: Option<String>,
     /// Layout changes not yet saved.
@@ -41,20 +42,25 @@ pub struct OpenDiagram {
 }
 
 impl OpenDiagram {
+    /// Opens the Tool-defined Diagram of `kind` rooted at `root`.
     pub fn open(model: &Model, kind: DiagramKind, root: QualifiedName) -> Self {
-        Self::with_layout(model, kind, root, Layout::default(), None)
+        Self::open_source(model, DiagramSource::Tool { kind, root })
+    }
+
+    pub fn open_source(model: &Model, source: DiagramSource) -> Self {
+        Self::with_layout(model, source, Layout::default(), None)
     }
 
     /// Opens a saved Diagram File.
     pub fn open_saved(model: &Model, file: DiagramFile) -> Self {
-        Self::with_layout(model, file.kind, file.root, file.layout, Some(file.name))
+        Self::with_layout(model, file.source, file.layout, Some(file.name))
     }
 
-    fn with_layout(model: &Model, kind: DiagramKind, root: QualifiedName, layout: Layout, name: Option<String>) -> Self {
+    fn with_layout(model: &Model, source: DiagramSource, layout: Layout, name: Option<String>) -> Self {
         Self {
-            scene: build_scene_with_layout(model, kind, &root, &layout),
-            kind,
-            root,
+            scene: source.build_scene(model, &layout),
+            kind: source.kind(model),
+            source,
             layout,
             name,
             dirty: false,
@@ -67,15 +73,32 @@ impl OpenDiagram {
     /// Rebuilds the scene from a newly loaded Model, keeping the Layout
     /// and the view.
     pub fn refresh(&mut self, model: &Model) {
-        self.scene = build_scene_with_layout(model, self.kind, &self.root, &self.layout);
+        self.scene = self.source.build_scene(model, &self.layout);
+        self.kind = self.source.kind(model);
+    }
+
+    /// Whether this is the Interconnection Diagram rooted at `element`, so
+    /// opening that again would go nowhere.
+    pub fn is_interconnection_of(&self, element: &QualifiedName) -> bool {
+        matches!(&self.source, DiagramSource::Tool { kind: DiagramKind::Interconnection, root } if root == element)
+    }
+
+    /// The name a Diagram File or Export of it gets unless the user picks
+    /// another: the saved name, else the root's or view's.
+    pub fn default_name(&self) -> String {
+        match (&self.name, &self.source) {
+            (Some(name), _) => name.clone(),
+            (None, DiagramSource::Tool { root, .. }) => root.simple_name().to_lowercase(),
+            (None, DiagramSource::View { view }) => viewer_core::view::file_name(view),
+        }
     }
 
     /// Applies a Layout edit and redraws.
     pub fn edit(&mut self, model: &Model, edit: &Edit) {
         let Ok(scene) = &self.scene else { return };
         let before = self.layout.clone();
-        let (kind, root) = (self.kind, &self.root);
-        let known = |key: &QualifiedName| viewer_core::layout_key_exists(model, kind, root, key);
+        let source = &self.source;
+        let known = |key: &QualifiedName| source.layout_key_exists(model, key);
         editing::apply_with(&mut self.layout, &known, scene, edit);
         if self.layout != before {
             self.dirty = true;
@@ -86,10 +109,13 @@ impl OpenDiagram {
     /// The tab title: the saved name, or the root for an ad hoc Diagram,
     /// marked while there are unsaved changes.
     pub fn title(&self) -> String {
-        let title = match (&self.name, self.kind) {
+        let title = match (&self.name, &self.source) {
             (Some(name), _) => name.clone(),
-            (None, DiagramKind::General) => format!("{} (General)", self.root.simple_name()),
-            (None, DiagramKind::Interconnection) => format!("{} (Interconnection)", self.root.simple_name()),
+            (None, DiagramSource::Tool { kind: DiagramKind::General, root }) => format!("{} (General)", root.simple_name()),
+            (None, DiagramSource::Tool { kind: DiagramKind::Interconnection, root }) => {
+                format!("{} (Interconnection)", root.simple_name())
+            }
+            (None, DiagramSource::View { view }) => format!("{} (view)", view.simple_name()),
         };
         if self.dirty { format!("{title} •") } else { title }
     }
@@ -102,7 +128,7 @@ impl OpenDiagram {
         if path.exists() && self.name.as_deref() != Some(name) {
             return Err(format!("a Diagram named `{name}` already exists"));
         }
-        let mut file = DiagramFile::new(name, self.kind, self.root.clone());
+        let mut file = DiagramFile::of(name, self.source.clone());
         file.layout = self.layout.clone();
         std::fs::create_dir_all(path.parent().expect("a Diagram File is in a folder")).map_err(|e| e.to_string())?;
         std::fs::write(&path, file.to_text()).map_err(|e| e.to_string())?;
@@ -430,7 +456,7 @@ mod tests {
         let edge = Depicts::Specialization { specific: QualifiedName::from("P::B"), general: QualifiedName::from("P::A") };
         let mut layout = Layout::default();
         layout.edges.insert(edge.edge_key().unwrap(), vec![[300.0, 120.0]]);
-        let scene = build_scene_with_layout(&model, DiagramKind::General, &QualifiedName::from("P"), &layout).unwrap();
+        let scene = viewer_core::build_scene_with_layout(&model, DiagramKind::General, &QualifiedName::from("P"), &layout).unwrap();
         (scene, edge)
     }
 

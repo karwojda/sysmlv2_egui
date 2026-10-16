@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::diagram::DiagramKind;
+use crate::diagram::{DiagramKind, DiagramSource};
 use crate::model::{Model, QualifiedName};
 
 /// The folder inside a Model folder that holds its Diagram Files.
@@ -20,8 +20,8 @@ const FORMAT_VERSION: u32 = 1;
 pub struct DiagramFile {
     pub format_version: u32,
     pub name: String,
-    pub kind: DiagramKind,
-    pub root: QualifiedName,
+    #[serde(flatten)]
+    pub source: DiagramSource,
     pub layout: Layout,
 }
 
@@ -106,13 +106,12 @@ pub enum DiagramFileError {
 
 impl DiagramFile {
     pub fn new(name: impl Into<String>, kind: DiagramKind, root: QualifiedName) -> Self {
-        Self {
-            format_version: FORMAT_VERSION,
-            name: name.into(),
-            kind,
-            root,
-            layout: Layout::default(),
-        }
+        Self::of(name, DiagramSource::Tool { kind, root })
+    }
+
+    /// A Diagram File for a Diagram drawn from `source`, with no Layout yet.
+    pub fn of(name: impl Into<String>, source: DiagramSource) -> Self {
+        Self { format_version: FORMAT_VERSION, name: name.into(), source, layout: Layout::default() }
     }
 
     pub fn parse(text: &str) -> Result<Self, DiagramFileError> {

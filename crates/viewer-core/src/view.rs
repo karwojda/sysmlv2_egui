@@ -147,6 +147,19 @@ pub fn resolve(model: &Model, view: &QualifiedName) -> Result<ViewContents, View
     }
 }
 
+/// A Diagram or Export name for `view`: its simple name with anything a
+/// file name can't safely hold (spaces, quotes) replaced by `-`.
+pub fn file_name(view: &QualifiedName) -> String {
+    let name: String = view
+        .simple_name()
+        .trim_matches('\'')
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
+        .collect();
+    let name = name.trim_start_matches('.');
+    if name.is_empty() { "view".to_owned() } else { name.to_owned() }
+}
+
 /// Draws `view` as its Model-defined Diagram, with the user's `layout`.
 pub fn build_scene(model: &Model, view: &QualifiedName, layout: &Layout) -> Result<Scene, ViewError> {
     match resolve(model, view)? {
@@ -156,12 +169,14 @@ pub fn build_scene(model: &Model, view: &QualifiedName, layout: &Layout) -> Resu
     }
 }
 
-/// Whether a Layout key of `view`'s Diagram still names something in the
-/// Model, as [`crate::diagram::layout_key_exists`] does for its kind. Keys
-/// of a view that no longer resolves are all kept as orphaned.
+/// Whether a Layout key of `view`'s Diagram still names something it
+/// shows: an Exposed Element (General), or a feature path from the root
+/// (Interconnection). Entries for elements no longer exposed are Orphaned
+/// Layout Entries, kept in case the expose comes back. Keys of a view that
+/// no longer resolves are all kept.
 pub fn layout_key_exists(model: &Model, view: &QualifiedName, key: &QualifiedName) -> bool {
     match resolve(model, view) {
-        Ok(ViewContents::General(_)) => model.element(key).is_some(),
+        Ok(ViewContents::General(nodes)) => nodes.contains(key),
         Ok(ViewContents::Interconnection(root)) => {
             crate::diagram::layout_key_exists(model, DiagramKind::Interconnection, &root, key)
         }

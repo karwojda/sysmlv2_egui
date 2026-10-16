@@ -48,6 +48,55 @@ pub enum DiagramError {
     RootNotFound(QualifiedName),
     #[error("`{root}` can't be the root of {kind}")]
     UnsuitableRoot { root: QualifiedName, kind: &'static str },
+    #[error(transparent)]
+    View(#[from] crate::view::ViewError),
+}
+
+/// Where a Diagram's content comes from: a Diagram Kind and root element
+/// the user chose (a Tool-defined Diagram), or a `view` in the Model (a
+/// Model-defined Diagram), whose kind and elements are read from the Model
+/// each time it is drawn.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum DiagramSource {
+    Tool { kind: DiagramKind, root: QualifiedName },
+    View { view: QualifiedName },
+}
+
+impl DiagramSource {
+    /// Draws the Diagram with the user's `layout`.
+    pub fn build_scene(&self, model: &Model, layout: &Layout) -> Result<Scene, DiagramError> {
+        match self {
+            DiagramSource::Tool { kind, root } => build_scene_with_layout(model, *kind, root, layout),
+            DiagramSource::View { view } => Ok(crate::view::build_scene(model, view, layout)?),
+        }
+    }
+
+    /// Whether a Layout key still names something in the Model; see
+    /// [`layout_key_exists`].
+    pub fn layout_key_exists(&self, model: &Model, key: &QualifiedName) -> bool {
+        match self {
+            DiagramSource::Tool { kind, root } => layout_key_exists(model, *kind, root, key),
+            DiagramSource::View { view } => crate::view::layout_key_exists(model, view, key),
+        }
+    }
+
+    /// The Diagram Kind it is drawn as, if it can be drawn at all.
+    pub fn kind(&self, model: &Model) -> Option<DiagramKind> {
+        match self {
+            DiagramSource::Tool { kind, .. } => Some(*kind),
+            DiagramSource::View { view } => crate::view::kind(model, view).ok(),
+        }
+    }
+
+    /// The element whose name a Diagram drawn from it goes by: the root, or
+    /// the view.
+    pub fn named_after(&self) -> &QualifiedName {
+        match self {
+            DiagramSource::Tool { root, .. } => root,
+            DiagramSource::View { view } => view,
+        }
+    }
 }
 
 /// Whether a Layout key of a Diagram of `kind` rooted at `root` still names
