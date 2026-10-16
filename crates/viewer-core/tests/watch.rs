@@ -147,3 +147,15 @@ fn a_broken_first_load_is_shown_as_it_is() {
     assert!(!shown.stale);
     assert!(shown.model.has_errors());
 }
+
+#[test]
+fn editing_the_model_style_changes_the_fingerprint() {
+    let folder = TempDir::new().unwrap();
+    write(folder.path(), "a.sysml", "package A;");
+    let before = fingerprint(folder.path()).unwrap();
+
+    write(folder.path(), "diagrams/style.json", r#"{"format_version": 1, "rules": []}"#);
+
+    assert_ne!(fingerprint(folder.path()).unwrap(), before);
+    assert_eq!(model_files(folder.path()).unwrap().len(), 1, "but it isn't a Model file");
+}

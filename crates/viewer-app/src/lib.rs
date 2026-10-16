@@ -43,6 +43,9 @@ pub struct ViewerApp {
     /// to it once after it was selected somewhere else.
     reveal: Vec<QualifiedName>,
     saved_names: Vec<String>,
+    /// The Model Style, and why it couldn't be read if it couldn't.
+    model_style: Option<viewer_core::style::Style>,
+    style_error: Option<String>,
     diagrams: Vec<OpenDiagram>,
     active: Option<usize>,
     /// A Diagram to open once the Model has loaded: its root, and whether
@@ -118,6 +121,8 @@ impl ViewerApp {
             selected: None,
             reveal: Vec::new(),
             saved_names: Vec::new(),
+            model_style: None,
+            style_error: None,
             diagrams: Vec::new(),
             active: None,
             pending_root: root.map(|root| (root, false)),
@@ -163,8 +168,12 @@ impl ViewerApp {
                         _ => None,
                     };
                     let shown = accept(previous, model);
+                    (self.model_style, self.style_error) = match viewer_core::style::load(&loaded.folder) {
+                        Ok(style) => (style, None),
+                        Err(error) => (None, Some(error.to_string())),
+                    };
                     for diagram in &mut self.diagrams {
-                        diagram.refresh(&shown.model);
+                        diagram.set_model_style(&shown.model, self.model_style.clone());
                     }
                     self.saved_names = diagram_file::names_in(&loaded.folder).unwrap_or_default();
                     self.folder = Some(loaded.folder);
@@ -210,7 +219,9 @@ impl ViewerApp {
             self.activate(index);
             return;
         }
-        self.diagrams.push(OpenDiagram::open_source(model, source));
+        let mut diagram = OpenDiagram::open_source(model, source);
+        diagram.set_model_style(model, self.model_style.clone());
+        self.diagrams.push(diagram);
         self.activate(self.diagrams.len() - 1);
     }
 
@@ -236,7 +247,9 @@ impl ViewerApp {
             .and_then(|text| DiagramFile::parse(&text).map_err(|e| e.to_string()));
         match file {
             Ok(file) => {
-                self.diagrams.push(OpenDiagram::open_saved(model, file));
+                let mut diagram = OpenDiagram::open_saved(model, file);
+                diagram.set_model_style(model, self.model_style.clone());
+                self.diagrams.push(diagram);
                 self.activate(self.diagrams.len() - 1);
             }
             Err(error) => self.status = Some(format!("Cannot open {}: {error}", path.display())),
@@ -305,6 +318,9 @@ impl ViewerApp {
         });
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
+        }
+        if let Some(error) = &self.style_error {
+            ui.colored_label(ui.visuals().warn_fg_color, format!("{error}; drawing without the Model Style."));
         }
         if self.stale {
             ui.colored_label(

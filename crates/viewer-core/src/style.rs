@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::diagram_file::FOLDER;
+use crate::diagram_file::{DiagramStyle, FOLDER};
 use crate::model::{Element, Model, QualifiedName};
 use crate::scene::{Depicts, Fill, Rect, Rgb, Scene, Shape};
 
@@ -139,6 +139,21 @@ pub fn rule_for<'a>(element: &Element, levels: &[&'a [StyleRule]]) -> Option<&'a
         }
         best
     })
+}
+
+/// Colors the scene by a Diagram's Style layered over the Model Style
+/// (see [`apply`]), returning the rules used.
+pub fn apply_styles<'a>(
+    scene: &mut Scene,
+    model: &Model,
+    model_style: Option<&'a Style>,
+    diagram: &'a DiagramStyle,
+) -> Vec<&'a StyleRule> {
+    let mut levels: Vec<&[StyleRule]> = vec![&diagram.rules];
+    if let Some(style) = model_style.filter(|_| diagram.model_style) {
+        levels.push(&style.rules);
+    }
+    apply(scene, model, &levels)
 }
 
 /// Colors the scene's nodes by the rule `levels` (see [`rule_for`]): each

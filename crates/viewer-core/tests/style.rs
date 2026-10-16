@@ -285,3 +285,25 @@ fn a_styled_interconnection_diagram_matches_the_golden_file() {
 
     assert_golden("styled-interconnection.svg", &scene);
 }
+
+#[test]
+fn a_diagram_style_layers_over_the_model_style_or_switches_it_off() {
+    use viewer_core::DiagramStyle;
+    let model = model();
+    let model_style = Style::new(vec![kind("part def", BLUE)]);
+    let mut diagram = DiagramStyle { rules: vec![package("V::Powertrain::Fuel", RED)], ..DiagramStyle::default() };
+    let fill_of = |scene: &Scene, e: &str| rect_fill(scene, &Depicts::Element(qn(e)));
+
+    let mut scene = general(&model, "V::Powertrain");
+    viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &diagram);
+    assert_eq!(fill_of(&scene, "V::Powertrain::Engine"), Fill::Color(BLUE), "the Model's rule");
+
+    let mut fuel = general(&model, "V::Powertrain::Fuel");
+    viewer_core::style::apply_styles(&mut fuel, &model, Some(&model_style), &diagram);
+    assert_eq!(fill_of(&fuel, "V::Powertrain::Fuel::Tank"), Fill::Color(RED), "the Diagram's rule wins");
+
+    diagram.model_style = false;
+    let mut scene = general(&model, "V::Powertrain");
+    viewer_core::style::apply_styles(&mut scene, &model, Some(&model_style), &diagram);
+    assert_eq!(fill_of(&scene, "V::Powertrain::Engine"), Fill::Background, "Model Style off");
+}

@@ -39,7 +39,8 @@ pub type Fingerprint = BTreeMap<PathBuf, (Option<SystemTime>, u64)>;
 
 pub fn fingerprint(folder: &Path) -> std::io::Result<Fingerprint> {
     let mut fingerprint = Fingerprint::new();
-    for file in model_files(folder)? {
+    // The Model Style restyles every Diagram, so editing it counts too.
+    for file in model_files(folder)?.into_iter().chain([crate::style::path_for(folder)]) {
         // A file deleted between listing and reading simply drops out.
         if let Ok(metadata) = std::fs::metadata(&file) {
             fingerprint.insert(file, (metadata.modified().ok(), metadata.len()));

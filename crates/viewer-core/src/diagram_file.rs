@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::diagram::{DiagramKind, DiagramSource};
 use crate::model::{Model, QualifiedName};
+use crate::style::StyleRule;
 
 /// The folder inside a Model folder that holds its Diagram Files.
 pub const FOLDER: &str = "diagrams";
@@ -23,6 +24,37 @@ pub struct DiagramFile {
     #[serde(flatten)]
     pub source: DiagramSource,
     pub layout: Layout,
+    /// The Diagram's own Style, left out while it has none.
+    #[serde(default, skip_serializing_if = "DiagramStyle::is_default")]
+    pub style: DiagramStyle,
+}
+
+/// A Diagram's Style: rules of its own, checked before the Model Style's,
+/// whether the Model Style applies at all, and whether to show a Legend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagramStyle {
+    #[serde(default = "yes")]
+    pub model_style: bool,
+    #[serde(default)]
+    pub rules: Vec<StyleRule>,
+    #[serde(default)]
+    pub legend: bool,
+}
+
+impl Default for DiagramStyle {
+    fn default() -> Self {
+        Self { model_style: true, rules: Vec::new(), legend: false }
+    }
+}
+
+impl DiagramStyle {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// The user's adjustments to the automatic arrangement, keyed by element
@@ -111,7 +143,13 @@ impl DiagramFile {
 
     /// A Diagram File for a Diagram drawn from `source`, with no Layout yet.
     pub fn of(name: impl Into<String>, source: DiagramSource) -> Self {
-        Self { format_version: FORMAT_VERSION, name: name.into(), source, layout: Layout::default() }
+        Self {
+            format_version: FORMAT_VERSION,
+            name: name.into(),
+            source,
+            layout: Layout::default(),
+            style: DiagramStyle::default(),
+        }
     }
 
     pub fn parse(text: &str) -> Result<Self, DiagramFileError> {

@@ -7,8 +7,10 @@ use std::path::Path;
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2};
 use viewer_core::scene::{Depicts, Fill, Point, Rect, Shape, TextAnchor};
 use viewer_core::editing::{self, Edit};
+use viewer_core::style::{self, Style};
 use viewer_core::{
-    DiagramError, DiagramFile, DiagramKind, DiagramSource, Layout, Model, QualifiedName, Scene, diagram_file, svg,
+    DiagramError, DiagramFile, DiagramKind, DiagramSource, DiagramStyle, Layout, Model, QualifiedName, Scene,
+    diagram_file, svg,
 };
 
 const STROKE: Color32 = Color32::BLACK;
@@ -29,6 +31,10 @@ pub struct OpenDiagram {
     /// Model, and is unknown while the view can't be drawn.
     pub kind: Option<DiagramKind>,
     pub layout: Layout,
+    /// The Diagram's own Style, saved with it.
+    pub style: DiagramStyle,
+    /// The Model Style it is drawn with, as last loaded.
+    pub model_style: Option<Style>,
     pub name: Option<String>,
     /// Layout changes not yet saved.
     pub dirty: bool,
@@ -48,25 +54,50 @@ impl OpenDiagram {
     }
 
     pub fn open_source(model: &Model, source: DiagramSource) -> Self {
-        Self::with_layout(model, source, Layout::default(), None)
+        Self::with_layout(model, source, Layout::default(), DiagramStyle::default(), None)
     }
 
     /// Opens a saved Diagram File.
     pub fn open_saved(model: &Model, file: DiagramFile) -> Self {
-        Self::with_layout(model, file.source, file.layout, Some(file.name))
+        Self::with_layout(model, file.source, file.layout, file.style, Some(file.name))
     }
 
-    fn with_layout(model: &Model, source: DiagramSource, layout: Layout, name: Option<String>) -> Self {
-        Self {
-            scene: source.build_scene(model, &layout),
-            kind: source.kind(model),
+    fn with_layout(
+        model: &Model,
+        source: DiagramSource,
+        layout: Layout,
+        style: DiagramStyle,
+        name: Option<String>,
+    ) -> Self {
+        let mut diagram = Self {
+            scene: Ok(Scene::default()),
+            kind: None,
             source,
             layout,
+            style,
+            model_style: None,
             name,
             dirty: false,
             view: View::default(),
             needs_fit: true,
             fitted_to: None,
+        };
+        diagram.refresh(model);
+        diagram
+    }
+
+    /// Draws with `model_style` from now on.
+    pub fn set_model_style(&mut self, model: &Model, model_style: Option<Style>) {
+        self.model_style = model_style;
+        self.refresh(model);
+    }
+
+    /// Changes the Diagram's own Style, as an unsaved change.
+    pub fn set_style(&mut self, model: &Model, style: DiagramStyle) {
+        if style != self.style {
+            self.style = style;
+            self.dirty = true;
+            self.refresh(model);
         }
     }
 
@@ -74,6 +105,9 @@ impl OpenDiagram {
     /// and the view.
     pub fn refresh(&mut self, model: &Model) {
         self.scene = self.source.build_scene(model, &self.layout);
+        if let Ok(scene) = &mut self.scene {
+            style::apply_styles(scene, model, self.model_style.as_ref(), &self.style);
+        }
         self.kind = self.source.kind(model);
     }
 
@@ -130,6 +164,7 @@ impl OpenDiagram {
         }
         let mut file = DiagramFile::of(name, self.source.clone());
         file.layout = self.layout.clone();
+        file.style = self.style.clone();
         std::fs::create_dir_all(path.parent().expect("a Diagram File is in a folder")).map_err(|e| e.to_string())?;
         std::fs::write(&path, file.to_text()).map_err(|e| e.to_string())?;
         self.name = Some(name.to_owned());

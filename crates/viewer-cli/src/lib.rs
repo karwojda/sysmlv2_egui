@@ -274,9 +274,7 @@ fn render_to(model: &Model, diagram: &DiagramFile, style: Option<&Style>, out: &
         .source
         .build_scene(model, &diagram.layout)
         .map_err(|e| Failure(format!("Diagram `{}`: {e}", diagram.name)))?;
-    if let Some(style) = style {
-        style::apply(&mut scene, model, &[&style.rules]);
-    }
+    style::apply_styles(&mut scene, model, style, &diagram.style);
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| Failure(format!("cannot create {}: {e}", parent.display())))?;
     }
