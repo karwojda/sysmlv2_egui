@@ -2,8 +2,9 @@
 //! port, laid out top to bottom (`in` ports on top, `out` ports below).
 //!
 //! Everything is a box: the Frame is the root's box, whose children are its
-//! parts, and the root's own ports are ports on the Frame's border. Each box
-//! is laid out from the inside out.
+//! parts, and the root's own ports are ports on the Frame's border. An
+//! Opened Part is a box with children of its own. Each box is laid out from
+//! the inside out.
 
 use std::collections::BTreeMap;
 
@@ -31,6 +32,8 @@ const PORT_SPACING: f32 = 20.0;
 const CONNECTOR_STUB: f32 = 16.0;
 /// How close two ports must be across the connector to count as in line.
 const ALIGNED: f32 = 2.0;
+/// How many lines up or down a connector label may move to clear others.
+const LABEL_TRIES: usize = 6;
 /// Vertical distance between stacked connector labels.
 const LABEL_STACK: f32 = LABEL_FONT.size * 1.3 + 2.0;
 
@@ -65,21 +68,31 @@ struct PortSlot<'a> {
     offset: f32,
 }
 
-/// One end of a wire, as seen from the box that owns the wire.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// One end of a wire, as seen from the box that owns the wire. `path` leads
+/// from that box down through its children to the box the end meets; an
+/// empty path is the owning box itself.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum End {
-    /// A port of child `child`, or (`None`) of the owning box itself.
-    Port { child: Option<usize>, port: usize },
-    /// Child `child` itself, without a port.
-    Part { child: usize },
+    Port { path: Vec<usize>, port: usize },
+    /// The box at `path` itself (never empty): a wire to a part without a
+    /// port, or into a closed part whose inside isn't drawn.
+    Part { path: Vec<usize> },
 }
 
 impl End {
-    fn child(self) -> Option<usize> {
+    fn path(&self) -> &[usize] {
         match self {
-            End::Port { child, .. } => child,
-            End::Part { child } => Some(child),
+            End::Port { path, .. } | End::Part { path } => path,
         }
+    }
+
+    /// The owning box's child this end lies in, if any.
+    fn child(&self) -> Option<usize> {
+        self.path().first().copied()
+    }
+
+    fn is_own_port(&self) -> bool {
+        matches!(self, End::Port { path, .. } if path.is_empty())
     }
 }
 
@@ -100,9 +113,15 @@ struct BoxNode<'a> {
     rect: Rect,
 }
 
+impl<'a> BoxNode<'a> {
+    fn at(&self, path: &[usize]) -> &BoxNode<'a> {
+        path.iter().fold(self, |node, &c| &node.children[c])
+    }
+}
+
 /// Builds the Interconnection Diagram of `root`, a part definition or a
-/// part usage typed by one.
-pub fn build(model: &Model, root: &QualifiedName, _layout: &Layout) -> Result<Scene, DiagramError> {
+/// part usage typed by one, with the parts in `layout.opened` opened.
+pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Scene, DiagramError> {
     let unsuitable = || DiagramError::UnsuitableRoot {
         root: root.clone(),
         kind: crate::DiagramKind::Interconnection.description(),
@@ -119,29 +138,52 @@ pub fn build(model: &Model, root: &QualifiedName, _layout: &Layout) -> Result<Sc
         _ => return Err(unsuitable()),
     };
 
-    let mut frame = open_box(model, root_element, Some(definition));
+    let mut frame = open_box(model, root_element, definition, "", layout);
     size(&mut frame);
     place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
     place_own_ports(&mut frame);
-    place_child_ports(&mut frame);
+    place_child_ports(&mut frame, true);
 
     let mut items = Vec::new();
     let mut rects = Vec::new();
     draw_boxes(&frame, true, &mut items, &mut rects);
-    draw_connectors(&frame, &mut items);
-    draw_ports(&frame, &mut items);
+    let mut ports = Vec::new();
+    draw_ports(&frame, &mut ports);
+    // Connector labels keep clear of box titles, port labels and each other.
+    let mut taken: Vec<Rect> = items
+        .iter()
+        .chain(&ports)
+        .filter(|i| matches!(i.shape, Shape::Text { .. }))
+        .map(|i| i.shape.extent())
+        .collect();
+    draw_connectors(&frame, &mut items, &mut taken);
+    items.extend(ports);
     Ok(page(items, &rects))
 }
 
-/// A box showing its definition's parts, each closed, and the wires
-/// between them.
-fn open_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a Element>) -> BoxNode<'a> {
-    let mut node = closed_box(model, element, definition);
-    let Some(definition) = definition else { return node };
+fn definition_of<'a>(model: &'a Model, usage: &Element) -> Option<&'a Element> {
+    usage
+        .typed_by
+        .as_ref()
+        .and_then(|d| model.element(d))
+        .filter(|d| d.kind == ElementKind::PartDefinition)
+}
+
+/// A box showing its definition's parts (each opened if `layout.opened`
+/// names its path, else closed) and the wires between them. `path` is this
+/// box's feature path from the root (empty for the Frame).
+fn open_box<'a>(model: &'a Model, element: &'a Element, definition: &'a Element, path: &str, layout: &Layout) -> BoxNode<'a> {
+    let mut node = closed_box(model, element, Some(definition));
     node.children = model
         .owned_members(&definition.qualified_name)
         .filter(|e| e.kind == ElementKind::PartUsage)
-        .map(|usage| closed_box(model, usage, usage.typed_by.as_ref().and_then(|d| model.element(d))))
+        .map(|usage| {
+            let child_path = if path.is_empty() { usage.name.clone() } else { format!("{path}.{}", usage.name) };
+            match definition_of(model, usage) {
+                Some(d) if layout.opened.contains(&child_path) => open_box(model, usage, d, &child_path, layout),
+                d => closed_box(model, usage, d),
+            }
+        })
         .collect();
     node.wires = wires(model, definition, &node);
     node
@@ -164,40 +206,54 @@ fn closed_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a
     BoxNode { element, ports, children: Vec::new(), wires: Vec::new(), rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 } }
 }
 
-/// The definition's connections and interfaces whose two ends resolve to
-/// this box's parts, their ports, or the box's own ports.
+/// The definition's connections and interfaces whose two ends resolve
+/// within this box: to its own ports, or down through its parts as far as
+/// they are drawn.
 fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> Vec<Wire<'a>> {
-    let child_index = |name: &QualifiedName| node.children.iter().position(|c| &c.element.qualified_name == name);
-    let own_port = |name: &QualifiedName| node.ports.iter().position(|s| &s.port.qualified_name == name);
-    let end = |chain: &[QualifiedName]| -> Option<End> {
-        match chain {
-            [only] => match (child_index(only), own_port(only)) {
-                (Some(child), _) => Some(End::Part { child }),
-                (None, Some(port)) => Some(End::Port { child: None, port }),
-                _ => None,
-            },
-            [part, port] => {
-                let child = child_index(part)?;
-                let port = node.children[child].ports.iter().position(|s| &s.port.qualified_name == port)?;
-                Some(End::Port { child: Some(child), port })
-            }
-            _ => None,
-        }
-    };
     model
         .owned_members(&definition.qualified_name)
         .filter(|e| e.kind.is_connection())
         .filter_map(|connection| match &connection.ends[..] {
-            [a, b] => Some(Wire { connection, a: end(&a.path)?, b: end(&b.path)? }),
+            [a, b] => Some(Wire { connection, a: resolve(node, &a.path)?, b: resolve(node, &b.path)? }),
             _ => None,
         })
         .collect()
 }
 
-fn port_direction(node: &BoxNode, end: End) -> Option<Direction> {
+/// Follows a chain of features (`rearAxleAssembly.leftWheel.hub`) into the
+/// box tree: to the port if every part on the way is open, otherwise to the
+/// innermost closed part on the chain.
+fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<End> {
+    let port_of = |b: &BoxNode, name: &QualifiedName| b.ports.iter().position(|s| &s.port.qualified_name == name);
+    let child_of = |b: &BoxNode, name: &QualifiedName| b.children.iter().position(|c| &c.element.qualified_name == name);
+    let (first, rest) = chain.split_first()?;
+    if rest.is_empty()
+        && let Some(port) = port_of(node, first)
+    {
+        return Some(End::Port { path: Vec::new(), port });
+    }
+    let mut path = vec![child_of(node, first)?];
+    let mut current = &node.children[path[0]];
+    for (i, name) in rest.iter().enumerate() {
+        let last = i == rest.len() - 1;
+        if let Some(c) = child_of(current, name) {
+            path.push(c);
+            current = &current.children[c];
+        } else if last && let Some(port) = port_of(current, name) {
+            return Some(End::Port { path, port });
+        } else if current.children.is_empty() {
+            // A closed part: the rest of the chain is inside it.
+            return Some(End::Part { path });
+        } else {
+            return None;
+        }
+    }
+    Some(End::Part { path })
+}
+
+fn port_direction(node: &BoxNode, end: &End) -> Option<Direction> {
     match end {
-        End::Port { child: Some(c), port } => node.children[c].ports[port].port.direction,
-        End::Port { child: None, port } => node.ports[port].port.direction,
+        End::Port { path, port } => node.at(path).ports[*port].port.direction,
         End::Part { .. } => None,
     }
 }
@@ -206,14 +262,12 @@ fn port_direction(node: &BoxNode, end: End) -> Option<Direction> {
 /// at the box's own `in` port is where flow enters, so it counts as an
 /// `out` end inside, and the other way round.
 fn flows_from_b(node: &BoxNode, wire: &Wire) -> bool {
-    let inward = |end: End, direction: Option<Direction>| match (end, direction) {
-        (End::Port { child: None, .. }, Some(Direction::In)) => Some(Direction::Out),
-        (End::Port { child: None, .. }, Some(Direction::Out)) => Some(Direction::In),
+    let inward = |end: &End| match (end.is_own_port(), port_direction(node, end)) {
+        (true, Some(Direction::In)) => Some(Direction::Out),
+        (true, Some(Direction::Out)) => Some(Direction::In),
         (_, d) => d,
     };
-    let a = inward(wire.a, port_direction(node, wire.a));
-    let b = inward(wire.b, port_direction(node, wire.b));
-    a == Some(Direction::In) || b == Some(Direction::Out)
+    inward(&wire.a) == Some(Direction::In) || inward(&wire.b) == Some(Direction::Out)
 }
 
 fn port_label(port: &Element) -> String {
@@ -242,14 +296,14 @@ fn edge_room(node: &BoxNode, direction: Direction) -> f32 {
     widest * (labels.len() as f32 + 1.0)
 }
 
-/// Extra room below child `c` for the labels of wires leaving it that
-/// stack because they share their ends.
+/// Extra room below child `c` for the labels of wires leaving it from the
+/// same end, which stack.
 fn label_stack_below(node: &BoxNode, c: usize) -> f32 {
-    let mut counts: BTreeMap<(End, End), usize> = BTreeMap::new();
+    let mut counts: BTreeMap<&End, usize> = BTreeMap::new();
     for wire in &node.wires {
-        let (from, to) = if flows_from_b(node, wire) { (wire.b, wire.a) } else { (wire.a, wire.b) };
+        let from = if flows_from_b(node, wire) { &wire.b } else { &wire.a };
         if from.child() == Some(c) {
-            *counts.entry((from, to)).or_default() += 1;
+            *counts.entry(from).or_default() += 1;
         }
     }
     let deepest = counts.values().copied().max().unwrap_or(1).max(1);
@@ -290,10 +344,9 @@ fn size(node: &mut BoxNode) {
         })
         .collect();
     let content = Point::new(BOX_PADDING, TITLE_BAND + BOX_PADDING);
-    for ((child, placed), below) in node.children.iter_mut().zip(layout::layered(&sizes, &edges)).zip(&below) {
+    for (child, placed) in node.children.iter_mut().zip(layout::layered(&sizes, &edges)) {
         child.rect.x = placed.x + content.x;
         child.rect.y = placed.y + content.y + LABEL_ROOM;
-        let _ = below;
     }
     let right = node.children.iter().map(|c| c.rect.right()).fold(content.x, f32::max);
     let bottom = node.children.iter().zip(&below).map(|(c, b)| c.rect.bottom() + b).fold(content.y, f32::max);
@@ -357,15 +410,24 @@ fn spread(slots: &mut [PortSlot], rect: Rect, along: &dyn Fn(usize) -> f32) {
     }
 }
 
-/// The Frame's own ports: by direction, or facing their inner peer; each
-/// lined up with that peer where it can be, so its wire runs straight.
+/// Where the other end of a wire is, roughly, for choosing sides.
+fn rough_point(node: &BoxNode, end: &End) -> Point {
+    match end {
+        End::Port { path, port } if path.is_empty() => port_point(node.rect, &node.ports[*port]),
+        _ => center(node.at(end.path()).rect),
+    }
+}
+
+/// The Frame's own ports: by direction, or facing their inner peer.
 fn place_own_ports(node: &mut BoxNode) {
     let rect = node.rect;
     let mut peers: BTreeMap<usize, Point> = BTreeMap::new();
     for wire in &node.wires {
-        for (this, other) in [(wire.a, wire.b), (wire.b, wire.a)] {
-            if let (End::Port { child: None, port }, Some(c)) = (this, other.child()) {
-                peers.insert(port, center(node.children[c].rect));
+        for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
+            if let (End::Port { path, port }, false) = (this, other.is_own_port())
+                && path.is_empty()
+            {
+                peers.insert(*port, center(node.at(other.path()).rect));
             }
         }
     }
@@ -386,19 +448,17 @@ fn place_own_ports(node: &mut BoxNode) {
 
 /// Puts each child's ports on a side (`in` top, `out` bottom, undirected
 /// facing the other end, else bottom) and spaces them in the order of what
-/// they connect to. A child port wired to the box's own port lines up with
-/// it.
-fn place_child_ports(node: &mut BoxNode) {
-    let own_points: Vec<Point> = node.ports.iter().map(|s| port_point(node.rect, s)).collect();
+/// they connect to; then does the same inside each Opened Part. With
+/// `align_own`, the box's own ports line up with the child ports they're
+/// wired to (only the Frame: an Opened Part's ports are placed from outside).
+fn place_child_ports(node: &mut BoxNode, align_own: bool) {
     let mut peers: BTreeMap<(usize, usize), Point> = BTreeMap::new();
     for wire in &node.wires {
-        for (this, other) in [(wire.a, wire.b), (wire.b, wire.a)] {
-            if let End::Port { child: Some(c), port } = this {
-                let peer = match other {
-                    End::Port { child: Some(o), .. } | End::Part { child: o } => center(node.children[o].rect),
-                    End::Port { child: None, port: own } => own_points[own],
-                };
-                peers.insert((c, port), peer);
+        for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
+            if let End::Port { path, port } = this
+                && path.len() == 1
+            {
+                peers.insert((path[0], *port), rough_point(node, other));
             }
         }
     }
@@ -419,20 +479,58 @@ fn place_child_ports(node: &mut BoxNode) {
             None => f32::MAX,
         });
     }
-    align_own_ports(node);
+    for child in &mut node.children {
+        if !child.children.is_empty() {
+            clear_of_title(child);
+            place_child_ports(child, false);
+        }
+    }
+    if align_own {
+        align_own_ports(node);
+        clear_of_title(node);
+    }
 }
 
-/// Moves each of the box's own ports in line with the child port it is
-/// wired to, keeping ports on one side apart.
+/// Moves a box's own top ports off its title, to whichever side of it is
+/// nearer, so connectors from them don't run through the title text.
+fn clear_of_title(node: &mut BoxNode) {
+    let rect = node.rect;
+    let half = text_width(&title(node.element), USAGE_NAME_FONT).max(text_width("«part def»", KEYWORD_FONT)) / 2.0
+        + PORT_SPACING;
+    let (left, right) = (rect.width / 2.0 - half, rect.width / 2.0 + half);
+    let mut on_top: Vec<usize> = (0..node.ports.len()).filter(|&q| node.ports[q].side == Side::Top).collect();
+    on_top.sort_by(|a, b| node.ports[*a].offset.total_cmp(&node.ports[*b].offset));
+    // Ports left of the title's middle go left of it, the rest right of it.
+    let (to_left, to_right): (Vec<usize>, Vec<usize>) = on_top.into_iter().partition(|&q| node.ports[q].offset < rect.width / 2.0);
+    let mut edge = left;
+    for &q in to_left.iter().rev() {
+        let offset = node.ports[q].offset.min(edge).max(PORT_SPACING / 2.0);
+        node.ports[q].offset = offset.round();
+        edge = offset - PORT_SPACING;
+    }
+    let mut edge = right;
+    for &q in &to_right {
+        let offset = node.ports[q].offset.max(edge).min(rect.width - PORT_SPACING / 2.0);
+        node.ports[q].offset = offset.round();
+        edge = offset + PORT_SPACING;
+    }
+}
+
+/// Moves each of the box's own ports in line with the port it is wired to
+/// inside, keeping ports on one side apart.
 fn align_own_ports(node: &mut BoxNode) {
     let rect = node.rect;
     let mut targets: BTreeMap<usize, f32> = BTreeMap::new();
     for wire in &node.wires {
-        for (this, other) in [(wire.a, wire.b), (wire.b, wire.a)] {
-            if let (End::Port { child: None, port }, End::Port { child: Some(c), port: q }) = (this, other) {
-                let point = port_point(node.children[c].rect, &node.children[c].ports[q]);
-                let along = if node.ports[port].side.vertical() { point.x - rect.x } else { point.y - rect.y };
-                targets.insert(port, along);
+        for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
+            if let (End::Port { path, port }, End::Port { path: inner, port: q }) = (this, other)
+                && path.is_empty()
+                && !inner.is_empty()
+            {
+                let target = node.at(inner);
+                let point = port_point(target.rect, &target.ports[*q]);
+                let along = if node.ports[*port].side.vertical() { point.x - rect.x } else { point.y - rect.y };
+                targets.insert(*port, along);
             }
         }
     }
@@ -510,21 +608,17 @@ fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
     }
 }
 
-/// Where a wire end meets its box, and the direction the wire leaves in.
-fn end_point(node: &BoxNode, end: End, toward: Point) -> (Point, Side, bool) {
+/// Where a wire end meets its box, the side it leaves from, and whether it
+/// leaves inward (from the owning box's own port).
+fn end_point(node: &BoxNode, end: &End, toward: Point) -> (Point, Side, bool) {
     match end {
-        End::Port { child: Some(c), port } => {
-            let child = &node.children[c];
-            let slot = &child.ports[port];
-            (port_point(child.rect, slot), slot.side, false)
+        End::Port { path, port } => {
+            let target = node.at(path);
+            let slot = &target.ports[*port];
+            (port_point(target.rect, slot), slot.side, path.is_empty())
         }
-        // A wire leaves the box's own port inward.
-        End::Port { child: None, port } => {
-            let slot = &node.ports[port];
-            (port_point(node.rect, slot), slot.side, true)
-        }
-        End::Part { child } => {
-            let rect = node.children[child].rect;
+        End::Part { path } => {
+            let rect = node.at(path).rect;
             let side = facing(center(rect), toward);
             let c = center(rect);
             let point = match side {
@@ -538,31 +632,23 @@ fn end_point(node: &BoxNode, end: End, toward: Point) -> (Point, Side, bool) {
     }
 }
 
-fn rough_point(node: &BoxNode, end: End) -> Point {
-    match end.child() {
-        Some(c) => center(node.children[c].rect),
-        None => match end {
-            End::Port { port, .. } => port_point(node.rect, &node.ports[port]),
-            End::Part { .. } => center(node.rect),
-        },
-    }
-}
-
 /// Right-angled connectors, box by box: straight out of each end, then
-/// across the gap between them. Connectors over the same ends stack their
-/// labels, centred on the connector.
-fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>) {
-    let mut seen: Vec<(End, End)> = Vec::new();
+/// across the gap between them. Each label goes beside the middle of its
+/// connector's longest run, stepping up or down a line until it clears the
+/// labels in `taken`.
+fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>) {
     for wire in &node.wires {
-        let leave = |end: End, other: End| {
+        let leave = |end: &End, other: &End| {
             let (point, side, inward) = end_point(node, end, rough_point(node, other));
             let (dx, dy) = side.outward();
             let sign = if inward { -1.0 } else { 1.0 };
-            let stub = Point::new(point.x + sign * dx * CONNECTOR_STUB, point.y + sign * dy * CONNECTOR_STUB);
+            // Into a box from its top, a connector first clears the title.
+            let length = if inward && side == Side::Top { TITLE_BAND + CONNECTOR_STUB } else { CONNECTOR_STUB };
+            let stub = Point::new(point.x + sign * dx * length, point.y + sign * dy * length);
             (point, stub, side)
         };
-        let (a, a1, side_a) = leave(wire.a, wire.b);
-        let (b, b1, side_b) = leave(wire.b, wire.a);
+        let (a, a1, side_a) = leave(&wire.a, &wire.b);
+        let (b, b1, side_b) = leave(&wire.b, &wire.a);
         let points = if side_a.vertical() && side_b.vertical() && (a.x - b.x).abs() < ALIGNED {
             vec![a, Point::new(a.x, b.y)]
         } else if !side_a.vertical() && !side_b.vertical() && (a.y - b.y).abs() < ALIGNED {
@@ -575,33 +661,37 @@ fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>) {
             vec![a, a1, Point::new(middle, a1.y), Point::new(middle, b1.y), b1, b]
         };
 
-        let pair = (wire.a.min(wire.b), wire.a.max(wire.b));
-        let index = seen.iter().filter(|p| **p == pair).count() as f32;
-        seen.push(pair);
-        let count = node.wires.iter().filter(|w| (w.a.min(w.b), w.a.max(w.b)) == pair).count() as f32;
-        let stacked = index - (count - 1.0) / 2.0;
-        // The label sits beside the middle of the connector's longest run:
-        // beside a vertical run, above a horizontal one.
+        // Beside a vertical run, above a horizontal one.
         let (from, to) = points
             .windows(2)
             .map(|s| (s[0], s[1]))
             .max_by(|x, y| run_length(*x).total_cmp(&run_length(*y)))
             .expect("a connector has segments");
         let middle = Point::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
-        let (position, anchor) = if from.x == to.x {
-            (Point::new(middle.x + LABEL_OFFSET, middle.y + LABEL_FONT.size / 3.0 + stacked * LABEL_STACK), TextAnchor::Start)
+        let (preferred, anchor) = if from.x == to.x {
+            (Point::new(middle.x + LABEL_OFFSET, middle.y + LABEL_FONT.size / 3.0), TextAnchor::Start)
         } else {
-            (Point::new(middle.x, middle.y - LABEL_OFFSET + stacked * LABEL_STACK - (count - 1.0) / 2.0 * LABEL_STACK), TextAnchor::Middle)
+            (Point::new(middle.x, middle.y - LABEL_OFFSET), TextAnchor::Middle)
         };
+        let text = notation::usage_label(wire.connection);
+        let label_at = |step: f32| Shape::Text {
+            position: Point::new(preferred.x, preferred.y + step * LABEL_STACK),
+            text: text.clone(),
+            anchor,
+            font: LABEL_FONT,
+        };
+        let label = (0..=2 * LABEL_TRIES)
+            .map(|k| if k % 2 == 1 { (k / 2 + 1) as f32 } else { -((k / 2) as f32) })
+            .map(label_at)
+            .find(|shape| !taken.iter().any(|r| r.intersects(&shape.extent())))
+            .unwrap_or_else(|| label_at(0.0));
+        taken.push(label.extent());
         let depicts = Depicts::Connection(wire.connection.qualified_name.clone());
         items.push(Item { depicts: depicts.clone(), shape: Shape::Polyline { points, dashed: false } });
-        items.push(Item {
-            depicts,
-            shape: Shape::Text { position, text: notation::usage_label(wire.connection), anchor, font: LABEL_FONT },
-        });
+        items.push(Item { depicts, shape: label });
     }
     for child in &node.children {
-        draw_connectors(child, items);
+        draw_connectors(child, items, taken);
     }
 }
 

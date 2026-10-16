@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="744" height="791" viewBox="-22 -1 744 791" font-family="sans-serif">
-<rect x="-22" y="-1" width="744" height="791" fill="#ffffff"/>
-<rect x="20" y="20" width="682" height="750" rx="20" fill="#ffffff" stroke="#000000"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="744" height="807" viewBox="-22 -1 744 807" font-family="sans-serif">
+<rect x="-22" y="-1" width="744" height="807" fill="#ffffff"/>
+<rect x="20" y="20" width="682" height="766" rx="20" fill="#ffffff" stroke="#000000"/>
 <text x="361" y="42" text-anchor="middle" font-size="12">«part def»</text>
 <text x="361" y="60" text-anchor="middle" font-size="14">Vehicle</text>
 <rect x="50" y="395" width="185" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
@@ -15,26 +15,28 @@
 <rect x="176" y="123" width="270" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
 <text x="311" y="145" text-anchor="middle" font-size="12">«part»</text>
 <text x="311" y="163" text-anchor="middle" font-size="14">fuelTank:FuelTank</text>
-<rect x="352" y="667" width="320" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="512" y="689" text-anchor="middle" font-size="12">«part»</text>
-<text x="512" y="707" text-anchor="middle" font-size="14">rearAxleAssembly:AxleAssembly</text>
+<rect x="352" y="683" width="320" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="512" y="705" text-anchor="middle" font-size="12">«part»</text>
+<text x="512" y="723" text-anchor="middle" font-size="14">rearAxleAssembly:AxleAssembly</text>
 <rect x="352" y="395" width="320" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
 <text x="512" y="417" text-anchor="middle" font-size="12">«part»</text>
 <text x="512" y="435" text-anchor="middle" font-size="14">transmission:Transmission</text>
-<polyline points="512,581 512,667" fill="none" stroke="#000000"/>
-<text x="518" y="627.67" text-anchor="start" font-size="11">axle</text>
+<polyline points="512,581 512,683" fill="none" stroke="#000000"/>
+<text x="518" y="635.67" text-anchor="start" font-size="11">axle</text>
 <polyline points="108,284 92,284 171.5,284 171.5,420 251,420 235,420" fill="none" stroke="#000000"/>
 <text x="177.5" y="355.67" text-anchor="start" font-size="11">engineStatus</text>
 <polyline points="311,173 311,189 311,216 243,216 243,243 243,259" fill="none" stroke="#000000"/>
 <text x="277" y="210" text-anchor="middle" font-size="11">fuelLine:FuelInterface</text>
+<polyline points="512,581 512,683" fill="none" stroke="#000000"/>
+<text x="518" y="651.97" text-anchor="start" font-size="11">leftDrive</text>
 <polyline points="512,445 512,531" fill="none" stroke="#000000"/>
 <text x="518" y="491.67" text-anchor="start" font-size="11">shaft</text>
-<polyline points="378,20 378,259" fill="none" stroke="#000000"/>
-<text x="384" y="143.17" text-anchor="start" font-size="11">supply</text>
+<polyline points="415,20 415,86 415,164.5 378,164.5 378,243 378,259" fill="none" stroke="#000000"/>
+<text x="384" y="207.42" text-anchor="start" font-size="11">supply</text>
 <polyline points="311,309 311,325 311,352 512,352 512,379 512,395" fill="none" stroke="#000000"/>
 <text x="411.5" y="346" text-anchor="middle" font-size="11">torque</text>
-<rect x="373" y="15" width="10" height="10" fill="#ffffff" stroke="#000000"/>
-<text x="386" y="14" text-anchor="start" font-size="11">power : ~PowerPort</text>
+<rect x="410" y="15" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="423" y="14" text-anchor="start" font-size="11">power : ~PowerPort</text>
 <rect x="230" y="415" width="10" height="10" fill="#ffffff" stroke="#000000"/>
 <text x="243" y="414" text-anchor="start" font-size="11">status : ~StatusPort</text>
 <rect x="507" y="526" width="10" height="10" fill="#ffffff" stroke="#000000"/>
@@ -51,8 +53,8 @@
 <text x="319" y="326" text-anchor="start" font-size="11">torqueOut : TorquePort</text>
 <rect x="306" y="168" width="10" height="10" fill="#ffffff" stroke="#000000"/>
 <text x="319" y="190" text-anchor="start" font-size="11">fuelOut : FuelPort</text>
-<rect x="507" y="662" width="10" height="10" fill="#ffffff" stroke="#000000"/>
-<text x="520" y="661" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
+<rect x="507" y="678" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="520" y="677" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
 <rect x="507" y="390" width="10" height="10" fill="#ffffff" stroke="#000000"/>
 <text x="520" y="389" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
 <rect x="507" y="440" width="10" height="10" fill="#ffffff" stroke="#000000"/>

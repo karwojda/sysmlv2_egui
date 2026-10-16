@@ -40,6 +40,10 @@ pub struct Layout {
     /// Elements drawn without their compartments.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub collapsed: BTreeSet<QualifiedName>,
+    /// In an Interconnection Diagram, the Opened Parts, by feature path from
+    /// the root (`rearAxleAssembly`, `rearAxleAssembly.differential`).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub opened: BTreeSet<String>,
 }
 
 /// Where a node sits, in scene coordinates, and its size if the user set
@@ -54,7 +58,11 @@ pub struct NodePlacement {
 
 impl Layout {
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty() && self.edges.is_empty() && self.hidden.is_empty() && self.collapsed.is_empty()
+        self.nodes.is_empty()
+            && self.edges.is_empty()
+            && self.hidden.is_empty()
+            && self.collapsed.is_empty()
+            && self.opened.is_empty()
     }
 
     /// The Orphaned Layout Entries: elements the Layout mentions that the

@@ -380,3 +380,116 @@ fn a_connection_ending_at_a_part_attaches_to_its_border_facing_the_other_end() {
     assert!(on_border, "{at_sink:?} on {sink:?}");
     assert!(feed[0].y < sink.y && at_sink.y == sink.y, "the source is above, so it enters from the top");
 }
+
+/// Within the tolerance a straight connector allows for ports nearly in line
+/// (still inside the port's square).
+fn near(a: Point, b: Point) -> bool {
+    (a.x - b.x).abs() <= 2.5 && (a.y - b.y).abs() <= 2.5
+}
+
+fn drivetrain_opened(paths: &[&str]) -> Scene {
+    let mut layout = viewer_core::Layout::default();
+    layout.opened.extend(paths.iter().map(|p| p.to_string()));
+    viewer_core::build_scene_with_layout(&common::drivetrain(), DiagramKind::Interconnection, &qn("D::Vehicle"), &layout).unwrap()
+}
+
+#[test]
+fn an_opened_part_shows_its_parts_inside_its_box() {
+    let scene = drivetrain_opened(&["rearAxleAssembly"]);
+    let axle = scene.node_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
+
+    for inner in ["D::AxleAssembly::differential", "D::AxleAssembly::leftWheel", "D::AxleAssembly::rightWheel"] {
+        let rect = scene.node_bounds(&qn(inner)).unwrap_or_else(|| panic!("{inner} is drawn"));
+        assert!(rect.x > axle.x && rect.right() < axle.right() && rect.y > axle.y && rect.bottom() < axle.bottom(), "{inner} inside");
+    }
+    let closed = drivetrain("D::Vehicle");
+    assert!(closed.node_bounds(&qn("D::AxleAssembly::differential")).is_none(), "closed by default");
+}
+
+#[test]
+fn an_opened_part_draws_its_own_connections_including_from_its_own_ports() {
+    let scene = drivetrain_opened(&["rearAxleAssembly"]);
+    let drive = polyline(&scene, "D::AxleAssembly::drive");
+
+    let own = centre(port_square(&scene, "D::Vehicle::rearAxleAssembly", "D::AxleAssembly::torqueIn"));
+    let differential = centre(port_square(&scene, "D::AxleAssembly::differential", "D::Differential::torqueIn"));
+    let ends = [drive[0], *drive.last().unwrap()];
+    assert!(ends.iter().any(|e| near(*e, own)) && ends.iter().any(|e| near(*e, differential)), "{drive:?}");
+}
+
+#[test]
+fn an_end_inside_a_closed_part_attaches_to_its_border_and_to_the_port_once_opened() {
+    let closed = drivetrain("D::Vehicle");
+    let axle = closed.node_bounds(&qn("D::Vehicle::rearAxleAssembly")).unwrap();
+    let to_axle = *polyline(&closed, "D::Vehicle::leftDrive").last().unwrap();
+    assert!(to_axle.y == axle.y || to_axle.y == axle.bottom() || to_axle.x == axle.x || to_axle.x == axle.right());
+
+    let opened = drivetrain_opened(&["rearAxleAssembly"]);
+    let hub = centre(port_square(&opened, "D::AxleAssembly::leftWheel", "D::Wheel::hub"));
+    let left_drive = polyline(&opened, "D::Vehicle::leftDrive");
+    let ends = [left_drive[0], *left_drive.last().unwrap()];
+    assert!(ends.iter().any(|e| near(*e, hub)), "{left_drive:?} reaches {hub:?}");
+}
+
+#[test]
+fn opened_parts_are_saved_and_unknown_ones_kept() {
+    let mut file = DiagramFile::new("wiring", DiagramKind::Interconnection, qn("D::Vehicle"));
+    file.layout.opened.insert("rearAxleAssembly".into());
+    file.layout.opened.insert("gone".into());
+
+    let reread = DiagramFile::parse(&file.to_text()).unwrap();
+
+    assert_eq!(reread, file);
+    assert!(file.to_text().contains(r#""opened": ["#));
+    let scene = viewer_core::build_scene_with_layout(&common::drivetrain(), DiagramKind::Interconnection, &qn("D::Vehicle"), &file.layout).unwrap();
+    assert!(scene.node_bounds(&qn("D::AxleAssembly::differential")).is_some());
+}
+
+#[test]
+fn an_opened_drivetrain_has_no_overlapping_labels_and_matches_the_golden_file() {
+    let scene = drivetrain_opened(&["rearAxleAssembly"]);
+    assert_eq!(overlapping_labels(&scene), Vec::<(String, String)>::new());
+    let svg = svg::render(&scene);
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/drivetrain-opened-interconnection.svg");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &svg).unwrap();
+    }
+    let expected = std::fs::read_to_string(&golden)
+        .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
+    assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
+}
+
+#[test]
+fn two_usages_of_the_same_definition_open_independently() {
+    let model = Model::builder()
+        .package("P")
+        .part_def("P::Cell")
+        .part_def("P::Module")
+        .part("P::Module::cell")
+        .typed_by("P::Cell")
+        .part_def("P::Pack")
+        .part("P::Pack::front")
+        .typed_by("P::Module")
+        .part("P::Pack::rear")
+        .typed_by("P::Module")
+        .build();
+    let mut layout = viewer_core::Layout::default();
+    layout.opened.insert("front".into());
+
+    let scene = viewer_core::build_scene_with_layout(&model, DiagramKind::Interconnection, &qn("P::Pack"), &layout).unwrap();
+
+    let front = scene.node_bounds(&qn("P::Pack::front")).unwrap();
+    let rear = scene.node_bounds(&qn("P::Pack::rear")).unwrap();
+    let cells: Vec<Rect> = scene
+        .items
+        .iter()
+        .filter(|i| i.depicts == Depicts::Element(qn("P::Module::cell")))
+        .filter_map(|i| match i.shape {
+            Shape::Rect { rect, .. } => Some(rect),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(cells.len(), 1, "only the opened module shows its cell");
+    assert!(cells[0].x > front.x && cells[0].right() < front.right(), "inside front");
+    assert!(rear.height < front.height, "rear stays closed");
+}

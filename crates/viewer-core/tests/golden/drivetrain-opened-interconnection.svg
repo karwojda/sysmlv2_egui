@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1071" height="1099" viewBox="0 -1 1071 1099" font-family="sans-serif">
+<rect x="0" y="-1" width="1071" height="1099" fill="#ffffff"/>
+<rect x="20" y="20" width="1031" height="1058" rx="20" fill="#ffffff" stroke="#000000"/>
+<text x="535.5" y="42" text-anchor="middle" font-size="12">«part def»</text>
+<text x="535.5" y="60" text-anchor="middle" font-size="14">Vehicle</text>
+<rect x="50" y="395" width="185" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="142.5" y="417" text-anchor="middle" font-size="12">«part»</text>
+<text x="142.5" y="435" text-anchor="middle" font-size="14">controller:Controller</text>
+<rect x="516" y="531" width="320" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="676" y="553" text-anchor="middle" font-size="12">«part»</text>
+<text x="676" y="571" text-anchor="middle" font-size="14">driveshaft:Driveshaft</text>
+<rect x="179" y="259" width="405" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="381.5" y="281" text-anchor="middle" font-size="12">«part»</text>
+<text x="381.5" y="299" text-anchor="middle" font-size="14">engine:Engine</text>
+<rect x="247" y="123" width="270" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="382" y="145" text-anchor="middle" font-size="12">«part»</text>
+<text x="382" y="163" text-anchor="middle" font-size="14">fuelTank:FuelTank</text>
+<rect x="331" y="683" width="690" height="342" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="676" y="705" text-anchor="middle" font-size="12">«part»</text>
+<text x="676" y="723" text-anchor="middle" font-size="14">rearAxleAssembly:AxleAssembly</text>
+<rect x="474" y="786" width="405" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="676.5" y="808" text-anchor="middle" font-size="12">«part»</text>
+<text x="676.5" y="826" text-anchor="middle" font-size="14">differential:Differential</text>
+<rect x="733" y="922" width="258" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="862" y="944" text-anchor="middle" font-size="12">«part»</text>
+<text x="862" y="962" text-anchor="middle" font-size="14">leftWheel:Wheel</text>
+<rect x="361" y="922" width="258" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="490" y="944" text-anchor="middle" font-size="12">«part»</text>
+<text x="490" y="962" text-anchor="middle" font-size="14">rightWheel:Wheel</text>
+<rect x="516" y="395" width="320" height="50" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="676" y="417" text-anchor="middle" font-size="12">«part»</text>
+<text x="676" y="435" text-anchor="middle" font-size="14">transmission:Transmission</text>
+<polyline points="676,581 676,597 676,632 810,632 810,667 810,683" fill="none" stroke="#000000"/>
+<text x="743" y="626" text-anchor="middle" font-size="11">axle</text>
+<polyline points="179,284 163,284 207,284 207,420 251,420 235,420" fill="none" stroke="#000000"/>
+<text x="213" y="355.67" text-anchor="start" font-size="11">engineStatus</text>
+<polyline points="382,173 382,189 382,216 314,216 314,243 314,259" fill="none" stroke="#000000"/>
+<text x="348" y="210" text-anchor="middle" font-size="11">fuelLine:FuelInterface</text>
+<polyline points="676,581 676,597 676,751.5 862,751.5 862,906 862,922" fill="none" stroke="#000000"/>
+<text x="769" y="745.5" text-anchor="middle" font-size="11">leftDrive</text>
+<polyline points="676,445 676,531" fill="none" stroke="#000000"/>
+<text x="682" y="491.67" text-anchor="start" font-size="11">shaft</text>
+<polyline points="449,20 449,259" fill="none" stroke="#000000"/>
+<text x="455" y="143.17" text-anchor="start" font-size="11">supply</text>
+<polyline points="382,309 382,325 382,352 676,352 676,379 676,395" fill="none" stroke="#000000"/>
+<text x="529" y="346" text-anchor="middle" font-size="11">torque</text>
+<polyline points="810,683 810,749 810,759.5 677,759.5 677,770 677,786" fill="none" stroke="#000000"/>
+<text x="743.5" y="802.4" text-anchor="middle" font-size="11">drive</text>
+<polyline points="744,836 744,852 744,879 862,879 862,906 862,922" fill="none" stroke="#000000"/>
+<text x="803" y="873" text-anchor="middle" font-size="11">toLeft</text>
+<polyline points="609,836 609,852 609,879 490,879 490,906 490,922" fill="none" stroke="#000000"/>
+<text x="549.5" y="873" text-anchor="middle" font-size="11">toRight</text>
+<rect x="444" y="15" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="457" y="14" text-anchor="start" font-size="11">power : ~PowerPort</text>
+<rect x="230" y="415" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="243" y="414" text-anchor="start" font-size="11">status : ~StatusPort</text>
+<rect x="671" y="526" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="684" y="525" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
+<rect x="671" y="576" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="684" y="598" text-anchor="start" font-size="11">torqueOut : TorquePort</text>
+<rect x="309" y="254" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="322" y="253" text-anchor="start" font-size="11">fuelIn : ~FuelPort</text>
+<rect x="444" y="254" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="457" y="253" text-anchor="start" font-size="11">power : ~PowerPort</text>
+<rect x="174" y="279" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="171" y="278" text-anchor="end" font-size="11">status : StatusPort</text>
+<rect x="377" y="304" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="390" y="326" text-anchor="start" font-size="11">torqueOut : TorquePort</text>
+<rect x="377" y="168" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="390" y="190" text-anchor="start" font-size="11">fuelOut : FuelPort</text>
+<rect x="805" y="678" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="818" y="677" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
+<rect x="739" y="831" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="752" y="853" text-anchor="start" font-size="11">left : TorquePort</text>
+<rect x="604" y="831" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="617" y="853" text-anchor="start" font-size="11">right : TorquePort</text>
+<rect x="672" y="781" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="685" y="780" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
+<rect x="857" y="917" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="870" y="916" text-anchor="start" font-size="11">hub : ~TorquePort</text>
+<rect x="485" y="917" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="498" y="916" text-anchor="start" font-size="11">hub : ~TorquePort</text>
+<rect x="671" y="390" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="684" y="389" text-anchor="start" font-size="11">torqueIn : ~TorquePort</text>
+<rect x="671" y="440" width="10" height="10" fill="#ffffff" stroke="#000000"/>
+<text x="684" y="462" text-anchor="start" font-size="11">torqueOut : TorquePort</text>
+</svg>
