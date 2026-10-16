@@ -9,5 +9,5 @@
 - [ ] A composite port is a bar along the border; its nested ports are squares on its outer edge with labels
 - [ ] The bar's length fits its nested ports and their labels; the box grows to fit the bar
 - [ ] An end at `part.port.inner` attaches to the inner square; an end at `part.port` attaches to the bar
-- [ ] Nested ports are selectable (port keys `part.port.inner`) and can be dragged along the bar's edge? No: the bar moves as one; nested ports keep their order on it
+- [ ] Nested ports are selectable (port keys `part.port.inner`); dragging moves the composite port's bar as one, and nested ports keep their order on it
 - [ ] Seam 1 tests and a golden file; no overlapping labels
