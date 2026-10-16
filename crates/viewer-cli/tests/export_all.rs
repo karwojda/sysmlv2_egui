@@ -123,13 +123,14 @@ impl ModelBackend for UnusedBackend {
 }
 
 #[test]
-fn a_model_without_diagram_files_succeeds_and_says_so() {
+fn a_model_without_diagram_files_or_views_succeeds_and_says_so() {
     let folder = model_folder(&[]);
 
-    let outcome = export_all(&mut UnusedBackend, folder.path(), &folder.path().join("out"));
+    let outcome = export_all(&mut FakeBackend::new(vehicles()), folder.path(), &folder.path().join("out"));
 
     assert_eq!(outcome.code, EXIT_OK);
-    assert!(outcome.stderr.contains("no Diagram Files"), "{}", outcome.stderr);
+    assert!(outcome.stderr.contains("no Diagram Files or views"), "{}", outcome.stderr);
+    assert!(!folder.path().join("out").exists());
 }
 
 #[test]

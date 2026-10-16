@@ -1,5 +1,7 @@
-//! The headless command-line tool: Exports saved Diagrams of a Model to SVG.
+//! The headless command-line tool: Exports saved Diagrams, and the Model's
+//! views, to SVG.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Write;
@@ -7,7 +9,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::model::{Diagnostic, Severity};
-use viewer_core::{DiagramFile, Model, ModelBackend, diagram_file, svg};
+use viewer_core::view::{self, ViewError};
+use viewer_core::{DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file, svg};
 use viewer_opensysml::ServiceConfig;
 
 pub const EXIT_OK: u8 = 0;
@@ -55,22 +58,26 @@ pub fn service_config(args: &[OsString]) -> ServiceConfig {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Export saved Diagrams of a Model to SVG.
-    #[command(group(ArgGroup::new("which").required(true).args(["diagram", "all"])))]
+    /// Export saved Diagrams, or the Model's views, to SVG.
+    #[command(group(ArgGroup::new("which").required(true).args(["diagram", "view", "all"])))]
     Export {
         /// The Model folder.
         model_folder: PathBuf,
         /// The name of the Diagram File to Export.
         #[arg(long, requires = "out")]
         diagram: Option<String>,
-        /// The SVG file to write (with --diagram).
+        /// The view to Export, by simple or qualified name.
+        #[arg(long, requires = "out")]
+        view: Option<String>,
+        /// The SVG file to write (with --diagram or --view).
         #[arg(long, conflicts_with = "all")]
         out: Option<PathBuf>,
-        /// Export every Diagram File, as <out-dir>/<diagram-name>.svg.
+        /// Export every Diagram File, as <out-dir>/<diagram-name>.svg, and
+        /// every view without one, as <out-dir>/<view-name>.svg.
         #[arg(long, requires = "out_dir")]
         all: bool,
         /// The folder to write SVG files into (with --all).
-        #[arg(long, conflicts_with = "diagram")]
+        #[arg(long, conflicts_with_all = ["diagram", "view"])]
         out_dir: Option<PathBuf>,
     },
 }
@@ -94,10 +101,15 @@ pub fn run(args: impl IntoIterator<Item = OsString>, backend: &mut dyn ModelBack
         Command::Export { model_folder, diagram: Some(name), out: Some(out), .. } => {
             export_one(&model_folder, &name, &out, backend, stderr)
         }
+        Command::Export { model_folder, view: Some(name), out: Some(out), .. } => {
+            export_view(&model_folder, &name, &out, backend, stderr)
+        }
         Command::Export { model_folder, out_dir: Some(out_dir), .. } => {
             export_all(&model_folder, &out_dir, backend, stderr)
         }
-        Command::Export { .. } => unreachable!("clap enforces --diagram with --out or --all with --out-dir"),
+        Command::Export { .. } => {
+            unreachable!("clap enforces --diagram or --view with --out, or --all with --out-dir")
+        }
     };
     match result {
         Ok(()) => EXIT_OK,
@@ -120,8 +132,51 @@ fn export_one(
     render_to(&model, &diagram, out)
 }
 
-/// Exports every Diagram File, carrying on past failures so that each one is
-/// reported, and fails if any did.
+/// Exports the view `name` (simple or qualified), with the Layout of a
+/// saved Diagram File of it if there is one.
+fn export_view(
+    model_folder: &Path,
+    name: &str,
+    out: &Path,
+    backend: &mut dyn ModelBackend,
+    stderr: &mut dyn Write,
+) -> Result<(), Failure> {
+    let model = load_model(model_folder, backend, stderr)?;
+    let view = find_view(&model, name)?;
+    if let Err(ViewError::Unsupported { reason, .. }) = view::kind(&model, &view) {
+        return Err(Failure(format!("view `{view}` can't be drawn: {reason}")));
+    }
+    let source = DiagramSource::View { view: view.clone() };
+    let saved = diagram_file::names_in(model_folder)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|name| read_diagram(model_folder, name).ok())
+        .find(|file| file.source == source);
+    let diagram = saved.unwrap_or_else(|| DiagramFile::of(view::file_name(&view), source));
+    render_to(&model, &diagram, out)
+}
+
+/// The view a command-line name means: a qualified name, else the one view
+/// with that simple name.
+fn find_view(model: &Model, name: &str) -> Result<QualifiedName, Failure> {
+    let views: Vec<&QualifiedName> = view::views(model).map(|v| &v.qualified_name).collect();
+    if let Some(view) = views.iter().find(|v| v.as_str() == name) {
+        return Ok((*view).clone());
+    }
+    match views.iter().filter(|v| v.simple_name() == name).collect::<Vec<_>>().as_slice() {
+        [view] => Ok((**view).clone()),
+        [] => Err(Failure(format!("the Model has no view named `{name}`"))),
+        many => {
+            let names: Vec<String> = many.iter().map(|v| format!("`{v}`")).collect();
+            Err(Failure(format!("`{name}` names several views ({}); use the qualified name", names.join(", "))))
+        }
+    }
+}
+
+/// Exports every Diagram File, and every view not saved as one, carrying on
+/// past failures so that each one is reported, and fails if any did.
+/// Unsupported Views are skipped with a warning. Two Exports that would
+/// share a file fail the whole run before anything is written.
 fn export_all(
     model_folder: &Path,
     out_dir: &Path,
@@ -130,22 +185,54 @@ fn export_all(
 ) -> Result<(), Failure> {
     let names = diagram_file::names_in(model_folder)
         .map_err(|e| Failure(format!("cannot list Diagram Files in {}: {e}", model_folder.display())))?;
-    if names.is_empty() {
-        let _ = writeln!(stderr, "no Diagram Files in {}; nothing to Export", model_folder.display());
-        return Ok(());
-    }
     let model = load_model(model_folder, backend, stderr)?;
 
-    let mut failed = 0;
+    // What to write, by output name, and what each output came from.
+    let mut jobs: Vec<(String, Result<DiagramFile, Failure>)> = Vec::new();
+    let mut origin: BTreeMap<String, String> = BTreeMap::new();
     for name in &names {
+        origin.insert(name.clone(), format!("Diagram File `{name}`"));
+        jobs.push((name.clone(), read_diagram(model_folder, name)));
+    }
+    let saved_views: Vec<DiagramSource> =
+        jobs.iter().filter_map(|(_, file)| file.as_ref().ok()).map(|f| f.source.clone()).collect();
+    for element in view::views(&model) {
+        let view = &element.qualified_name;
+        if let Err(ViewError::Unsupported { reason, .. }) = view::kind(&model, view) {
+            let _ = writeln!(stderr, "warning: view `{view}` is not Exported: {reason}");
+            continue;
+        }
+        let source = DiagramSource::View { view: view.clone() };
+        if saved_views.contains(&source) {
+            continue;
+        }
+        let name = view::file_name(view);
+        if let Some(other) = origin.insert(name.clone(), format!("view `{view}`")) {
+            return Err(Failure(format!(
+                "{other} and view `{view}` would both be Exported as {name}.svg; nothing was Exported"
+            )));
+        }
+        jobs.push((name.clone(), Ok(DiagramFile::of(name, source))));
+    }
+    if jobs.is_empty() {
+        let _ = writeln!(stderr, "no Diagram Files or views in {}; nothing to Export", model_folder.display());
+        return Ok(());
+    }
+
+    let mut failed = 0;
+    for (name, diagram) in &jobs {
         let out = out_dir.join(format!("{name}.svg"));
-        if let Err(error) = read_diagram(model_folder, name).and_then(|diagram| render_to(&model, &diagram, &out)) {
+        let result = match diagram {
+            Ok(diagram) => render_to(&model, diagram, &out),
+            Err(error) => Err(Failure(error.0.clone())),
+        };
+        if let Err(error) = result {
             let _ = writeln!(stderr, "error: {error}");
             failed += 1;
         }
     }
     if failed > 0 {
-        return Err(Failure(format!("{failed} of {} Diagrams failed to Export", names.len())));
+        return Err(Failure(format!("{failed} of {} Diagrams failed to Export", jobs.len())));
     }
     Ok(())
 }
