@@ -1,6 +1,6 @@
 //! The Standard Notation: how nodes and edges are drawn as scene primitives.
 
-use crate::model::{Element, ElementKind, Model};
+use crate::model::{Element, ElementKind, Model, QualifiedName};
 use crate::scene::{Depicts, Fill, Font, Item, Point, Rect, Shape, TextAnchor};
 
 pub(crate) const KEYWORD_FONT: Font = Font { size: 12.0, bold: false, italic: false };
@@ -91,8 +91,13 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
 ];
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
-/// its header.
-pub fn node_content(element: &Element, model: &Model, compartments: bool) -> NodeContent {
+/// its header. Compartments list the owned features `listed` accepts.
+pub fn node_content(
+    element: &Element,
+    model: &Model,
+    compartments: bool,
+    listed: impl Fn(&QualifiedName) -> bool,
+) -> NodeContent {
     let usage = !element.kind.is_definition();
     let compartments = COMPARTMENTS
         .iter()
@@ -100,7 +105,7 @@ pub fn node_content(element: &Element, model: &Model, compartments: bool) -> Nod
         .filter_map(|(title, kinds)| {
             let rows: Vec<String> = model
                 .owned_members(&element.qualified_name)
-                .filter(|m| kinds.contains(&m.kind))
+                .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
                 .map(feature_row)
                 .collect();
             (!rows.is_empty()).then_some((*title, rows))
@@ -289,22 +294,23 @@ pub fn defined_by(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
 }
 
 /// Composition: a solid line from the owner, starting in a filled diamond,
-/// to the part's definition, labelled with the part's name and multiplicity
-/// near the definition.
-pub fn composition(depicts: Depicts, usage: &Element, path: Vec<Point>) -> Vec<Item> {
+/// to the part's definition, labelled with the `usage`'s name and
+/// multiplicity near the definition. Without a usage (a line straight to
+/// the part's own node, which names it) there is no label.
+pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) -> Vec<Item> {
     let (start, after) = (path[0], path[1]);
     let diamond_back = back_from(start, after, DIAMOND_LENGTH);
     let middle = back_from(start, after, DIAMOND_LENGTH / 2.0);
     let (nx, ny) = normal(start, after, DIAMOND_HALF_WIDTH);
-    let mut label = usage.name.clone();
-    if let Some(multiplicity) = &usage.multiplicity {
+    let mut label = usage.map(|u| u.name.clone()).unwrap_or_default();
+    if let Some(multiplicity) = usage.and_then(|u| u.multiplicity.as_ref()) {
         label.push_str(&format!(" {multiplicity}"));
     }
     let (before, end) = last_segment(&path);
     let near_end = back_from(end, before, 2.0 * LABEL_OFFSET + LABEL_FONT.size);
     let mut line = path.clone();
     line[0] = diamond_back;
-    tag(depicts, vec![
+    let mut shapes = vec![
         Shape::Polyline { points: line, dashed: false },
         Shape::Polygon {
             points: vec![
@@ -315,13 +321,16 @@ pub fn composition(depicts: Depicts, usage: &Element, path: Vec<Point>) -> Vec<I
             ],
             fill: Fill::Stroke,
         },
-        Shape::Text {
+    ];
+    if !label.is_empty() {
+        shapes.push(Shape::Text {
             position: Point::new(near_end.x + LABEL_OFFSET, near_end.y),
             text: label,
             anchor: TextAnchor::Start,
             font: LABEL_FONT,
-        },
-    ])
+        });
+    }
+    tag(depicts, shapes)
 }
 
 /// A connection or interface: a plain solid line between the usages it

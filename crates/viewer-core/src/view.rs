@@ -3,8 +3,10 @@
 
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
-use crate::diagram::{DiagramKind, is_node_in_general};
+use crate::diagram::{DiagramKind, build_general_scene, build_scene_with_layout, is_node_in_general};
+use crate::diagram_file::Layout;
 use crate::model::{Element, ElementKind, ExposeScope, Model, QualifiedName};
+use crate::scene::Scene;
 
 const TREE: &str = "Views::asTreeDiagram";
 const INTERCONNECTION: &str = "Views::asInterconnectionDiagram";
@@ -142,6 +144,28 @@ pub fn resolve(model: &Model, view: &QualifiedName) -> Result<ViewContents, View
                 None => Err(invalid(format!("`{root}` is not in the Model"))),
             }
         }
+    }
+}
+
+/// Draws `view` as its Model-defined Diagram, with the user's `layout`.
+pub fn build_scene(model: &Model, view: &QualifiedName, layout: &Layout) -> Result<Scene, ViewError> {
+    match resolve(model, view)? {
+        ViewContents::General(nodes) => Ok(build_general_scene(model, &nodes, layout)),
+        ViewContents::Interconnection(root) => build_scene_with_layout(model, DiagramKind::Interconnection, &root, layout)
+            .map_err(|error| ViewError::Invalid { view: view.clone(), reason: error.to_string() }),
+    }
+}
+
+/// Whether a Layout key of `view`'s Diagram still names something in the
+/// Model, as [`crate::diagram::layout_key_exists`] does for its kind. Keys
+/// of a view that no longer resolves are all kept as orphaned.
+pub fn layout_key_exists(model: &Model, view: &QualifiedName, key: &QualifiedName) -> bool {
+    match resolve(model, view) {
+        Ok(ViewContents::General(_)) => model.element(key).is_some(),
+        Ok(ViewContents::Interconnection(root)) => {
+            crate::diagram::layout_key_exists(model, DiagramKind::Interconnection, &root, key)
+        }
+        Err(_) => true,
     }
 }
 

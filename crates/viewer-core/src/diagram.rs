@@ -84,7 +84,11 @@ pub fn build_scene_with_layout(
         return Err(DiagramError::UnsuitableRoot { root: root.clone(), kind: kind.description() });
     }
     match kind {
-        DiagramKind::General => Ok(general(model, root, layout)),
+        DiagramKind::General => {
+            let nodes: Vec<&Element> = model.owned_members(root).filter(|e| is_node_in_general(e)).collect();
+            let connections = model.owned_members(root).filter(|e| e.kind.is_connection()).collect();
+            Ok(general(model, nodes, connections, layout))
+        }
         DiagramKind::Interconnection => crate::interconnection::build(model, root, layout),
     }
 }
@@ -99,21 +103,40 @@ pub(crate) fn is_node_in_general(element: &Element) -> bool {
         )
 }
 
+/// Builds a General Diagram of exactly `elements` (those it can draw as
+/// nodes), as a Model-defined Diagram does, with the user's `layout`.
+/// Connections owned by the nodes or their owners are drawn between them.
+pub fn build_general_scene(model: &Model, elements: &[QualifiedName], layout: &Layout) -> Scene {
+    let nodes: Vec<&Element> = elements
+        .iter()
+        .filter_map(|name| model.element(name))
+        .filter(|e| is_node_in_general(e))
+        .collect();
+    let owners: std::collections::BTreeSet<&QualifiedName> =
+        nodes.iter().flat_map(|e| std::iter::once(&e.qualified_name).chain(&e.owner)).collect();
+    let connections = owners
+        .into_iter()
+        .flat_map(|owner| model.owned_members(owner))
+        .filter(|e| e.kind.is_connection())
+        .collect();
+    general(model, nodes, connections, layout)
+}
+
 enum Edge<'a> {
     Specialization { specific: usize, general: usize },
     Typing { usage: usize, definition: usize },
     Composition { owner: usize, part_type: usize, usage: &'a Element },
+    /// A usage drawn below the usage or definition that owns it, as in a
+    /// parts tree.
+    Ownership { owner: usize, usage: usize },
     Connection { a: usize, b: usize, connection: &'a Element },
 }
 
-/// A General Diagram: the definitions and usages owned by `root`, each
-/// listing its features in compartments, with specialization, typing,
-/// composition and connection edges between them.
-fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
-    let nodes: Vec<&Element> = model
-        .owned_members(root)
-        .filter(|e| is_node_in_general(e) && !saved.hidden.contains(&e.qualified_name))
-        .collect();
+/// A General Diagram of `nodes`, each listing in compartments the features
+/// that aren't nodes themselves, with specialization, typing, composition
+/// and `connections` edges between them.
+fn general<'a>(model: &'a Model, nodes: Vec<&'a Element>, connections: Vec<&'a Element>, saved: &Layout) -> Scene {
+    let nodes: Vec<&Element> = nodes.into_iter().filter(|e| !saved.hidden.contains(&e.qualified_name)).collect();
     let index_of = |name: &QualifiedName| nodes.iter().position(|e| &e.qualified_name == name);
 
     let mut edges = Vec::new();
@@ -126,6 +149,9 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
         if let Some(definition) = element.typed_by.as_ref().and_then(index_of) {
             edges.push(Edge::Typing { usage: i, definition });
         }
+        if let Some(owner) = element.owner.as_ref().and_then(index_of) {
+            edges.push(Edge::Ownership { owner, usage: i });
+        }
         for usage in model
             .owned_members(&element.qualified_name)
             .filter(|m| m.kind == ElementKind::PartUsage)
@@ -135,7 +161,7 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
             }
         }
     }
-    for connection in model.owned_members(root).filter(|e| e.kind.is_connection()) {
+    for connection in connections {
         let joined: Vec<usize> = connection
             .ends
             .iter()
@@ -154,13 +180,17 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
             Edge::Specialization { specific, general } => (general, specific),
             Edge::Typing { usage, definition } => (definition, usage),
             Edge::Composition { owner, part_type, .. } => (owner, part_type),
+            Edge::Ownership { owner, usage } => (owner, usage),
             Edge::Connection { a, b, .. } => (a, b),
         })
         .collect();
 
     let contents: Vec<notation::NodeContent> = nodes
         .iter()
-        .map(|e| notation::node_content(e, model, !saved.collapsed.contains(&e.qualified_name)))
+        .map(|e| {
+            let compartments = !saved.collapsed.contains(&e.qualified_name);
+            notation::node_content(e, model, compartments, |member| index_of(member).is_none())
+        })
         .collect();
     let rects = place(&nodes, &contents, &layering, saved);
 
@@ -225,7 +255,8 @@ fn general(model: &Model, root: &QualifiedName, saved: &Layout) -> Scene {
         items.extend(match *edge {
             Edge::Specialization { .. } => notation::specialization(depicts, path),
             Edge::Typing { .. } => notation::defined_by(depicts, path),
-            Edge::Composition { usage, .. } => notation::composition(depicts, usage, path),
+            Edge::Composition { usage, .. } => notation::composition(depicts, Some(usage), path),
+            Edge::Ownership { .. } => notation::composition(depicts, None, path),
             Edge::Connection { connection, .. } => notation::connection(depicts, connection, path),
         });
     }
@@ -265,6 +296,9 @@ fn describe(edge: &Edge, nodes: &[&Element]) -> (Depicts, usize, usize) {
         }
         Edge::Composition { owner, part_type, usage } => {
             (Depicts::Composition { owner: name(owner), usage: usage.qualified_name.clone() }, owner, part_type)
+        }
+        Edge::Ownership { owner, usage } => {
+            (Depicts::Composition { owner: name(owner), usage: name(usage) }, owner, usage)
         }
         Edge::Connection { a, b, connection } => (Depicts::Connection(connection.qualified_name.clone()), a, b),
     }
