@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Interconnection tracer
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] A closed part's width fits its title and the labels of its top-edge ports side by side, and the same for its bottom edge
 - [ ] Layers are separated by at least one label line beyond the port labels

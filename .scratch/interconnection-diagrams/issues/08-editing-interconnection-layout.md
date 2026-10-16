@@ -4,7 +4,7 @@
 
 **Blocked by:** 04: Opened Parts; 07: Opening Interconnection Diagrams in the viewer
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] Positions in an Interconnection Layout are relative to the enclosing box's content and keyed by feature path
 - [ ] Moving an Opened Part moves its contents; a moved part can't leave its enclosing box

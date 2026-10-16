@@ -7,7 +7,7 @@
 
 **Blocked by:** 01: Interconnection tracer
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] Double-click on a part (General or Interconnection) or a part def opens or switches to its Interconnection Diagram
 - [ ] Browser and Properties panel offer "Open Interconnection Diagram" for parts and part defs

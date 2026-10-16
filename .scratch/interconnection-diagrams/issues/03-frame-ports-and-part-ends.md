@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Interconnection tracer
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] The root's ports sit on the Frame border: `in` top, `out` bottom, undirected facing their inner peer
 - [ ] A connection from a part's port to a root port is drawn to the Frame border

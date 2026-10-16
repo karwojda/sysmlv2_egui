@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Interconnection tracer; 03: Frame ports and part-level connection ends
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] No connector segment passes through a box other than its two ends' boxes (and the boxes enclosing them), checked over all golden fixtures, closed and opened
 - [ ] Connectors leave and enter ports perpendicular to the border

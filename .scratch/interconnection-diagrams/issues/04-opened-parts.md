@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Interconnection tracer; 03: Frame ports and part-level connection ends
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] `Layout::opened` (a set of feature paths) is saved in Diagram Files and omitted when empty
 - [ ] An Opened Part is sized bottom up: its content plus padding and a title band, with its own ports clear of the title

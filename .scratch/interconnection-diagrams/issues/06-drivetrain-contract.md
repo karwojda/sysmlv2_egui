@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Interconnection tracer
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] `viewer-opensysml/tests/fixtures/drivetrain/` models the spike's drivetrain in SysML v2
 - [ ] A contract test asserts the OpenSysML backend returns the same Model as the fake twin
