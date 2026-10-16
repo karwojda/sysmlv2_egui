@@ -176,6 +176,12 @@ pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
         return Grab::Resize(element.clone());
     }
     if let Some((_, _, key)) = scene.port_at(view.to_scene(origin, pos)) {
+        // A nested port moves with its composite port: grab that instead.
+        let is_port = |k: &str| scene.items.iter().any(|i| matches!(&i.depicts, Depicts::Port { key, .. } if key == k));
+        let key = match key.rsplit_once('.') {
+            Some((parent, _)) if is_port(parent) => parent,
+            _ => key,
+        };
         // A port's box: the part its key leads to, or the Frame.
         let on = match key.rsplit_once('.') {
             Some((part, _)) => QualifiedName::new(part),
@@ -465,6 +471,37 @@ mod tests {
         let inside = Pos2::new(end.x.clamp(b.x + 3.0, b.right() - RESIZE_HANDLE - 3.0), b.bottom() - 3.0);
 
         assert_eq!(grab_at(&scene, View::default(), Pos2::ZERO, inside), Grab::Move(a));
+    }
+
+    #[test]
+    fn grabbing_a_nested_port_grabs_its_composite_port() {
+        let model = viewer_core::Model::builder()
+            .package("P")
+            .port_def("P::Inner")
+            .port_def("P::Outer")
+            .port("P::Outer::inner")
+            .typed_by("P::Inner")
+            .part_def("P::A")
+            .port("P::A::outer")
+            .typed_by("P::Outer")
+            .part_def("P::Sys")
+            .part("P::Sys::a")
+            .typed_by("P::A")
+            .build();
+        let scene = viewer_core::build_scene(&model, DiagramKind::Interconnection, &QualifiedName::from("P::Sys")).unwrap();
+        let inner = scene
+            .items
+            .iter()
+            .find_map(|i| match (&i.depicts, &i.shape) {
+                (Depicts::Port { key, .. }, Shape::Rect { rect, .. }) if key == "a.outer.inner" => Some(*rect),
+                _ => None,
+            })
+            .unwrap();
+        let centre = Pos2::new(inner.x + inner.width / 2.0, inner.y + inner.height / 2.0);
+
+        let grab = grab_at(&scene, View::default(), Pos2::ZERO, centre);
+
+        assert_eq!(grab, Grab::Port { key: "a.outer".into(), on: QualifiedName::from("a") });
     }
 
     #[test]

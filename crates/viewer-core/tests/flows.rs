@@ -266,3 +266,62 @@ fn the_properties_panel_marks_reference_parts() {
     assert!(driver.rows.iter().any(|p| p.label == "Reference" && p.value == "yes"));
     assert!(!tank.rows.iter().any(|p| p.label == "Reference"));
 }
+
+fn port_rect(scene: &Scene, key: &str) -> viewer_core::scene::Rect {
+    scene
+        .items
+        .iter()
+        .find_map(|i| match (&i.depicts, &i.shape) {
+            (Depicts::Port { key: k, .. }, Shape::Rect { rect, .. }) if k == key => Some(*rect),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("port {key}"))
+}
+
+#[test]
+fn a_port_with_ports_is_a_bar_with_its_nested_ports_on_the_outer_edge() {
+    let scene = scene(DiagramKind::Interconnection, "F::Vehicle");
+    let tank = scene.node_bounds(&qn("tank")).unwrap();
+    let bar = port_rect(&scene, "tank.fuelOut");
+    let inner = port_rect(&scene, "tank.fuelOut.inner");
+
+    assert!(bar.width > 3.0 * bar.height, "a bar along the bottom edge: {bar:?}");
+    assert!((bar.y + bar.height / 2.0 - tank.bottom()).abs() < 0.5, "straddling the border");
+    let inner_centre = viewer_core::scene::Point::new(inner.x + inner.width / 2.0, inner.y + inner.height / 2.0);
+    assert!(inner_centre.x > bar.x && inner_centre.x < bar.right(), "on the bar");
+    assert!((inner_centre.y - bar.bottom()).abs() < 0.5, "on its outer (lower) edge");
+}
+
+#[test]
+fn a_connection_to_a_nested_port_attaches_to_its_square_and_one_to_the_composite_to_the_bar() {
+    let scene = scene(DiagramKind::Interconnection, "F::Vehicle");
+    let near = |a: viewer_core::scene::Point, b: viewer_core::scene::Point| (a.x - b.x).abs() <= 2.5 && (a.y - b.y).abs() <= 2.5;
+
+    let to_inner = line(&scene, "F::Vehicle::@7");
+    assert!(near(to_inner[0], port_centre(&scene, "tank.fuelOut.inner")), "{to_inner:?}");
+    assert!(near(*to_inner.last().unwrap(), port_centre(&scene, "engine.fuelIn.inner")), "{to_inner:?}");
+
+    let to_bar = line(&scene, "F::Vehicle::fuelFlow");
+    assert!(near(to_bar[0], port_centre(&scene, "tank.fuelOut")), "{to_bar:?}");
+}
+
+#[test]
+fn nested_ports_are_labelled_and_selectable() {
+    let scene = scene(DiagramKind::Interconnection, "F::Vehicle");
+    let inner = port_rect(&scene, "tank.fuelOut.inner");
+    let centre = viewer_core::scene::Point::new(inner.x + inner.width / 2.0, inner.y + inner.height / 2.0);
+
+    let found = scene.port_at(centre);
+
+    assert_eq!(found, Some((&qn("F::Vehicle::tank"), &qn("F::FuelPort::inner"), "tank.fuelOut.inner")));
+    let labels: Vec<String> = scene
+        .items
+        .iter()
+        .filter(|i| matches!(&i.depicts, Depicts::Port { key, .. } if key == "tank.fuelOut.inner"))
+        .filter_map(|i| match &i.shape {
+            Shape::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["inner : InnerPort"]);
+}

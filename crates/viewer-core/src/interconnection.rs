@@ -39,6 +39,9 @@ const VERTICAL_BIAS: f32 = 0.5;
 const CLEARANCE: f32 = 10.0;
 /// What a bend costs in a route, in units of length.
 const BEND_COST: f32 = 60.0;
+/// A nested port's square, and the room between nested ports on a bar.
+const NESTED_SIZE: f32 = 8.0;
+const NESTED_PADDING: f32 = 12.0;
 /// How many lines up or down a connector label may move to clear others.
 const LABEL_TRIES: usize = 6;
 /// Vertical distance between stacked connector labels.
@@ -70,8 +73,10 @@ impl Side {
 /// A port on a box's border.
 struct PortSlot<'a> {
     port: &'a Element,
+    /// The port's own ports, from its type: drawn on a bar.
+    nested: Vec<&'a Element>,
     side: Side,
-    /// Distance from the start of its side (left or top end).
+    /// Distance from the start of its side (left or top end) to its middle.
     offset: f32,
 }
 
@@ -80,7 +85,9 @@ struct PortSlot<'a> {
 /// empty path is the owning box itself.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum End {
-    Port { path: Vec<usize>, port: usize },
+    /// A port of the box at `path`, or with `nested`, one of that port's
+    /// own ports.
+    Port { path: Vec<usize>, port: usize, nested: Option<usize> },
     /// The box at `path` itself (never empty): a wire to a part without a
     /// port, or into a closed part whose inside isn't drawn.
     Part { path: Vec<usize> },
@@ -245,7 +252,15 @@ fn closed_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a
         .flat_map(|d| model.owned_members(&d.qualified_name))
         .chain(own)
         .filter(|e| e.kind == ElementKind::PortUsage)
-        .map(|port| PortSlot { port, side: Side::Bottom, offset: 0.0 })
+        .map(|port| {
+            let nested = port
+                .typed_by
+                .iter()
+                .flat_map(|d| model.owned_members(d))
+                .filter(|e| e.kind == ElementKind::PortUsage)
+                .collect();
+            PortSlot { port, nested, side: Side::Bottom, offset: 0.0 }
+        })
         .collect();
     BoxNode {
         element,
@@ -287,10 +302,10 @@ fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
     let port_of = |b: &BoxNode, name: &QualifiedName| b.ports.iter().position(|s| &s.port.qualified_name == name);
     let child_of = |b: &BoxNode, name: &QualifiedName| b.children.iter().position(|c| &c.element.qualified_name == name);
     let (first, rest) = chain.split_first()?;
-    if rest.is_empty()
-        && let Some(port) = port_of(node, first)
-    {
-        return Some((End::Port { path: Vec::new(), port }, true));
+    if let Some(port) = port_of(node, first) {
+        let nested = rest.first().and_then(|next| node.ports[port].nested.iter().position(|n| &n.qualified_name == next));
+        let exact = rest.is_empty() || nested.is_some() && rest.len() == 1;
+        return Some((End::Port { path: Vec::new(), port, nested }, exact));
     }
     let mut path = vec![child_of(node, first)?];
     let mut current = &node.children[path[0]];
@@ -300,9 +315,15 @@ fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
             path.push(c);
             current = &current.children[c];
         } else if let Some(port) = port_of(current, name) {
-            // The rest of the chain, if any, is inside the port (an item it
-            // carries): the port is as far as the drawing goes.
-            return Some((End::Port { path, port }, last));
+            // The rest of the chain, if any, is inside the port: one of its
+            // nested ports, or an item it carries, which isn't drawn.
+            let after = rest.get(i + 1);
+            let nested = after.and_then(|next| current.ports[port].nested.iter().position(|n| &n.qualified_name == next));
+            let exact = match nested {
+                Some(_) => i + 2 == rest.len(),
+                None => last,
+            };
+            return Some((End::Port { path, port, nested }, exact));
         } else if current.children.is_empty() {
             // A closed part: the rest of the chain is inside it.
             return Some((End::Part { path }, false));
@@ -315,7 +336,10 @@ fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
 
 fn port_direction(node: &BoxNode, end: &End) -> Option<Direction> {
     match end {
-        End::Port { path, port } => node.at(path).ports[*port].port.direction,
+        End::Port { path, port, nested } => {
+            let slot = &node.at(path).ports[*port];
+            nested.map(|n| slot.nested[n].direction).unwrap_or(slot.port.direction)
+        }
         End::Part { .. } => None,
     }
 }
@@ -352,7 +376,8 @@ fn edge_room(node: &BoxNode, direction: Direction) -> f32 {
         .ports
         .iter()
         .filter(|s| s.port.direction == Some(direction))
-        .map(|s| text_width(&port_label(s.port), LABEL_FONT) + PORT_SLOT_PADDING)
+        // A composite port's bar lies along this (top or bottom) edge.
+        .map(|s| bar_length(s, true) + text_width(&port_label(s.port), LABEL_FONT) + PORT_SLOT_PADDING)
         .collect();
     let widest = labels.iter().copied().fold(0.0, f32::max);
     widest * (labels.len() as f32 + 1.0)
@@ -507,7 +532,7 @@ fn spread(slots: &mut [PortSlot], rect: Rect, along: &dyn Fn(usize) -> f32) {
 /// Where the other end of a wire is, roughly, for choosing sides.
 fn rough_point(node: &BoxNode, end: &End) -> Point {
     match end {
-        End::Port { path, port } if path.is_empty() => port_point(node.rect, &node.ports[*port]),
+        End::Port { path, port, .. } if path.is_empty() => port_point(node.rect, &node.ports[*port]),
         _ => center(node.at(end.path()).rect),
     }
 }
@@ -518,7 +543,7 @@ fn place_own_ports(node: &mut BoxNode) {
     let mut peers: BTreeMap<usize, Point> = BTreeMap::new();
     for wire in &node.wires {
         for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
-            if let (End::Port { path, port }, false) = (this, other.is_own_port())
+            if let (End::Port { path, port, .. }, false) = (this, other.is_own_port())
                 && path.is_empty()
             {
                 peers.insert(*port, center(node.at(other.path()).rect));
@@ -549,7 +574,7 @@ fn place_child_ports(node: &mut BoxNode, align_own: bool) {
     let mut peers: BTreeMap<(usize, usize), Point> = BTreeMap::new();
     for wire in &node.wires {
         for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
-            if let End::Port { path, port } = this
+            if let End::Port { path, port, .. } = this
                 && path.len() == 1
             {
                 peers.insert((path[0], *port), rough_point(node, other));
@@ -617,7 +642,7 @@ fn align_own_ports(node: &mut BoxNode) {
     let mut targets: BTreeMap<usize, f32> = BTreeMap::new();
     for wire in &node.wires {
         for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
-            if let (End::Port { path, port }, End::Port { path: inner, port: q }) = (this, other)
+            if let (End::Port { path, port, .. }, End::Port { path: inner, port: q, .. }) = (this, other)
                 && path.is_empty()
                 && !inner.is_empty()
             {
@@ -730,6 +755,10 @@ fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
             key: feature_path(&node.path, &slot.port.name),
         };
         let p = port_point(node.rect, slot);
+        if !slot.nested.is_empty() {
+            items.extend(composite_port(node, slot, depicts));
+            continue;
+        }
         let square = Rect { x: p.x - PORT_SIZE / 2.0, y: p.y - PORT_SIZE / 2.0, width: PORT_SIZE, height: PORT_SIZE };
         let beside = PORT_SIZE / 2.0 + 3.0;
         let (position, anchor) = match slot.side {
@@ -746,14 +775,98 @@ fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
     }
 }
 
+/// How long a composite port's bar is along a horizontal (`true`) or
+/// vertical side: room for each nested port's square and label side by
+/// side, or one per row. Zero for a plain port.
+fn bar_length(slot: &PortSlot, horizontal: bool) -> f32 {
+    if slot.nested.is_empty() {
+        return 0.0;
+    }
+    if horizontal {
+        slot.nested.iter().map(|n| NESTED_SIZE + 6.0 + text_width(&port_label(n), LABEL_FONT) + NESTED_PADDING).sum()
+    } else {
+        slot.nested.len() as f32 * (LABEL_FONT.size * 1.3 + NESTED_PADDING)
+    }
+}
+
+/// The bar of a composite port, centred on its offset along the border,
+/// straddling the border like a port square.
+fn bar_rect(rect: Rect, slot: &PortSlot) -> Rect {
+    let p = port_point(rect, slot);
+    let length = bar_length(slot, slot.side.vertical());
+    if slot.side.vertical() {
+        Rect { x: p.x - length / 2.0, y: p.y - PORT_SIZE / 2.0, width: length, height: PORT_SIZE }
+    } else {
+        Rect { x: p.x - PORT_SIZE / 2.0, y: p.y - length / 2.0, width: PORT_SIZE, height: length }
+    }
+}
+
+/// Where nested port `n` sits: on the bar's outer edge, in its slot.
+fn nested_point(rect: Rect, slot: &PortSlot, n: usize) -> Point {
+    let bar = bar_rect(rect, slot);
+    if slot.side.vertical() {
+        let mut x = bar.x;
+        for nested in &slot.nested[..n] {
+            x += NESTED_SIZE + 6.0 + text_width(&port_label(nested), LABEL_FONT) + NESTED_PADDING;
+        }
+        let y = if slot.side == Side::Top { bar.y } else { bar.bottom() };
+        Point::new(x + NESTED_PADDING / 2.0 + NESTED_SIZE / 2.0, y)
+    } else {
+        let step = bar.height / slot.nested.len() as f32;
+        let x = if slot.side == Side::Left { bar.x } else { bar.right() };
+        Point::new(x, bar.y + step * (n as f32 + 0.5))
+    }
+}
+
+/// A composite port: a bar along the border, its nested ports as small
+/// squares on the bar's outer edge labelled outside, and its own label just
+/// beyond the bar's end.
+fn composite_port(node: &BoxNode, slot: &PortSlot, depicts: Depicts) -> Vec<Item> {
+    let bar = bar_rect(node.rect, slot);
+    let mut items = vec![Item { depicts: depicts.clone(), shape: Shape::Rect { rect: bar, fill: Fill::Background, corner_radius: 0.0, dashed: false } }];
+    let (position, anchor) = if slot.side.vertical() {
+        let y = if slot.side == Side::Top { bar.y - LABEL_OFFSET } else { bar.bottom() + LABEL_OFFSET + LABEL_FONT.size };
+        (Point::new(bar.right() + 4.0, y), TextAnchor::Start)
+    } else {
+        let x = if slot.side == Side::Left { bar.x - 4.0 } else { bar.right() + 4.0 };
+        let anchor = if slot.side == Side::Left { TextAnchor::End } else { TextAnchor::Start };
+        (Point::new(x, bar.y - LABEL_OFFSET), anchor)
+    };
+    items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT } });
+    let port_key = feature_path(&node.path, &slot.port.name);
+    for (n, nested) in slot.nested.iter().enumerate() {
+        let depicts = Depicts::Port {
+            part: node.element.qualified_name.clone(),
+            port: nested.qualified_name.clone(),
+            key: feature_path(&port_key, &nested.name),
+        };
+        let c = nested_point(node.rect, slot, n);
+        let square = Rect { x: c.x - NESTED_SIZE / 2.0, y: c.y - NESTED_SIZE / 2.0, width: NESTED_SIZE, height: NESTED_SIZE };
+        let beside = NESTED_SIZE / 2.0 + 3.0;
+        let (position, anchor) = match slot.side {
+            Side::Top => (Point::new(c.x + beside, c.y - beside), TextAnchor::Start),
+            Side::Bottom => (Point::new(c.x + beside, c.y + beside + LABEL_FONT.size), TextAnchor::Start),
+            Side::Left => (Point::new(c.x - beside, c.y + LABEL_FONT.size / 3.0), TextAnchor::End),
+            Side::Right => (Point::new(c.x + beside, c.y + LABEL_FONT.size / 3.0), TextAnchor::Start),
+        };
+        items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: square, fill: Fill::Background, corner_radius: 0.0, dashed: false } });
+        items.push(Item { depicts, shape: Shape::Text { position, text: port_label(nested), anchor, font: LABEL_FONT } });
+    }
+    items
+}
+
 /// Where a wire end meets its box, the side it leaves from, and whether it
 /// leaves inward (from the owning box's own port).
 fn end_point(node: &BoxNode, end: &End, toward: Point) -> (Point, Side, bool) {
     match end {
-        End::Port { path, port } => {
+        End::Port { path, port, nested } => {
             let target = node.at(path);
             let slot = &target.ports[*port];
-            (port_point(target.rect, slot), slot.side, path.is_empty())
+            let point = match nested {
+                Some(n) => nested_point(target.rect, slot, *n),
+                None => port_point(target.rect, slot),
+            };
+            (point, slot.side, path.is_empty())
         }
         End::Part { path } => {
             let rect = node.at(path).rect;
