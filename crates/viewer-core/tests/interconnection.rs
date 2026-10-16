@@ -318,3 +318,65 @@ fn drivetrain_matches_the_golden_file() {
         .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
     assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
 }
+
+fn polyline(scene: &Scene, connection: &str) -> Vec<Point> {
+    scene
+        .items_depicting(&Depicts::Connection(qn(connection)))
+        .find_map(|s| match s {
+            Shape::Polyline { points, .. } => Some(points.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no connector for {connection}"))
+}
+
+#[test]
+fn the_roots_own_ports_sit_on_the_frame_border() {
+    let scene = drivetrain("D::Vehicle");
+    let frame = scene.node_bounds(&qn("D::Vehicle")).unwrap();
+
+    let power = centre(port_square(&scene, "D::Vehicle", "D::Vehicle::power"));
+
+    assert_eq!(power.y, frame.y, "an in port of the root sits on the Frame's top edge");
+}
+
+#[test]
+fn a_connection_to_a_root_port_runs_from_the_frame_border_into_the_part() {
+    let scene = drivetrain("D::Vehicle");
+    let supply = polyline(&scene, "D::Vehicle::supply");
+
+    let ends = [supply[0], *supply.last().unwrap()];
+    let power = centre(port_square(&scene, "D::Vehicle", "D::Vehicle::power"));
+    let engine_power = centre(port_square(&scene, "D::Vehicle::engine", "D::Engine::power"));
+
+    assert!(ends.contains(&power) && ends.contains(&engine_power), "{supply:?}");
+}
+
+#[test]
+fn a_connection_ending_at_a_part_attaches_to_its_border_facing_the_other_end() {
+    let model = Model::builder()
+        .package("P")
+        .port_def("P::Flow")
+        .part_def("P::Source")
+        .port("P::Source::out")
+        .typed_by("P::Flow")
+        .direction(Direction::Out)
+        .part_def("P::Sink")
+        .part_def("P::System")
+        .part("P::System::source")
+        .typed_by("P::Source")
+        .part("P::System::sink")
+        .typed_by("P::Sink")
+        .connection("P::System::feed")
+        .end(&["P::System::source", "P::Source::out"])
+        .end(&["P::System::sink"])
+        .build();
+    let scene = build_scene(&model, DiagramKind::Interconnection, &qn("P::System")).unwrap();
+    let sink = scene.node_bounds(&qn("P::System::sink")).unwrap();
+    let feed = polyline(&scene, "P::System::feed");
+
+    let at_sink = *feed.last().unwrap();
+
+    let on_border = at_sink.y == sink.y || at_sink.y == sink.bottom() || at_sink.x == sink.x || at_sink.x == sink.right();
+    assert!(on_border, "{at_sink:?} on {sink:?}");
+    assert!(feed[0].y < sink.y && at_sink.y == sink.y, "the source is above, so it enters from the top");
+}

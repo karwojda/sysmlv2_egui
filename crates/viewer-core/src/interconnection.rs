@@ -1,5 +1,9 @@
 //! Interconnection Diagrams: a part's parts inside its Frame, wired port to
 //! port, laid out top to bottom (`in` ports on top, `out` ports below).
+//!
+//! Everything is a box: the Frame is the root's box, whose children are its
+//! parts, and the root's own ports are ports on the Frame's border. Each box
+//! is laid out from the inside out.
 
 use std::collections::BTreeMap;
 
@@ -13,14 +17,16 @@ use crate::notation::{
 };
 use crate::scene::{Depicts, Fill, Item, Point, Rect, Scene, Shape, TextAnchor};
 
-/// Space inside the Frame around its parts, and above them for its title.
-const FRAME_PADDING: f32 = 30.0;
-const FRAME_TITLE: f32 = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
+/// Space inside a box with parts, around them and above them for its title.
+const BOX_PADDING: f32 = 30.0;
+const TITLE_BAND: f32 = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
 /// Room above and below each part for its port labels.
 const LABEL_ROOM: f32 = LABEL_FONT.size + 2.0 * LABEL_OFFSET;
 const PORT_SIZE: f32 = 10.0;
 /// Space each port takes along an edge beyond its label.
 const PORT_SLOT_PADDING: f32 = 24.0;
+/// The least distance between two ports on one side.
+const PORT_SPACING: f32 = 20.0;
 /// How far a connector runs straight out of a port before turning.
 const CONNECTOR_STUB: f32 = 16.0;
 /// How close two ports must be across the connector to count as in line.
@@ -45,9 +51,13 @@ impl Side {
             Side::Right => (1.0, 0.0),
         }
     }
+
+    fn vertical(self) -> bool {
+        matches!(self, Side::Top | Side::Bottom)
+    }
 }
 
-/// A port on a part's border.
+/// A port on a box's border.
 struct PortSlot<'a> {
     port: &'a Element,
     side: Side,
@@ -55,18 +65,39 @@ struct PortSlot<'a> {
     offset: f32,
 }
 
-/// A part drawn as a closed box inside the Frame.
-struct PartBox<'a> {
-    usage: &'a Element,
-    ports: Vec<PortSlot<'a>>,
-    rect: Rect,
+/// One end of a wire, as seen from the box that owns the wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum End {
+    /// A port of child `child`, or (`None`) of the owning box itself.
+    Port { child: Option<usize>, port: usize },
+    /// Child `child` itself, without a port.
+    Part { child: usize },
 }
 
-/// A connection between ports of two parts.
+impl End {
+    fn child(self) -> Option<usize> {
+        match self {
+            End::Port { child, .. } => child,
+            End::Part { child } => Some(child),
+        }
+    }
+}
+
+/// A connection or interface drawn inside the box that owns it.
 struct Wire<'a> {
     connection: &'a Element,
-    a: (usize, usize),
-    b: (usize, usize),
+    a: End,
+    b: End,
+}
+
+/// A part's box (or the Frame), with the parts drawn inside it.
+struct BoxNode<'a> {
+    element: &'a Element,
+    ports: Vec<PortSlot<'a>>,
+    children: Vec<BoxNode<'a>>,
+    wires: Vec<Wire<'a>>,
+    /// Width and height, then the absolute rect once placed.
+    rect: Rect,
 }
 
 /// Builds the Interconnection Diagram of `root`, a part definition or a
@@ -88,88 +119,70 @@ pub fn build(model: &Model, root: &QualifiedName, _layout: &Layout) -> Result<Sc
         _ => return Err(unsuitable()),
     };
 
-    let mut parts: Vec<PartBox> = model
-        .owned_members(&definition.qualified_name)
-        .filter(|e| e.kind == ElementKind::PartUsage)
-        .map(|usage| PartBox { usage, ports: ports_of(model, usage), rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 } })
-        .collect();
-    let wires = wires(model, definition, &parts);
-
-    // Sizes, then layers top to bottom from each wire's `out` end to its
-    // `in` end, with room for port labels above and below every part, and
-    // below it for the stacked labels of connectors leaving it.
-    let below: Vec<f32> = (0..parts.len()).map(|p| LABEL_ROOM + label_stack_below(&parts, &wires, p)).collect();
-    let sizes: Vec<(f32, f32)> = parts
-        .iter()
-        .enumerate()
-        .map(|(p, part)| {
-            let (w, h) = part_size(part);
-            (w, h + LABEL_ROOM + below[p])
-        })
-        .collect();
-    let edges: Vec<(usize, usize)> = wires
-        .iter()
-        .filter(|w| w.a.0 != w.b.0)
-        .map(|w| if flows_from_b(&parts, w) { (w.b.0, w.a.0) } else { (w.a.0, w.b.0) })
-        .collect();
-    let title_width = text_width(&frame_title(root_element), USAGE_NAME_FONT) + 2.0 * PADDING;
-    let origin = Point::new(notation_margin() + FRAME_PADDING, notation_margin() + FRAME_TITLE + FRAME_PADDING);
-    for ((part, placed), below) in parts.iter_mut().zip(layout::layered(&sizes, &edges)).zip(&below) {
-        part.rect = Rect {
-            x: placed.x + origin.x,
-            y: placed.y + origin.y + LABEL_ROOM,
-            width: placed.width,
-            height: placed.height - LABEL_ROOM - below,
-        };
-    }
-    let content_right = parts.iter().map(|p| p.rect.right()).fold(origin.x, f32::max);
-    let content_bottom =
-        parts.iter().zip(&below).map(|(p, below)| p.rect.bottom() + below).fold(origin.y, f32::max);
-    let frame = Rect {
-        x: notation_margin(),
-        y: notation_margin(),
-        width: (content_right + FRAME_PADDING - notation_margin()).max(title_width).max(MIN_NODE_WIDTH),
-        height: content_bottom + FRAME_PADDING - notation_margin(),
-    };
-
-    place_ports(&mut parts, &wires);
+    let mut frame = open_box(model, root_element, Some(definition));
+    size(&mut frame);
+    place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
+    place_own_ports(&mut frame);
+    place_child_ports(&mut frame);
 
     let mut items = Vec::new();
-    items.extend(frame_box(root_element, frame));
-    for part in &parts {
-        items.extend(part_box(part));
-    }
-    items.extend(connectors(&parts, &wires));
-    for part in &parts {
-        items.extend(ports(part));
-    }
-    let mut rects: Vec<Rect> = parts.iter().map(|p| p.rect).collect();
-    rects.push(frame);
+    let mut rects = Vec::new();
+    draw_boxes(&frame, true, &mut items, &mut rects);
+    draw_connectors(&frame, &mut items);
+    draw_ports(&frame, &mut items);
     Ok(page(items, &rects))
 }
 
-fn notation_margin() -> f32 {
-    crate::diagram::MARGIN
+/// A box showing its definition's parts, each closed, and the wires
+/// between them.
+fn open_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a Element>) -> BoxNode<'a> {
+    let mut node = closed_box(model, element, definition);
+    let Some(definition) = definition else { return node };
+    node.children = model
+        .owned_members(&definition.qualified_name)
+        .filter(|e| e.kind == ElementKind::PartUsage)
+        .map(|usage| closed_box(model, usage, usage.typed_by.as_ref().and_then(|d| model.element(d))))
+        .collect();
+    node.wires = wires(model, definition, &node);
+    node
 }
 
-/// The ports a part shows: its type's, then any it declares itself.
-fn ports_of<'a>(model: &'a Model, usage: &'a Element) -> Vec<PortSlot<'a>> {
-    let typed = usage.typed_by.iter().flat_map(|d| model.owned_members(d));
-    typed
-        .chain(model.owned_members(&usage.qualified_name))
+/// A box with only its ports: its definition's, then any it declares
+/// itself.
+fn closed_box<'a>(model: &'a Model, element: &'a Element, definition: Option<&'a Element>) -> BoxNode<'a> {
+    let own = (definition.map(|d| &d.qualified_name) != Some(&element.qualified_name))
+        .then(|| model.owned_members(&element.qualified_name))
+        .into_iter()
+        .flatten();
+    let ports = definition
+        .into_iter()
+        .flat_map(|d| model.owned_members(&d.qualified_name))
+        .chain(own)
         .filter(|e| e.kind == ElementKind::PortUsage)
         .map(|port| PortSlot { port, side: Side::Bottom, offset: 0.0 })
-        .collect()
+        .collect();
+    BoxNode { element, ports, children: Vec::new(), wires: Vec::new(), rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 } }
 }
 
-/// The definition's connections and interfaces that join a port of one of
-/// its parts to a port of another (or the same) part.
-fn wires<'a>(model: &'a Model, definition: &'a Element, parts: &[PartBox<'a>]) -> Vec<Wire<'a>> {
-    let end = |chain: &[QualifiedName]| -> Option<(usize, usize)> {
-        let [part, port] = chain else { return None };
-        let p = parts.iter().position(|b| &b.usage.qualified_name == part)?;
-        let q = parts[p].ports.iter().position(|s| &s.port.qualified_name == port)?;
-        Some((p, q))
+/// The definition's connections and interfaces whose two ends resolve to
+/// this box's parts, their ports, or the box's own ports.
+fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> Vec<Wire<'a>> {
+    let child_index = |name: &QualifiedName| node.children.iter().position(|c| &c.element.qualified_name == name);
+    let own_port = |name: &QualifiedName| node.ports.iter().position(|s| &s.port.qualified_name == name);
+    let end = |chain: &[QualifiedName]| -> Option<End> {
+        match chain {
+            [only] => match (child_index(only), own_port(only)) {
+                (Some(child), _) => Some(End::Part { child }),
+                (None, Some(port)) => Some(End::Port { child: None, port }),
+                _ => None,
+            },
+            [part, port] => {
+                let child = child_index(part)?;
+                let port = node.children[child].ports.iter().position(|s| &s.port.qualified_name == port)?;
+                Some(End::Port { child: Some(child), port })
+            }
+            _ => None,
+        }
     };
     model
         .owned_members(&definition.qualified_name)
@@ -181,27 +194,26 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, parts: &[PartBox<'a>]) -
         .collect()
 }
 
-/// Extra room below part `p` for the labels of connectors leaving it that
-/// stack because they share their ports.
-fn label_stack_below(parts: &[PartBox], wires: &[Wire], p: usize) -> f32 {
-    let mut counts: BTreeMap<((usize, usize), (usize, usize)), usize> = BTreeMap::new();
-    for wire in wires {
-        let (from, to) = if flows_from_b(parts, wire) { (wire.b, wire.a) } else { (wire.a, wire.b) };
-        if from.0 == p {
-            *counts.entry((from, to)).or_default() += 1;
-        }
+fn port_direction(node: &BoxNode, end: End) -> Option<Direction> {
+    match end {
+        End::Port { child: Some(c), port } => node.children[c].ports[port].port.direction,
+        End::Port { child: None, port } => node.ports[port].port.direction,
+        End::Part { .. } => None,
     }
-    let deepest = counts.values().copied().max().unwrap_or(1).max(1);
-    (deepest - 1) as f32 * LABEL_STACK
 }
 
-fn direction(parts: &[PartBox], (part, port): (usize, usize)) -> Option<Direction> {
-    parts[part].ports[port].port.direction
-}
-
-/// Whether the wire's flow runs from its second end to its first.
-fn flows_from_b(parts: &[PartBox], wire: &Wire) -> bool {
-    direction(parts, wire.a) == Some(Direction::In) || direction(parts, wire.b) == Some(Direction::Out)
+/// Whether the wire's flow runs from its second end to its first. An end
+/// at the box's own `in` port is where flow enters, so it counts as an
+/// `out` end inside, and the other way round.
+fn flows_from_b(node: &BoxNode, wire: &Wire) -> bool {
+    let inward = |end: End, direction: Option<Direction>| match (end, direction) {
+        (End::Port { child: None, .. }, Some(Direction::In)) => Some(Direction::Out),
+        (End::Port { child: None, .. }, Some(Direction::Out)) => Some(Direction::In),
+        (_, d) => d,
+    };
+    let a = inward(wire.a, port_direction(node, wire.a));
+    let b = inward(wire.b, port_direction(node, wire.b));
+    a == Some(Direction::In) || b == Some(Direction::Out)
 }
 
 fn port_label(port: &Element) -> String {
@@ -213,31 +225,90 @@ fn port_label(port: &Element) -> String {
     label
 }
 
-fn part_title(usage: &Element) -> String {
-    notation::usage_label(usage)
+fn title(element: &Element) -> String {
+    if element.kind == ElementKind::PartUsage { notation::usage_label(element) } else { element.name.clone() }
 }
 
-fn frame_title(root: &Element) -> String {
-    if root.kind == ElementKind::PartUsage { notation::usage_label(root) } else { root.name.clone() }
+/// Width needed for the labels of a box's `in` (top) or `out` (bottom)
+/// ports side by side.
+fn edge_room(node: &BoxNode, direction: Direction) -> f32 {
+    let labels: Vec<f32> = node
+        .ports
+        .iter()
+        .filter(|s| s.port.direction == Some(direction))
+        .map(|s| text_width(&port_label(s.port), LABEL_FONT) + PORT_SLOT_PADDING)
+        .collect();
+    let widest = labels.iter().copied().fold(0.0, f32::max);
+    widest * (labels.len() as f32 + 1.0)
 }
 
-/// A closed part's size: wide enough for its title and for the labels of
-/// the ports on its top and bottom edges side by side.
-fn part_size(part: &PartBox) -> (f32, f32) {
-    let title = text_width(&part_title(part.usage), USAGE_NAME_FONT).max(text_width("«part»", KEYWORD_FONT));
-    let edge = |direction: Direction| {
-        let labels: Vec<f32> = part
-            .ports
-            .iter()
-            .filter(|s| s.port.direction == Some(direction))
-            .map(|s| text_width(&port_label(s.port), LABEL_FONT) + PORT_SLOT_PADDING)
-            .collect();
-        let widest = labels.iter().copied().fold(0.0, f32::max);
-        widest * (labels.len() as f32 + 1.0)
-    };
-    let width = (title + 2.0 * PADDING).max(MIN_NODE_WIDTH).max(edge(Direction::In)).max(edge(Direction::Out));
-    let height = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
-    (width.ceil(), height.ceil())
+/// Extra room below child `c` for the labels of wires leaving it that
+/// stack because they share their ends.
+fn label_stack_below(node: &BoxNode, c: usize) -> f32 {
+    let mut counts: BTreeMap<(End, End), usize> = BTreeMap::new();
+    for wire in &node.wires {
+        let (from, to) = if flows_from_b(node, wire) { (wire.b, wire.a) } else { (wire.a, wire.b) };
+        if from.child() == Some(c) {
+            *counts.entry((from, to)).or_default() += 1;
+        }
+    }
+    let deepest = counts.values().copied().max().unwrap_or(1).max(1);
+    (deepest - 1) as f32 * LABEL_STACK
+}
+
+/// Sizes a box from the inside out, placing its children relative to its
+/// top-left corner.
+fn size(node: &mut BoxNode) {
+    let title_width = text_width(&title(node.element), USAGE_NAME_FONT).max(text_width("«part def»", KEYWORD_FONT));
+    let ports_width = edge_room(node, Direction::In).max(edge_room(node, Direction::Out));
+    if node.children.is_empty() {
+        let width = (title_width + 2.0 * PADDING).max(MIN_NODE_WIDTH).max(ports_width);
+        let height = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
+        node.rect.width = width.ceil();
+        node.rect.height = height.ceil();
+        return;
+    }
+    for child in &mut node.children {
+        size(child);
+    }
+    // Layers top to bottom from each wire's `out` end to its `in` end, with
+    // room for port labels above and below every child, and below it for
+    // stacked labels of wires leaving it.
+    let below: Vec<f32> = (0..node.children.len()).map(|c| LABEL_ROOM + label_stack_below(node, c)).collect();
+    let sizes: Vec<(f32, f32)> = node
+        .children
+        .iter()
+        .zip(&below)
+        .map(|(c, below)| (c.rect.width, c.rect.height + LABEL_ROOM + below))
+        .collect();
+    let edges: Vec<(usize, usize)> = node
+        .wires
+        .iter()
+        .filter_map(|w| match (w.a.child(), w.b.child()) {
+            (Some(a), Some(b)) if a != b => Some(if flows_from_b(node, w) { (b, a) } else { (a, b) }),
+            _ => None,
+        })
+        .collect();
+    let content = Point::new(BOX_PADDING, TITLE_BAND + BOX_PADDING);
+    for ((child, placed), below) in node.children.iter_mut().zip(layout::layered(&sizes, &edges)).zip(&below) {
+        child.rect.x = placed.x + content.x;
+        child.rect.y = placed.y + content.y + LABEL_ROOM;
+        let _ = below;
+    }
+    let right = node.children.iter().map(|c| c.rect.right()).fold(content.x, f32::max);
+    let bottom = node.children.iter().zip(&below).map(|(c, b)| c.rect.bottom() + b).fold(content.y, f32::max);
+    node.rect.width = (right + BOX_PADDING).max(title_width + 2.0 * PADDING).max(ports_width).max(MIN_NODE_WIDTH).ceil();
+    node.rect.height = (bottom + BOX_PADDING).ceil();
+}
+
+/// Turns child positions relative to their box into absolute ones.
+fn place(node: &mut BoxNode, x: f32, y: f32) {
+    node.rect.x = x;
+    node.rect.y = y;
+    for child in &mut node.children {
+        let (cx, cy) = (child.rect.x + x, child.rect.y + y);
+        place(child, cx, cy);
+    }
 }
 
 fn center(rect: Rect) -> Point {
@@ -255,40 +326,11 @@ fn facing(from: Point, to: Point) -> Side {
     }
 }
 
-/// Puts each port on a side (`in` top, `out` bottom, undirected facing the
-/// other end, else bottom) and spaces each side's ports evenly in the order
-/// of the parts they connect to.
-fn place_ports(parts: &mut [PartBox], wires: &[Wire]) {
-    let mut peers: BTreeMap<(usize, usize), Point> = BTreeMap::new();
-    for wire in wires {
-        peers.insert(wire.a, center(parts[wire.b.0].rect));
-        peers.insert(wire.b, center(parts[wire.a.0].rect));
-    }
-    for (p, part) in parts.iter_mut().enumerate() {
-        let here = center(part.rect);
-        for (q, slot) in part.ports.iter_mut().enumerate() {
-            slot.side = match (slot.port.direction, peers.get(&(p, q))) {
-                (Some(Direction::In), _) => Side::Top,
-                (Some(Direction::Out), _) => Side::Bottom,
-                (_, Some(peer)) => facing(here, *peer),
-                (_, None) => Side::Bottom,
-            };
-        }
-        let rect = part.rect;
-        for side in [Side::Top, Side::Bottom, Side::Left, Side::Right] {
-            let mut on_side: Vec<usize> = (0..part.ports.len()).filter(|&q| part.ports[q].side == side).collect();
-            let along = |q: &usize| match (peers.get(&(p, *q)), side) {
-                (Some(peer), Side::Top | Side::Bottom) => peer.x,
-                (Some(peer), _) => peer.y,
-                (None, _) => f32::MAX,
-            };
-            on_side.sort_by(|a, b| along(a).total_cmp(&along(b)).then(a.cmp(b)));
-            let length = if matches!(side, Side::Top | Side::Bottom) { rect.width } else { rect.height };
-            let count = on_side.len() as f32;
-            for (k, q) in on_side.into_iter().enumerate() {
-                part.ports[q].offset = (length * (k as f32 + 1.0) / (count + 1.0)).round();
-            }
-        }
+fn by_direction(direction: Option<Direction>) -> Option<Side> {
+    match direction {
+        Some(Direction::In) => Some(Side::Top),
+        Some(Direction::Out) => Some(Side::Bottom),
+        _ => None,
     }
 }
 
@@ -301,8 +343,118 @@ fn port_point(rect: Rect, slot: &PortSlot) -> Point {
     }
 }
 
-fn texts(depicts: &Depicts, rect: Rect, keyword: &str, title: String, top: f32) -> Vec<Item> {
-    let keyword_baseline = top + PADDING + KEYWORD_FONT.size;
+/// Spaces the given ports evenly along their side, in the order of
+/// `along` (where each port's peer is along that side).
+fn spread(slots: &mut [PortSlot], rect: Rect, along: &dyn Fn(usize) -> f32) {
+    for side in [Side::Top, Side::Bottom, Side::Left, Side::Right] {
+        let mut on_side: Vec<usize> = (0..slots.len()).filter(|&q| slots[q].side == side).collect();
+        on_side.sort_by(|a, b| along(*a).total_cmp(&along(*b)).then(a.cmp(b)));
+        let length = if side.vertical() { rect.width } else { rect.height };
+        let count = on_side.len() as f32;
+        for (k, q) in on_side.into_iter().enumerate() {
+            slots[q].offset = (length * (k as f32 + 1.0) / (count + 1.0)).round();
+        }
+    }
+}
+
+/// The Frame's own ports: by direction, or facing their inner peer; each
+/// lined up with that peer where it can be, so its wire runs straight.
+fn place_own_ports(node: &mut BoxNode) {
+    let rect = node.rect;
+    let mut peers: BTreeMap<usize, Point> = BTreeMap::new();
+    for wire in &node.wires {
+        for (this, other) in [(wire.a, wire.b), (wire.b, wire.a)] {
+            if let (End::Port { child: None, port }, Some(c)) = (this, other.child()) {
+                peers.insert(port, center(node.children[c].rect));
+            }
+        }
+    }
+    for (q, slot) in node.ports.iter_mut().enumerate() {
+        slot.side = match (by_direction(slot.port.direction), peers.get(&q)) {
+            (Some(side), _) => side,
+            (None, Some(peer)) => facing(center(rect), *peer),
+            (None, None) => Side::Bottom,
+        };
+    }
+    let sides: Vec<Side> = node.ports.iter().map(|s| s.side).collect();
+    spread(&mut node.ports, rect, &|q| match peers.get(&q) {
+        Some(peer) if sides[q].vertical() => peer.x,
+        Some(peer) => peer.y,
+        None => f32::MAX,
+    });
+}
+
+/// Puts each child's ports on a side (`in` top, `out` bottom, undirected
+/// facing the other end, else bottom) and spaces them in the order of what
+/// they connect to. A child port wired to the box's own port lines up with
+/// it.
+fn place_child_ports(node: &mut BoxNode) {
+    let own_points: Vec<Point> = node.ports.iter().map(|s| port_point(node.rect, s)).collect();
+    let mut peers: BTreeMap<(usize, usize), Point> = BTreeMap::new();
+    for wire in &node.wires {
+        for (this, other) in [(wire.a, wire.b), (wire.b, wire.a)] {
+            if let End::Port { child: Some(c), port } = this {
+                let peer = match other {
+                    End::Port { child: Some(o), .. } | End::Part { child: o } => center(node.children[o].rect),
+                    End::Port { child: None, port: own } => own_points[own],
+                };
+                peers.insert((c, port), peer);
+            }
+        }
+    }
+    for (c, child) in node.children.iter_mut().enumerate() {
+        let here = center(child.rect);
+        for (q, slot) in child.ports.iter_mut().enumerate() {
+            slot.side = match (by_direction(slot.port.direction), peers.get(&(c, q))) {
+                (Some(side), _) => side,
+                (None, Some(peer)) => facing(here, *peer),
+                (None, None) => Side::Bottom,
+            };
+        }
+        let sides: Vec<Side> = child.ports.iter().map(|s| s.side).collect();
+        let rect = child.rect;
+        spread(&mut child.ports, rect, &|q| match peers.get(&(c, q)) {
+            Some(peer) if sides[q].vertical() => peer.x,
+            Some(peer) => peer.y,
+            None => f32::MAX,
+        });
+    }
+    align_own_ports(node);
+}
+
+/// Moves each of the box's own ports in line with the child port it is
+/// wired to, keeping ports on one side apart.
+fn align_own_ports(node: &mut BoxNode) {
+    let rect = node.rect;
+    let mut targets: BTreeMap<usize, f32> = BTreeMap::new();
+    for wire in &node.wires {
+        for (this, other) in [(wire.a, wire.b), (wire.b, wire.a)] {
+            if let (End::Port { child: None, port }, End::Port { child: Some(c), port: q }) = (this, other) {
+                let point = port_point(node.children[c].rect, &node.children[c].ports[q]);
+                let along = if node.ports[port].side.vertical() { point.x - rect.x } else { point.y - rect.y };
+                targets.insert(port, along);
+            }
+        }
+    }
+    for side in [Side::Top, Side::Bottom, Side::Left, Side::Right] {
+        let mut on_side: Vec<usize> = (0..node.ports.len()).filter(|&q| node.ports[q].side == side).collect();
+        on_side.sort_by(|a, b| {
+            let key = |q: &usize| targets.get(q).copied().unwrap_or(node.ports[*q].offset);
+            key(a).total_cmp(&key(b))
+        });
+        let length = if side.vertical() { rect.width } else { rect.height };
+        let mut previous = f32::NEG_INFINITY;
+        for q in on_side {
+            let wanted = targets.get(&q).copied().unwrap_or(node.ports[q].offset);
+            let offset = wanted.max(previous + PORT_SPACING).clamp(PORT_SPACING, length - PORT_SPACING);
+            node.ports[q].offset = offset.round();
+            previous = offset;
+        }
+    }
+}
+
+fn texts(depicts: &Depicts, rect: Rect, keyword: &str, title: String) -> Vec<Item> {
+    let keyword_baseline = rect.y + PADDING + KEYWORD_FONT.size;
     [
         Shape::Text {
             position: Point::new(rect.center_x(), keyword_baseline),
@@ -322,36 +474,26 @@ fn texts(depicts: &Depicts, rect: Rect, keyword: &str, title: String, top: f32) 
     .collect()
 }
 
-/// The Frame: a rounded box with its title at the top.
-fn frame_box(root: &Element, rect: Rect) -> Vec<Item> {
-    let depicts = Depicts::Element(root.qualified_name.clone());
-    let keyword = format!("«{}»", root.kind.keyword());
-    let mut items = vec![Item {
-        depicts: depicts.clone(),
-        shape: Shape::Rect { rect, fill: Fill::Background, corner_radius: 2.0 * USAGE_CORNER_RADIUS },
-    }];
-    items.extend(texts(&depicts, rect, &keyword, frame_title(root), rect.y));
-    items
+/// Boxes from the outside in: each a rounded box with its keyword above
+/// its title (the Frame's corners rounder).
+fn draw_boxes(node: &BoxNode, frame: bool, items: &mut Vec<Item>, rects: &mut Vec<Rect>) {
+    let depicts = Depicts::Element(node.element.qualified_name.clone());
+    let radius = if frame { 2.0 * USAGE_CORNER_RADIUS } else { USAGE_CORNER_RADIUS };
+    items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: node.rect, fill: Fill::Background, corner_radius: radius } });
+    let keyword = format!("«{}»", node.element.kind.keyword());
+    items.extend(texts(&depicts, node.rect, &keyword, title(node.element)));
+    rects.push(node.rect);
+    for child in &node.children {
+        draw_boxes(child, false, items, rects);
+    }
 }
 
-/// A closed part: a rounded box with its keyword above its title.
-fn part_box(part: &PartBox) -> Vec<Item> {
-    let depicts = Depicts::Element(part.usage.qualified_name.clone());
-    let mut items = vec![Item {
-        depicts: depicts.clone(),
-        shape: Shape::Rect { rect: part.rect, fill: Fill::Background, corner_radius: USAGE_CORNER_RADIUS },
-    }];
-    items.extend(texts(&depicts, part.rect, "«part»", part_title(part.usage), part.rect.y));
-    items
-}
-
-/// Each port as a small square on the border, labelled beside it, outside
-/// the box.
-fn ports(part: &PartBox) -> Vec<Item> {
-    let mut items = Vec::new();
-    for slot in &part.ports {
-        let depicts = Depicts::Port { part: part.usage.qualified_name.clone(), port: slot.port.qualified_name.clone() };
-        let p = port_point(part.rect, slot);
+/// Each port as a small square on its box's border, labelled beside it,
+/// outside the box.
+fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
+    for slot in &node.ports {
+        let depicts = Depicts::Port { part: node.element.qualified_name.clone(), port: slot.port.qualified_name.clone() };
+        let p = port_point(node.rect, slot);
         let square = Rect { x: p.x - PORT_SIZE / 2.0, y: p.y - PORT_SIZE / 2.0, width: PORT_SIZE, height: PORT_SIZE };
         let beside = PORT_SIZE / 2.0 + 3.0;
         let (position, anchor) = match slot.side {
@@ -361,56 +503,91 @@ fn ports(part: &PartBox) -> Vec<Item> {
             Side::Right => (Point::new(p.x + beside, p.y - LABEL_OFFSET), TextAnchor::Start),
         };
         items.push(Item { depicts: depicts.clone(), shape: Shape::Rect { rect: square, fill: Fill::Background, corner_radius: 0.0 } });
-        items.push(Item {
-            depicts,
-            shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT },
-        });
+        items.push(Item { depicts, shape: Shape::Text { position, text: port_label(slot.port), anchor, font: LABEL_FONT } });
     }
-    items
+    for child in &node.children {
+        draw_ports(child, items);
+    }
 }
 
-/// Right-angled connectors: straight out of each port, then across the gap
-/// between them. Connectors over the same pair of ports stack their labels.
-fn connectors(parts: &[PartBox], wires: &[Wire]) -> Vec<Item> {
-    let mut items = Vec::new();
-    let mut seen: Vec<((usize, usize), (usize, usize))> = Vec::new();
-    for wire in wires {
-        let end = |(p, q): (usize, usize)| {
-            let slot = &parts[p].ports[q];
-            let point = port_point(parts[p].rect, slot);
-            let (dx, dy) = slot.side.outward();
-            (point, Point::new(point.x + dx * CONNECTOR_STUB, point.y + dy * CONNECTOR_STUB), slot.side)
+/// Where a wire end meets its box, and the direction the wire leaves in.
+fn end_point(node: &BoxNode, end: End, toward: Point) -> (Point, Side, bool) {
+    match end {
+        End::Port { child: Some(c), port } => {
+            let child = &node.children[c];
+            let slot = &child.ports[port];
+            (port_point(child.rect, slot), slot.side, false)
+        }
+        // A wire leaves the box's own port inward.
+        End::Port { child: None, port } => {
+            let slot = &node.ports[port];
+            (port_point(node.rect, slot), slot.side, true)
+        }
+        End::Part { child } => {
+            let rect = node.children[child].rect;
+            let side = facing(center(rect), toward);
+            let c = center(rect);
+            let point = match side {
+                Side::Top => Point::new(c.x, rect.y),
+                Side::Bottom => Point::new(c.x, rect.bottom()),
+                Side::Left => Point::new(rect.x, c.y),
+                Side::Right => Point::new(rect.right(), c.y),
+            };
+            (point, side, false)
+        }
+    }
+}
+
+fn rough_point(node: &BoxNode, end: End) -> Point {
+    match end.child() {
+        Some(c) => center(node.children[c].rect),
+        None => match end {
+            End::Port { port, .. } => port_point(node.rect, &node.ports[port]),
+            End::Part { .. } => center(node.rect),
+        },
+    }
+}
+
+/// Right-angled connectors, box by box: straight out of each end, then
+/// across the gap between them. Connectors over the same ends stack their
+/// labels, centred on the connector.
+fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>) {
+    let mut seen: Vec<(End, End)> = Vec::new();
+    for wire in &node.wires {
+        let leave = |end: End, other: End| {
+            let (point, side, inward) = end_point(node, end, rough_point(node, other));
+            let (dx, dy) = side.outward();
+            let sign = if inward { -1.0 } else { 1.0 };
+            let stub = Point::new(point.x + sign * dx * CONNECTOR_STUB, point.y + sign * dy * CONNECTOR_STUB);
+            (point, stub, side)
         };
-        let (a, a1, side_a) = end(wire.a);
-        let (b, b1, side_b) = end(wire.b);
-        let vertical = |s: Side| matches!(s, Side::Top | Side::Bottom);
-        // Ports almost in line get a straight connector, not a tiny jog.
-        let points = if vertical(side_a) && vertical(side_b) && (a.x - b.x).abs() < ALIGNED {
+        let (a, a1, side_a) = leave(wire.a, wire.b);
+        let (b, b1, side_b) = leave(wire.b, wire.a);
+        let points = if side_a.vertical() && side_b.vertical() && (a.x - b.x).abs() < ALIGNED {
             vec![a, Point::new(a.x, b.y)]
-        } else if !vertical(side_a) && !vertical(side_b) && (a.y - b.y).abs() < ALIGNED {
+        } else if !side_a.vertical() && !side_b.vertical() && (a.y - b.y).abs() < ALIGNED {
             vec![a, Point::new(b.x, a.y)]
-        } else if vertical(side_a) && vertical(side_b) {
+        } else if side_a.vertical() && side_b.vertical() {
             let middle = (a1.y + b1.y) / 2.0;
             vec![a, a1, Point::new(a1.x, middle), Point::new(b1.x, middle), b1, b]
         } else {
             let middle = (a1.x + b1.x) / 2.0;
             vec![a, a1, Point::new(middle, a1.y), Point::new(middle, b1.y), b1, b]
         };
-        // Labels of connectors over the same ports stack, centred on the
-        // connector's middle.
+
         let pair = (wire.a.min(wire.b), wire.a.max(wire.b));
         let index = seen.iter().filter(|p| **p == pair).count() as f32;
         seen.push(pair);
-        let count = wires.iter().filter(|w| (w.a.min(w.b), w.a.max(w.b)) == pair).count() as f32;
+        let count = node.wires.iter().filter(|w| (w.a.min(w.b), w.a.max(w.b)) == pair).count() as f32;
         let stacked = index - (count - 1.0) / 2.0;
-        // The label sits beside the middle of the connector's longest run.
+        // The label sits beside the middle of the connector's longest run:
+        // beside a vertical run, above a horizontal one.
         let (from, to) = points
             .windows(2)
             .map(|s| (s[0], s[1]))
-            .max_by(|x, y| seg_len(*x).total_cmp(&seg_len(*y)))
+            .max_by(|x, y| run_length(*x).total_cmp(&run_length(*y)))
             .expect("a connector has segments");
         let middle = Point::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
-        // Beside a vertical run; above a horizontal one, stacking upward.
         let (position, anchor) = if from.x == to.x {
             (Point::new(middle.x + LABEL_OFFSET, middle.y + LABEL_FONT.size / 3.0 + stacked * LABEL_STACK), TextAnchor::Start)
         } else {
@@ -423,9 +600,11 @@ fn connectors(parts: &[PartBox], wires: &[Wire]) -> Vec<Item> {
             shape: Shape::Text { position, text: notation::usage_label(wire.connection), anchor, font: LABEL_FONT },
         });
     }
-    items
+    for child in &node.children {
+        draw_connectors(child, items);
+    }
 }
 
-fn seg_len((a, b): (Point, Point)) -> f32 {
+fn run_length((a, b): (Point, Point)) -> f32 {
     (b.x - a.x).abs() + (b.y - a.y).abs()
 }
