@@ -4,6 +4,7 @@
 
 pub mod canvas;
 pub mod loader;
+pub mod style_panel;
 pub mod watcher;
 
 use std::path::{Path, PathBuf};
@@ -46,6 +47,8 @@ pub struct ViewerApp {
     /// The Model Style, and why it couldn't be read if it couldn't.
     model_style: Option<viewer_core::style::Style>,
     style_error: Option<String>,
+    right_tab: RightTab,
+    style_tab: StyleTab,
     diagrams: Vec<OpenDiagram>,
     active: Option<usize>,
     /// A Diagram to open once the Model has loaded: its root, and whether
@@ -79,6 +82,18 @@ enum ContextTarget {
     Node(QualifiedName),
     Edge(Depicts),
     Canvas,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RightTab {
+    Properties,
+    Style,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StyleTab {
+    Model,
+    Diagram,
 }
 
 /// A question about discarding unsaved changes.
@@ -123,6 +138,8 @@ impl ViewerApp {
             saved_names: Vec::new(),
             model_style: None,
             style_error: None,
+            right_tab: RightTab::Properties,
+            style_tab: StyleTab::Model,
             diagrams: Vec::new(),
             active: None,
             pending_root: root.map(|root| (root, false)),
@@ -231,6 +248,12 @@ impl ViewerApp {
         if let Some((_, interconnection)) = &mut self.pending_root {
             *interconnection = true;
         }
+        self
+    }
+
+    /// Starts with the Style panel showing instead of Properties.
+    pub fn show_style_panel(mut self) -> Self {
+        self.right_tab = RightTab::Style;
         self
     }
 
@@ -423,10 +446,82 @@ impl ViewerApp {
         }
     }
 
+    fn right_panel(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.right_tab, RightTab::Properties, egui::RichText::new("Properties").heading());
+            ui.selectable_value(&mut self.right_tab, RightTab::Style, egui::RichText::new("Style").heading());
+        });
+        match self.right_tab {
+            RightTab::Properties => self.properties_panel(ui),
+            RightTab::Style => self.style_panel(ui),
+        }
+    }
+
+    /// Edits the Model Style, saved to its file as each change finishes,
+    /// or the open Diagram's own Style, an unsaved change like a Layout
+    /// edit.
+    fn style_panel(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        let (Some(model), Some(folder)) = (&self.model, &self.folder) else {
+            ui.weak("Open a Model folder to style its Diagrams.");
+            return;
+        };
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.style_tab, StyleTab::Model, "Model");
+            ui.add_enabled_ui(self.active.is_some(), |ui| {
+                ui.selectable_value(&mut self.style_tab, StyleTab::Diagram, "This Diagram")
+                    .on_disabled_hover_text("Open a Diagram first");
+            });
+        });
+        if self.active.is_none() {
+            self.style_tab = StyleTab::Model;
+        }
+        ui.separator();
+        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| match (self.style_tab, self.active) {
+            (StyleTab::Diagram, Some(active)) => {
+                let diagram = &mut self.diagrams[active];
+                let mut style = diagram.style.clone();
+                ui.checkbox(&mut style.model_style, "Use Model Style")
+                    .on_hover_text("Off: only this Diagram's rules apply");
+                ui.checkbox(&mut style.legend, "Legend");
+                ui.weak("This Diagram's rules win over the Model's.");
+                style_panel::rule_list(ui, "diagram", &mut style.rules, model);
+                diagram.set_style(model, style);
+            }
+            _ => {
+                ui.weak(format!("Applies to every Diagram; saved in {}.", viewer_core::style::path_for(folder).display()));
+                if let Some(error) = &self.style_error {
+                    ui.colored_label(ui.visuals().warn_fg_color, format!("{error}. Editing here replaces it."));
+                }
+                let mut rules = self.model_style.as_ref().map(|s| s.rules.clone()).unwrap_or_default();
+                let edited = style_panel::rule_list(ui, "model", &mut rules, model);
+                if edited.changed {
+                    self.model_style = Some(viewer_core::style::Style::new(rules));
+                    for diagram in &mut self.diagrams {
+                        diagram.set_model_style(model, self.model_style.clone());
+                    }
+                }
+                if edited.commit
+                    && let Some(style) = &self.model_style
+                {
+                    let path = viewer_core::style::path_for(folder);
+                    let written = std::fs::create_dir_all(path.parent().expect("the Style file is in a folder"))
+                        .and_then(|()| std::fs::write(&path, style.to_text()));
+                    self.status = Some(match written {
+                        Ok(()) => {
+                            self.style_error = None;
+                            format!("Saved {}", path.display())
+                        }
+                        Err(error) => format!("Style not saved: {error}"),
+                    });
+                }
+            }
+        });
+    }
+
     /// The selected element's properties, with its type, owner and
     /// generals as links that select them, and "Open in editor".
     fn properties_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Properties");
         ui.separator();
         let (Some(model), Some(selected)) = (&self.model, &self.selected) else {
             ui.weak("Select an element in the Browser or a Diagram.");
@@ -1128,7 +1223,7 @@ impl eframe::App for ViewerApp {
         egui::Panel::right("properties")
             .resizable(true)
             .default_size(280.0)
-            .show(ui, |ui| self.properties_panel(ui));
+            .show(ui, |ui| self.right_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.diagram_area(ui));
     }
 }

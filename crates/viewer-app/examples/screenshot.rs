@@ -64,6 +64,8 @@ fn main() -> eframe::Result {
             let app = ViewerApp::new(&cc.egui_ctx, Box::new(OpenSysmlBackend::new()), Some(folder), root);
             // SCREENSHOT_INTERCONNECTION=1 opens the root's Interconnection Diagram.
             let app = if std::env::var_os("SCREENSHOT_INTERCONNECTION").is_some() { app.prefer_interconnection() } else { app };
+            // SCREENSHOT_STYLE=1 shows the Style panel instead of Properties.
+            let app = if std::env::var_os("SCREENSHOT_STYLE").is_some() { app.show_style_panel() } else { app };
             Ok(Box::new(Screenshot { app, out, started: Instant::now(), requested: false, saved: Default::default() }))
         }),
     )

@@ -397,3 +397,29 @@ fn a_styled_diagram_with_a_legend_matches_the_golden_file() {
 
     assert_golden("styled-legend.svg", &scene);
 }
+
+#[test]
+fn rules_move_up_and_down_and_stop_at_the_ends() {
+    let mut rules = vec![kind("part def", BLUE), kind("port", RED), kind("part", GREEN)];
+    let order = |r: &[StyleRule]| r.iter().map(|r| r.fill).collect::<Vec<_>>();
+
+    viewer_core::style::move_up(&mut rules, 2);
+    assert_eq!(order(&rules), [BLUE, GREEN, RED]);
+    viewer_core::style::move_down(&mut rules, 0);
+    assert_eq!(order(&rules), [GREEN, BLUE, RED]);
+    viewer_core::style::move_up(&mut rules, 0);
+    viewer_core::style::move_down(&mut rules, 2);
+    viewer_core::style::move_down(&mut rules, 9);
+    assert_eq!(order(&rules), [GREEN, BLUE, RED], "no change at the ends or out of range");
+}
+
+#[test]
+fn a_condition_knows_whether_what_it_names_is_in_the_model() {
+    let model = model();
+
+    assert!(Condition::Package(qn("V::Powertrain")).exists_in(&model));
+    assert!(!Condition::Package(qn("V::Gone")).exists_in(&model));
+    assert!(Condition::Metadata(qn("V::Safety")).exists_in(&model));
+    assert!(Condition::Kind("part def".to_owned()).exists_in(&model));
+    assert!(!Condition::Kind("widget".to_owned()).exists_in(&model));
+}

@@ -68,6 +68,50 @@ impl Condition {
     }
 }
 
+/// The kinds a kind rule can name: those drawn as nodes.
+pub const KINDS: [&str; 10] = [
+    "part def",
+    "part",
+    "port def",
+    "port",
+    "attribute def",
+    "attribute",
+    "connection def",
+    "interface def",
+    "view def",
+    "view",
+];
+
+impl Condition {
+    /// Whether what the condition names is in the Model; a rule whose
+    /// package or metadata def is gone never matches, but is kept.
+    pub fn exists_in(&self, model: &Model) -> bool {
+        match self {
+            Condition::Kind(keyword) => KINDS.contains(&keyword.as_str()),
+            Condition::Package(name) | Condition::Metadata(name) => model.element(name).is_some(),
+        }
+    }
+}
+
+/// Moves rule `index` one place earlier; the first stays put.
+pub fn move_up(rules: &mut [StyleRule], index: usize) {
+    if index > 0 && index < rules.len() {
+        rules.swap(index - 1, index);
+    }
+}
+
+/// Moves rule `index` one place later; the last stays put.
+pub fn move_down(rules: &mut [StyleRule], index: usize) {
+    if index + 1 < rules.len() {
+        rules.swap(index, index + 1);
+    }
+}
+
+/// The rule a new row starts as: every part def, in light blue.
+pub fn new_rule() -> StyleRule {
+    StyleRule { condition: Condition::Kind("part def".to_owned()), fill: Rgb(0xdb, 0xe8, 0xf6), label: None }
+}
+
 /// One condition and the fill color it gives, with an optional Legend label.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StyleRule {
