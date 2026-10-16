@@ -12,13 +12,15 @@ env:
 
 jobs:
   build:
-    name: Build, lint and test
+    name: Format, build, lint and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+      - name: Format
+        run: cargo fmt --all --check
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --workspace --all-targets --locked
