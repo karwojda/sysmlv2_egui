@@ -224,6 +224,9 @@ pub struct Element {
     /// The library rendering a view or view definition names with
     /// `render`, such as `Views::asTreeDiagram`.
     pub rendering: Option<QualifiedName>,
+    /// The metadata defs the element is annotated with (`@Safety`,
+    /// `#Safety`, `metadata Safety`), in order.
+    pub metadata: Vec<QualifiedName>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
@@ -258,6 +261,7 @@ impl Element {
             payload: None,
             exposes: Vec::new(),
             rendering: None,
+            metadata: Vec::new(),
             documentation: None,
             source: None,
         }
@@ -418,6 +422,11 @@ impl ModelBuilder {
 
     pub fn renders(mut self, rendering: &str) -> Self {
         self.last().rendering = Some(QualifiedName::new(rendering));
+        self
+    }
+
+    pub fn annotated(mut self, metadata_def: &str) -> Self {
+        self.last().metadata.push(QualifiedName::new(metadata_def));
         self
     }
 

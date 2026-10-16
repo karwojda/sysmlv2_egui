@@ -187,3 +187,28 @@ pub fn views() -> Model {
         .renders("Views::asInterconnectionDiagram")
         .build()
 }
+
+/// Parts annotated with metadata in each of its forms (`@X`, `#X`,
+/// `metadata X`), including a usage with two annotations. The fake-backend
+/// twin of `viewer-opensysml/tests/fixtures/metadata`.
+pub fn metadata() -> Model {
+    Model::builder()
+        .package("M")
+        .part_def("M::Airbag")
+        .annotated("M::Safety")
+        .part_def("M::Brake")
+        .annotated("M::Safety")
+        .part_def("M::Radio")
+        .unsupported("M::Safety", "metadata def")
+        .part_def("M::Seat")
+        .annotated("M::Supplier")
+        .unsupported("M::Supplier", "metadata def")
+        .part_def("M::Vehicle")
+        .part("M::Vehicle::airbag")
+        .typed_by("M::Airbag")
+        .annotated("M::Safety")
+        .annotated("M::Supplier")
+        .part("M::Vehicle::radio")
+        .typed_by("M::Radio")
+        .build()
+}

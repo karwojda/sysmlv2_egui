@@ -59,8 +59,14 @@ A Layout entry whose element qualified name no longer matches anything in the Mo
 The SysML v2 specification's graphical notation, which every Diagram follows by default.
 
 **Style**:
-A set of coloring rules (by element kind, package, or metadata) layered on the Standard Notation. It is defined once for the Model and can be overridden per Diagram.
+A set of Style Rules layered on the Standard Notation, coloring node fills only. It is defined once for the Model and can be overridden per Diagram: a Diagram's own rules come on top of the Model's, or replace them when it switches the Model Style off.
 _Avoid_: theme, color scheme, skin
+
+**Style Rule**:
+One condition (the element's kind, a package it is inside, or metadata it is annotated with) and the fill color it gives. When several rules match an element, the most specific wins: metadata over package over kind.
+
+**Legend**:
+A key drawn on a Diagram, and in its Export, pairing each fill color used with the Style Rule that gave it. Shown only when the Diagram asks for it.
 
 ### Output
 

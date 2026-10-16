@@ -117,6 +117,19 @@ pub fn enrich(
                 .map(|path| ConnectionEnd { path })
                 .collect();
         }
+        {
+            let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
+            let mut annotations: Vec<&Value> = children
+                .get(id)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|c| c.get("@type").and_then(Value::as_str) == Some("MetadataUsage"))
+                .collect();
+            annotations.sort_by_key(|c| member_index(c));
+            element.metadata =
+                annotations.iter().filter_map(|c| first_reference(c, "type")).filter_map(&qualified_name).collect();
+        }
         if matches!(element.kind, ElementKind::ViewUsage | ElementKind::ViewDefinition) {
             let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
             let mut owned: Vec<&Value> = children.get(id).cloned().unwrap_or_default();

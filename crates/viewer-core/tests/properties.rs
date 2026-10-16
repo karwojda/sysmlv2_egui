@@ -134,3 +134,18 @@ fn a_view_says_how_it_is_drawn_or_why_it_cant_be() {
     assert_eq!(drawn_as("V::table").as_deref(), Some("unsupported: it renders as `asElementTable`"));
     assert_eq!(drawn_as("V::TreeView"), None, "a view definition isn't drawn");
 }
+
+#[test]
+fn metadata_annotations_are_listed_and_lead_to_their_defs() {
+    let airbag = properties(&common::metadata(), &qn("M::Vehicle::airbag")).unwrap();
+    let rows: Vec<(&str, String, Option<QualifiedName>)> =
+        airbag.rows.into_iter().filter(|p| p.label == "Metadata").map(|p| (p.label, p.value, p.refers_to)).collect();
+
+    assert_eq!(
+        rows,
+        [
+            ("Metadata", "@Safety".to_owned(), Some(qn("M::Safety"))),
+            ("Metadata", "@Supplier".to_owned(), Some(qn("M::Supplier"))),
+        ]
+    );
+}

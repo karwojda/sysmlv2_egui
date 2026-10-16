@@ -74,6 +74,9 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     for expose in &e.exposes {
         rows.push(link("Exposes", &expose.target, expose.to_string()));
     }
+    for metadata in &e.metadata {
+        rows.push(link("Metadata", metadata, format!("@{}", metadata.simple_name())));
+    }
     if let Some(documentation) = &e.documentation {
         rows.push(text("Documentation", documentation.clone()));
     }
