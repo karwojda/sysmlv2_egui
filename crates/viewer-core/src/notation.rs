@@ -134,7 +134,7 @@ fn feature_row(feature: &Element) -> String {
         let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
         row.push_str(&format!(" ({})", ends.join(" → ")));
     }
-    row
+    row.trim_start().to_owned()
 }
 
 fn title_font(content: &NodeContent) -> Font {
@@ -304,10 +304,13 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
         let (a, b) = (path[segment], path[segment + 1]);
         (Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0 - LABEL_OFFSET), TextAnchor::Middle)
     };
-    tag(depicts, vec![
-        Shape::Polyline { points: path, dashed: false },
-        Shape::Text { position, text: usage_label(element), anchor, font: LABEL_FONT },
-    ])
+    let text = usage_label(element);
+    let mut shapes = vec![Shape::Polyline { points: path, dashed: false }];
+    // An unnamed, untyped connection has no label.
+    if !text.is_empty() {
+        shapes.push(Shape::Text { position, text, anchor, font: LABEL_FONT });
+    }
+    tag(depicts, shapes)
 }
 
 /// Bends that fan out `count` parallel edges between `a` and `b`: edge

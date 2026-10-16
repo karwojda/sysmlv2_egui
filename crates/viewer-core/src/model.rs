@@ -57,6 +57,8 @@ pub enum ElementKind {
     ConnectionUsage,
     InterfaceDefinition,
     InterfaceUsage,
+    FlowUsage,
+    BindingConnection,
     Unsupported(String),
 }
 
@@ -75,6 +77,8 @@ impl ElementKind {
             ElementKind::ConnectionUsage => "connection",
             ElementKind::InterfaceDefinition => "interface def",
             ElementKind::InterfaceUsage => "interface",
+            ElementKind::FlowUsage => "flow",
+            ElementKind::BindingConnection => "bind",
             ElementKind::Unsupported(keyword) => keyword,
         }
     }
@@ -90,9 +94,16 @@ impl ElementKind {
         )
     }
 
-    /// Connection and interface usages, which join other usages.
+    /// Connections, interfaces, flows and bindings: elements with ends,
+    /// drawn as connectors between the usages they join.
     pub fn is_connection(&self) -> bool {
-        matches!(self, ElementKind::ConnectionUsage | ElementKind::InterfaceUsage)
+        matches!(
+            self,
+            ElementKind::ConnectionUsage
+                | ElementKind::InterfaceUsage
+                | ElementKind::FlowUsage
+                | ElementKind::BindingConnection
+        )
     }
 }
 
@@ -165,13 +176,29 @@ pub struct Element {
     pub conjugated: bool,
     pub multiplicity: Option<Multiplicity>,
     pub direction: Option<Direction>,
-    /// The ends a connection or interface usage joins, in order.
+    /// The ends a connection-like usage joins, in order (for a flow, from
+    /// then to).
     pub ends: Vec<ConnectionEnd>,
+    /// Whether a usage is a reference (`ref part`) rather than owned.
+    pub is_reference: bool,
+    /// What a flow carries: its item type.
+    pub payload: Option<QualifiedName>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
 
 impl Element {
+    /// How the element is named to a reader: its name, or for an unnamed
+    /// connection-like element its ends (`a → b`, or `a = b` for a binding).
+    pub fn display_name(&self) -> String {
+        if !self.name.is_empty() || self.ends.is_empty() {
+            return self.name.clone();
+        }
+        let ends: Vec<String> = self.ends.iter().map(ToString::to_string).collect();
+        let joiner = if self.kind == ElementKind::BindingConnection { " = " } else { " → " };
+        ends.join(joiner)
+    }
+
     /// A plain element of `kind`; its name and owner come from the
     /// qualified name and every other property is empty.
     pub fn new(qualified_name: QualifiedName, kind: ElementKind) -> Self {
@@ -186,6 +213,8 @@ impl Element {
             multiplicity: None,
             direction: None,
             ends: Vec::new(),
+            is_reference: false,
+            payload: None,
             documentation: None,
             source: None,
         }
@@ -303,6 +332,32 @@ impl ModelBuilder {
 
     pub fn interface(self, name: &str) -> Self {
         self.element(name, ElementKind::InterfaceUsage)
+    }
+
+    pub fn flow(self, name: &str) -> Self {
+        self.element(name, ElementKind::FlowUsage)
+    }
+
+    pub fn binding(self, name: &str) -> Self {
+        self.element(name, ElementKind::BindingConnection)
+    }
+
+    /// An unnamed connection-like element, as the service reports one: a
+    /// generated qualified name (`Vehicle::@6`) and an empty name.
+    pub fn unnamed(mut self, name: &str, kind: ElementKind) -> Self {
+        self = self.element(name, kind);
+        self.last().name = String::new();
+        self
+    }
+
+    pub fn reference(mut self) -> Self {
+        self.last().is_reference = true;
+        self
+    }
+
+    pub fn payload(mut self, item: &str) -> Self {
+        self.last().payload = Some(QualifiedName::new(item));
+        self
     }
 
     pub fn unsupported(self, name: &str, keyword: &str) -> Self {

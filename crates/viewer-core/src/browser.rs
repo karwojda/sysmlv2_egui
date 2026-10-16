@@ -30,10 +30,10 @@ fn entry(model: &Model, element: &Element, filter: &str) -> Option<BrowserEntry>
         .owned_members(&element.qualified_name)
         .filter_map(|child| entry(model, child, filter))
         .collect();
-    let matches = filter.is_empty() || element.name.to_lowercase().contains(filter);
+    let matches = filter.is_empty() || element.display_name().to_lowercase().contains(filter);
     (matches || !children.is_empty()).then(|| BrowserEntry {
         element: element.qualified_name.clone(),
-        name: element.name.clone(),
+        name: element.display_name(),
         keyword: element.kind.keyword().to_owned(),
         unsupported: matches!(element.kind, ElementKind::Unsupported(_)),
         children,

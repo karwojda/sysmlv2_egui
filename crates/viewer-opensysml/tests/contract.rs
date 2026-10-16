@@ -269,3 +269,11 @@ fn loads_the_drivetrain_like_the_interconnection_tests_fake_twin() {
 
     assert_same_model(&without_sources(&real), &common::drivetrain());
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_unnamed_connections_flows_bindings_and_reference_parts_like_the_fake_twin() {
+    let real = OpenSysmlBackend::new().load(&fixture("flows")).unwrap();
+
+    assert_same_model(&without_sources(&real), &common::flows());
+}

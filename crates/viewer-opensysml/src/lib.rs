@@ -226,6 +226,8 @@ fn element_kind(kind: &str) -> ElementKind {
         "connectionUsage" => ElementKind::ConnectionUsage,
         "interfaceDef" => ElementKind::InterfaceDefinition,
         "interfaceUsage" => ElementKind::InterfaceUsage,
+        "flowUsage" => ElementKind::FlowUsage,
+        "bindingConnectorAsUsage" | "bindingConnector" => ElementKind::BindingConnection,
         other => ElementKind::Unsupported(keyword_of(other)),
     }
 }

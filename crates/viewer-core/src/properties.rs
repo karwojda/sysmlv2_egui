@@ -31,7 +31,7 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
 
     let mut rows = vec![
         text("Kind", format!("«{}»", e.kind.keyword())),
-        text("Name", e.name.clone()),
+        text("Name", if e.name.is_empty() { "(unnamed)".to_owned() } else { e.name.clone() }),
         text("Qualified name", e.qualified_name.to_string()),
     ];
     if let Some(owner) = &e.owner {

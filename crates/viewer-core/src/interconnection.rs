@@ -825,6 +825,11 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
             (Point::new(middle.x, middle.y - LABEL_OFFSET), TextAnchor::Middle)
         };
         let text = notation::usage_label(wire.connection);
+        if text.is_empty() {
+            // An unnamed, untyped connector has no label.
+            items.push(Item { depicts, shape: Shape::Polyline { points, dashed: false } });
+            continue;
+        }
         let label_at = |step: f32| Shape::Text {
             position: Point::new(preferred.x, preferred.y + step * LABEL_STACK),
             text: text.clone(),
