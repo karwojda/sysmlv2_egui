@@ -57,6 +57,12 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         let label = if i == 0 { "Connects" } else { "To" };
         rows.push(text(label, end.to_string()));
     }
+    if let Some(rendering) = &e.rendering {
+        rows.push(text("Renders", rendering.simple_name().to_owned()));
+    }
+    for expose in &e.exposes {
+        rows.push(link("Exposes", &expose.target, expose.to_string()));
+    }
     if let Some(documentation) = &e.documentation {
         rows.push(text("Documentation", documentation.clone()));
     }

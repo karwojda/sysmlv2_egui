@@ -59,6 +59,8 @@ pub enum ElementKind {
     InterfaceUsage,
     FlowUsage,
     BindingConnection,
+    ViewDefinition,
+    ViewUsage,
     Unsupported(String),
 }
 
@@ -79,6 +81,8 @@ impl ElementKind {
             ElementKind::InterfaceUsage => "interface",
             ElementKind::FlowUsage => "flow",
             ElementKind::BindingConnection => "bind",
+            ElementKind::ViewDefinition => "view def",
+            ElementKind::ViewUsage => "view",
             ElementKind::Unsupported(keyword) => keyword,
         }
     }
@@ -156,6 +160,38 @@ impl fmt::Display for ConnectionEnd {
     }
 }
 
+/// How much of its target an `expose` shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExposeScope {
+    /// `expose X`: X itself.
+    Element,
+    /// `expose X::*`: X's members.
+    Members,
+    /// `expose X::**`: X and everything beneath it.
+    ElementAndDescendants,
+    /// `expose X::*::**`: everything beneath X, but not X.
+    Descendants,
+}
+
+/// One `expose` of a view: an element and how much of it is shown.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Expose {
+    pub target: QualifiedName,
+    pub scope: ExposeScope,
+}
+
+impl fmt::Display for Expose {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let suffix = match self.scope {
+            ExposeScope::Element => "",
+            ExposeScope::Members => "::*",
+            ExposeScope::ElementAndDescendants => "::**",
+            ExposeScope::Descendants => "::*::**",
+        };
+        write!(f, "{}{suffix}", self.target)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceLocation {
     pub file: PathBuf,
@@ -183,6 +219,11 @@ pub struct Element {
     pub is_reference: bool,
     /// What a flow carries: its item type.
     pub payload: Option<QualifiedName>,
+    /// What a view shows, in order.
+    pub exposes: Vec<Expose>,
+    /// The library rendering a view or view definition names with
+    /// `render`, such as `Views::asTreeDiagram`.
+    pub rendering: Option<QualifiedName>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
@@ -215,6 +256,8 @@ impl Element {
             ends: Vec::new(),
             is_reference: false,
             payload: None,
+            exposes: Vec::new(),
+            rendering: None,
             documentation: None,
             source: None,
         }
@@ -357,6 +400,24 @@ impl ModelBuilder {
 
     pub fn payload(mut self, item: &str) -> Self {
         self.last().payload = Some(QualifiedName::new(item));
+        self
+    }
+
+    pub fn view_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::ViewDefinition)
+    }
+
+    pub fn view(self, name: &str) -> Self {
+        self.element(name, ElementKind::ViewUsage)
+    }
+
+    pub fn exposes(mut self, target: &str, scope: ExposeScope) -> Self {
+        self.last().exposes.push(Expose { target: QualifiedName::new(target), scope });
+        self
+    }
+
+    pub fn renders(mut self, rendering: &str) -> Self {
+        self.last().rendering = Some(QualifiedName::new(rendering));
         self
     }
 

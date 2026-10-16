@@ -28,7 +28,13 @@ _Avoid_: diagram type, chart
 A Diagram the user creates by choosing a Diagram Kind and a root element.
 
 **Model-defined Diagram**:
-A Diagram derived from a SysML `view` usage in the Model, using what it exposes and renders.
+A Diagram derived from a SysML `view` usage in the Model, using what it exposes and renders. Its Diagram Kind and elements come from the Model each time it is drawn; only its Layout is stored.
+
+**Exposed Element**:
+An element a `view` names with `expose`, so it appears in the view's Model-defined Diagram (`X` itself, `X::*` its members, `X::**` all its descendants).
+
+**Unsupported View**:
+A `view` whose rendering or definition has no matching Diagram Kind in this tool (for example a table or a sequence view). It is listed but can't be drawn.
 
 **Layout**:
 The user's adjustments to a Diagram's automatic arrangement (positions, sizes, edge routes, port positions, hidden, collapsed and opened elements), stored outside the Model.
@@ -43,7 +49,7 @@ A part in an Interconnection Diagram drawn with its own parts and connections in
 _Avoid_: expanded part, drilled-down part (collapsing is about compartments, not parts)
 
 **Diagram File**:
-A saved Diagram: its Diagram Kind, its root element, and its Layout, in one file beside the Model. Diagrams that are opened but never saved leave no Diagram File.
+A saved Diagram: its Diagram Kind and root element (or, for a Model-defined Diagram, the `view` it comes from), and its Layout, in one file beside the Model. Diagrams that are opened but never saved leave no Diagram File.
 _Avoid_: layout file, diagram definition
 
 **Orphaned Layout Entry**:

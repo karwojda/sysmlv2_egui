@@ -180,6 +180,13 @@ fn collect(
     if info.kind == "connectorEnd" {
         return Ok(());
     }
+    // A view's `render` is a fact of the view, not an element of its own.
+    let owner_kind = owner.and_then(|o| out.get(o)).map(|e| &e.kind);
+    if info.kind == "renderingUsage"
+        && matches!(owner_kind, Some(ElementKind::ViewUsage | ElementKind::ViewDefinition))
+    {
+        return Ok(());
+    }
     let this = if info.id.is_empty() {
         None
     } else {
@@ -228,6 +235,8 @@ fn element_kind(kind: &str) -> ElementKind {
         "interfaceUsage" => ElementKind::InterfaceUsage,
         "flowUsage" => ElementKind::FlowUsage,
         "bindingConnectorAsUsage" | "bindingConnector" => ElementKind::BindingConnection,
+        "viewDef" => ElementKind::ViewDefinition,
+        "viewUsage" => ElementKind::ViewUsage,
         other => ElementKind::Unsupported(keyword_of(other)),
     }
 }

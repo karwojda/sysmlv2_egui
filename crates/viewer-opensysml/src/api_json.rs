@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use opensysml::{Connection, ConvertOptions, ConvertSource};
 use serde_json::Value;
-use viewer_core::model::{ConnectionEnd, Element, ElementKind, QualifiedName, SourceLocation};
+use viewer_core::model::{ConnectionEnd, Element, ElementKind, Expose, ExposeScope, QualifiedName, SourceLocation};
 
 /// Adds source locations, documentation, conjugation and connection ends
 /// to `elements`, converting one document at a time so each element's file
@@ -117,6 +117,24 @@ pub fn enrich(
                 .map(|path| ConnectionEnd { path })
                 .collect();
         }
+        if matches!(element.kind, ElementKind::ViewUsage | ElementKind::ViewDefinition) {
+            let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
+            let mut owned: Vec<&Value> = children.get(id).cloned().unwrap_or_default();
+            owned.sort_by_key(|c| member_index(c));
+            for child in owned {
+                match child.get("@type").and_then(Value::as_str) {
+                    Some("MembershipExpose" | "NamespaceExpose") => {
+                        element.exposes.extend(expose(&items, child).and_then(|(target, scope)| {
+                            Some(Expose { target: qualified_name(target)?, scope })
+                        }));
+                    }
+                    Some("RenderingUsage") => {
+                        element.rendering = reference(child, "references").and_then(&qualified_name);
+                    }
+                    _ => {}
+                }
+            }
+        }
         // A flow carries its payload (`flow of Fuel`), else its own type.
         if element.kind == ElementKind::FlowUsage {
             let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
@@ -131,6 +149,35 @@ pub fn enrich(
         }
     }
     failures
+}
+
+/// The id of what an `expose` shows, and how much of it. A membership
+/// expose names a membership (`expose X`, or recursively `X::**`, which
+/// includes X); a namespace expose names the namespace (`X::*`, or
+/// recursively `X::*::**`).
+fn expose<'a>(items: &'a HashMap<String, (Value, PathBuf)>, item: &'a Value) -> Option<(&'a str, ExposeScope)> {
+    let recursive = item.get("isRecursive").and_then(Value::as_bool) == Some(true);
+    if item.get("@type").and_then(Value::as_str) == Some("NamespaceExpose") {
+        let scope = if recursive { ExposeScope::Descendants } else { ExposeScope::Members };
+        return Some((reference(item, "importedNamespace")?, scope));
+    }
+    let membership = reference(item, "importedMembership")?;
+    let target = items
+        .get(membership)
+        .and_then(|(m, _)| reference(m, "memberElement"))
+        .or_else(|| membership.strip_suffix("_om").filter(|id| items.contains_key(*id)))?;
+    let scope = if recursive { ExposeScope::ElementAndDescendants } else { ExposeScope::Element };
+    Some((target, scope))
+}
+
+/// The position of an owned element among its owner's unnamed members,
+/// from its generated name (`V::view::@2` is 2), to keep declaration order.
+fn member_index(item: &Value) -> u32 {
+    item.get("qualifiedName")
+        .and_then(Value::as_str)
+        .and_then(|name| name.rsplit_once("::@"))
+        .and_then(|(_, index)| index.parse().ok())
+        .unwrap_or(u32::MAX)
 }
 
 /// The id the first entry of a many-valued reference property points at.

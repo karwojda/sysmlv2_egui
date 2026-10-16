@@ -1,5 +1,7 @@
 //! The properties panel's content, from a Model served by the fake backend.
 
+mod common;
+
 use std::path::Path;
 
 use viewer_core::model::Direction;
@@ -96,4 +98,26 @@ fn the_source_location_is_given_for_opening_in_an_editor() {
 #[test]
 fn an_unknown_element_has_no_properties() {
     assert!(properties(&model(), &qn("P::Gone")).is_none());
+}
+
+#[test]
+fn a_view_shows_its_rendering_and_exposes_in_order() {
+    let view = properties(&common::views(), &qn("V::overview")).unwrap();
+    let rows: Vec<(&str, String, Option<QualifiedName>)> =
+        view.rows.into_iter().map(|p| (p.label, p.value, p.refers_to)).collect();
+
+    assert!(rows.contains(&("Kind", "«view»".to_owned(), None)));
+    let exposes: Vec<_> = rows.iter().filter(|r| r.0 == "Exposes").collect();
+    assert_eq!(
+        exposes,
+        [
+            &("Exposes", "V::Defs::*".to_owned(), Some(qn("V::Defs"))),
+            &("Exposes", "V::Engine".to_owned(), Some(qn("V::Engine"))),
+        ]
+    );
+
+    let tree = properties(&common::views(), &qn("V::vehicle tree")).unwrap();
+    let values: Vec<(&str, String)> = tree.rows.into_iter().map(|p| (p.label, p.value)).collect();
+    assert!(values.contains(&("Renders", "asTreeDiagram".to_owned())));
+    assert!(values.contains(&("Exposes", "V::vehicle::**".to_owned())));
 }

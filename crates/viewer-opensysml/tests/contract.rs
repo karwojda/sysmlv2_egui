@@ -277,3 +277,11 @@ fn loads_unnamed_connections_flows_bindings_and_reference_parts_like_the_fake_tw
 
     assert_same_model(&without_sources(&real), &common::flows());
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_views_with_their_exposes_and_renderings_like_the_fake_twin() {
+    let real = OpenSysmlBackend::new().load(&fixture("views")).unwrap();
+
+    assert_same_model(&without_sources(&real), &common::views());
+}

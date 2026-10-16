@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use viewer_core::Model;
-use viewer_core::model::{Direction, ModelBuilder};
+use viewer_core::model::{Direction, ExposeScope, ModelBuilder};
 
 /// A drivetrain after slide 40 of the notation reference: fuel tank,
 /// engine, transmission, driveshaft, a rear axle assembly with its own
@@ -143,5 +143,47 @@ pub fn flows() -> Model {
         .end(&["F::Vehicle::engine", "F::Engine::fuelIn"])
         .part("F::Vehicle::tank")
         .typed_by("F::Tank")
+        .build()
+}
+
+/// Views of a small vehicle: a parts tree, an interconnection view, a view
+/// inheriting its rendering from a view definition, a `GeneralView` without
+/// a rendering, and a table. The fake-backend twin of
+/// `viewer-opensysml/tests/fixtures/views`.
+pub fn views() -> Model {
+    Model::builder()
+        .package("V")
+        .package("V::Defs")
+        .part_def("V::Defs::Frame")
+        .attribute_def("V::Defs::Mass")
+        .part_def("V::Engine")
+        .view_def("V::TreeView")
+        .renders("Views::asTreeDiagram")
+        .part_def("V::Vehicle")
+        .part("V::Vehicle::engine")
+        .typed_by("V::Engine")
+        .part("V::Vehicle::wheel")
+        .typed_by("V::Wheel")
+        .multiplicity("4", "4")
+        .part_def("V::Wheel")
+        .view("V::inherited")
+        .typed_by("V::TreeView")
+        .exposes("V::Vehicle", ExposeScope::Members)
+        .view("V::overview")
+        .typed_by("StandardViewDefinitions::GeneralView")
+        .exposes("V::Defs", ExposeScope::Members)
+        .exposes("V::Engine", ExposeScope::Element)
+        .view("V::table")
+        .exposes("V::Defs", ExposeScope::Members)
+        .renders("Views::asElementTable")
+        .part("V::vehicle")
+        .typed_by("V::Vehicle")
+        .part("V::vehicle::body")
+        .view("V::vehicle tree")
+        .exposes("V::vehicle", ExposeScope::ElementAndDescendants)
+        .renders("Views::asTreeDiagram")
+        .view("V::wiring")
+        .exposes("V::Vehicle", ExposeScope::Element)
+        .renders("Views::asInterconnectionDiagram")
         .build()
 }
