@@ -493,3 +493,40 @@ fn two_usages_of_the_same_definition_open_independently() {
     assert!(cells[0].x > front.x && cells[0].right() < front.right(), "inside front");
     assert!(rear.height < front.height, "rear stays closed");
 }
+
+#[test]
+fn connectors_are_right_angled_and_never_pass_through_a_box_they_dont_connect() {
+    let scenes = [
+        ("vehicle", interconnection("S::Vehicle")),
+        ("drivetrain", drivetrain("D::Vehicle")),
+        ("drivetrain opened", drivetrain_opened(&["rearAxleAssembly"])),
+    ];
+    for (name, scene) in scenes {
+        let boxes: Vec<(QualifiedName, Rect)> = scene
+            .items
+            .iter()
+            .filter_map(|item| match (&item.depicts, &item.shape) {
+                (Depicts::Element(e), Shape::Rect { rect, .. }) => Some((e.clone(), *rect)),
+                _ => None,
+            })
+            .collect();
+        for item in &scene.items {
+            let (Depicts::Connection(connection), Shape::Polyline { points, .. }) = (&item.depicts, &item.shape) else { continue };
+            let (first, last) = (points[0], *points.last().unwrap());
+            for segment in points.windows(2) {
+                let (a, b) = (segment[0], segment[1]);
+                assert!(a.x == b.x || a.y == b.y, "{name}: {connection} has a slanted segment {a:?} → {b:?}");
+                for (element, rect) in &boxes {
+                    // A connector may run inside the boxes its ends lie in.
+                    if rect.contains(first) || rect.contains(last) {
+                        continue;
+                    }
+                    let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+                    let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+                    let through = x0 < rect.right() - 1.0 && x1 > rect.x + 1.0 && y0 < rect.bottom() - 1.0 && y1 > rect.y + 1.0;
+                    assert!(!through, "{name}: {connection} passes through {element}");
+                }
+            }
+        }
+    }
+}

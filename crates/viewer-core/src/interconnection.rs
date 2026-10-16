@@ -32,6 +32,13 @@ const PORT_SPACING: f32 = 20.0;
 const CONNECTOR_STUB: f32 = 16.0;
 /// How close two ports must be across the connector to count as in line.
 const ALIGNED: f32 = 2.0;
+/// How much more level than not a peer must be for a port to face it
+/// sideways.
+const VERTICAL_BIAS: f32 = 0.5;
+/// How far connectors keep from boxes they pass.
+const CLEARANCE: f32 = 10.0;
+/// What a bend costs in a route, in units of length.
+const BEND_COST: f32 = 60.0;
 /// How many lines up or down a connector label may move to clear others.
 const LABEL_TRIES: usize = 6;
 /// Vertical distance between stacked connector labels.
@@ -368,9 +375,11 @@ fn center(rect: Rect) -> Point {
     Point::new(rect.center_x(), rect.y + rect.height / 2.0)
 }
 
+/// The side of a box at `from` that faces `to`. Top and bottom win unless
+/// `to` is mostly level with `from`, since layers run top to bottom.
 fn facing(from: Point, to: Point) -> Side {
     let (dx, dy) = (to.x - from.x, to.y - from.y);
-    if dy.abs() >= dx.abs() {
+    if dy.abs() >= VERTICAL_BIAS * dx.abs() {
         if dy >= 0.0 { Side::Bottom } else { Side::Top }
     } else if dx >= 0.0 {
         Side::Right
@@ -649,7 +658,8 @@ fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>)
         };
         let (a, a1, side_a) = leave(&wire.a, &wire.b);
         let (b, b1, side_b) = leave(&wire.b, &wire.a);
-        let points = if side_a.vertical() && side_b.vertical() && (a.x - b.x).abs() < ALIGNED {
+        let blocked = obstacles(node, &wire.a, &wire.b);
+        let simple = if side_a.vertical() && side_b.vertical() && (a.x - b.x).abs() < ALIGNED {
             vec![a, Point::new(a.x, b.y)]
         } else if !side_a.vertical() && !side_b.vertical() && (a.y - b.y).abs() < ALIGNED {
             vec![a, Point::new(b.x, a.y)]
@@ -659,6 +669,20 @@ fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>)
         } else {
             let middle = (a1.x + b1.x) / 2.0;
             vec![a, a1, Point::new(middle, a1.y), Point::new(middle, b1.y), b1, b]
+        };
+        // Stubs may cross their own ends' title bands; everything between
+        // them, or a straight connector as a whole, must be clear.
+        let clear = |points: &[Point]| {
+            let checked = if points.len() == 2 { points } else { &points[1..points.len() - 1] };
+            checked.windows(2).all(|s| !blocked.iter().any(|r| segment_crosses(s[0], s[1], *r)))
+        };
+        let points = if clear(&simple) {
+            simple
+        } else {
+            match route(a1, b1, &blocked) {
+                Some(path) => [vec![a], path, vec![b]].concat(),
+                None => simple,
+            }
         };
 
         // Beside a vertical run, above a horizontal one.
@@ -693,6 +717,125 @@ fn draw_connectors(node: &BoxNode, items: &mut Vec<Item>, taken: &mut Vec<Rect>)
     for child in &node.children {
         draw_connectors(child, items, taken);
     }
+}
+
+/// What a wire inside `node` must route around: every box in the tree
+/// except the ones its ends lie in (and their enclosing boxes), plus the
+/// title band of every box with parts drawn inside, `node`'s own included.
+fn obstacles(node: &BoxNode, a: &End, b: &End) -> Vec<Rect> {
+    fn walk(node: &BoxNode, path: &mut Vec<usize>, ends: [&[usize]; 2], out: &mut Vec<Rect>) {
+        for (c, child) in node.children.iter().enumerate() {
+            path.push(c);
+            let on_an_end = ends.iter().any(|end| end.starts_with(path));
+            if !on_an_end {
+                out.push(inflate(child.rect, CLEARANCE));
+            } else {
+                if !child.children.is_empty() {
+                    out.push(inflate(title_band(child), CLEARANCE));
+                }
+                walk(child, path, ends, out);
+            }
+            path.pop();
+        }
+    }
+    let mut out = vec![title_band(node)];
+    walk(node, &mut Vec::new(), [a.path(), b.path()], &mut out);
+    out
+}
+
+fn title_band(node: &BoxNode) -> Rect {
+    Rect { x: node.rect.x, y: node.rect.y, width: node.rect.width, height: TITLE_BAND }
+}
+
+fn inflate(rect: Rect, by: f32) -> Rect {
+    Rect { x: rect.x - by, y: rect.y - by, width: rect.width + 2.0 * by, height: rect.height + 2.0 * by }
+}
+
+/// Whether an axis-aligned segment passes through the inside of `rect`.
+fn segment_crosses(a: Point, b: Point, rect: Rect) -> bool {
+    let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+    let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+    x0 < rect.right() && x1 > rect.x && y0 < rect.bottom() && y1 > rect.y
+}
+
+/// A right-angled route from `from` to `to` around `blocked`: a cheapest
+/// path over the grid of lines through both points and just outside every
+/// obstacle's edges, where each bend costs [`BEND_COST`].
+fn route(from: Point, to: Point, blocked: &[Rect]) -> Option<Vec<Point>> {
+    let mut xs = vec![from.x, to.x];
+    let mut ys = vec![from.y, to.y];
+    for r in blocked {
+        xs.extend([r.x - 1.0, r.right() + 1.0]);
+        ys.extend([r.y - 1.0, r.bottom() + 1.0]);
+    }
+    let dedup = |v: &mut Vec<f32>| {
+        v.sort_by(f32::total_cmp);
+        v.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+    };
+    dedup(&mut xs);
+    dedup(&mut ys);
+    let inside = |p: Point| blocked.iter().any(|r| p.x > r.x && p.x < r.right() && p.y > r.y && p.y < r.bottom());
+    let index = |v: &[f32], value: f32| v.iter().position(|x| (x - value).abs() < 0.5);
+    let start = (index(&xs, from.x)?, index(&ys, from.y)?);
+    let goal = (index(&xs, to.x)?, index(&ys, to.y)?);
+    let point = |(i, j): (usize, usize)| Point::new(xs[i], ys[j]);
+
+    // Dijkstra over (grid point, heading); headings: 0 horizontal, 1 vertical.
+    let mut best: BTreeMap<((usize, usize), u8), f32> = BTreeMap::new();
+    let mut previous: BTreeMap<((usize, usize), u8), ((usize, usize), u8)> = BTreeMap::new();
+    let mut frontier: Vec<(f32, (usize, usize), u8)> = vec![(0.0, start, 0), (0.0, start, 1)];
+    best.insert((start, 0), 0.0);
+    best.insert((start, 1), 0.0);
+    while let Some(k) = (0..frontier.len()).min_by(|x, y| frontier[*x].0.total_cmp(&frontier[*y].0)) {
+        let (cost, at, heading) = frontier.swap_remove(k);
+        if best.get(&(at, heading)).is_some_and(|b| *b < cost) {
+            continue;
+        }
+        if at == goal {
+            let mut points = vec![point(at)];
+            let mut state = (at, heading);
+            while let Some(prev) = previous.get(&state) {
+                if prev.0 != state.0 {
+                    points.push(point(prev.0));
+                }
+                state = *prev;
+            }
+            points.reverse();
+            // Keep only the corners.
+            let mut corners: Vec<Point> = Vec::new();
+            for p in points {
+                if corners.len() >= 2 {
+                    let (q, r) = (corners[corners.len() - 2], corners[corners.len() - 1]);
+                    if (q.x == r.x && r.x == p.x) || (q.y == r.y && r.y == p.y) {
+                        corners.pop();
+                    }
+                }
+                corners.push(p);
+            }
+            return Some(corners);
+        }
+        let neighbours = [
+            (at.0.checked_sub(1).map(|i| (i, at.1)), 0u8),
+            ((at.0 + 1 < xs.len()).then_some((at.0 + 1, at.1)), 0),
+            (at.1.checked_sub(1).map(|j| (at.0, j)), 1),
+            ((at.1 + 1 < ys.len()).then_some((at.0, at.1 + 1)), 1),
+        ];
+        for (next, next_heading) in neighbours {
+            let Some(next) = next else { continue };
+            let (p, q) = (point(at), point(next));
+            if (next != goal && inside(q)) || blocked.iter().any(|r| segment_crosses(p, q, *r)) {
+                continue;
+            }
+            let turn = if next_heading != heading { BEND_COST } else { 0.0 };
+            let next_cost = cost + run_length((p, q)) + turn;
+            if best.get(&(next, next_heading)).is_none_or(|b| next_cost < *b) {
+                best.insert((next, next_heading), next_cost);
+                previous.insert((next, next_heading), (at, heading));
+                frontier.push((next_cost, next, next_heading));
+            }
+        }
+    }
+    None
 }
 
 fn run_length((a, b): (Point, Point)) -> f32 {

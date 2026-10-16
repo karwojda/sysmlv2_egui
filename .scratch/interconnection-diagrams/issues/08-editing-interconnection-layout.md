@@ -11,3 +11,4 @@
 - [ ] Dragging a port moves it along the border and can move it round a corner to another side; saved in `Layout::ports` and honoured by the Export
 - [ ] The part context menu offers Open / Close, which toggles `Layout::opened`
 - [ ] Seam 1 tests for each edit (scene and Diagram File); canvas gestures checked by the user
+- [ ] Saved bends take precedence over automatic routing in Interconnection Diagrams (moved from 05)
