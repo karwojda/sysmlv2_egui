@@ -192,3 +192,37 @@ fn the_flows_interconnection_diagram_is_readable_and_matches_the_golden_file() {
         .unwrap_or_else(|_| panic!("missing {}; run with UPDATE_GOLDEN=1 to create it", golden.display()));
     assert_eq!(svg, expected, "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1");
 }
+
+#[test]
+fn a_binding_between_ports_is_a_connector_marked_equals() {
+    let scene = scene(DiagramKind::Interconnection, "F::Vehicle");
+
+    let (lines, texts) = connector(&scene, "F::Vehicle::@6");
+
+    assert_eq!(lines, 1);
+    assert_eq!(texts, ["="]);
+}
+
+#[test]
+fn a_binding_between_attribute_values_is_not_drawn_but_still_listed() {
+    let scene = scene(DiagramKind::Interconnection, "F::Vehicle");
+
+    assert_eq!(connector(&scene, "F::Vehicle::@5").0, 0, "not drawn");
+    let props = properties(&common::flows(), &qn("F::Vehicle::@5"));
+    assert!(props.is_some(), "still in the Properties panel");
+}
+
+#[test]
+fn the_general_diagram_lists_bindings_as_bind_a_equals_b() {
+    let scene = scene(DiagramKind::General, "F");
+    let rows: Vec<String> = scene
+        .items_depicting(&Depicts::Element(qn("F::Vehicle")))
+        .filter_map(|s| match s {
+            Shape::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(rows.contains(&"bind tank.level = engine.fuelLevel".to_owned()), "{rows:?}");
+    assert!(rows.contains(&"bind tank.fuelOut = engine.fuelIn".to_owned()), "{rows:?}");
+}

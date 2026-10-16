@@ -265,7 +265,14 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> V
         .owned_members(&definition.qualified_name)
         .filter(|e| e.kind.is_connection())
         .filter_map(|connection| match &connection.ends[..] {
-            [a, b] => Some(Wire { connection, a: resolve(node, &a.path)?, b: resolve(node, &b.path)? }),
+            [a, b] => {
+                let (a, a_exact) = resolve(node, &a.path)?;
+                let (b, b_exact) = resolve(node, &b.path)?;
+                // A binding equates two features: only drawn when both are
+                // drawn exactly (not an attribute inside a part or port).
+                let binding = connection.kind == ElementKind::BindingConnection;
+                (!binding || a_exact && b_exact).then_some(Wire { connection, a, b })
+            }
             _ => None,
         })
         .collect()
@@ -273,34 +280,37 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> V
 
 /// Follows a chain of features (`rearAxleAssembly.leftWheel.hub`) into the
 /// box tree: to the port if every part on the way is open, otherwise to the
-/// innermost closed part on the chain.
-fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<End> {
+/// innermost closed part on the chain. The flag says whether the end is
+/// exactly the chain's last feature, rather than the nearest drawn box or
+/// port that contains it.
+fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
     let port_of = |b: &BoxNode, name: &QualifiedName| b.ports.iter().position(|s| &s.port.qualified_name == name);
     let child_of = |b: &BoxNode, name: &QualifiedName| b.children.iter().position(|c| &c.element.qualified_name == name);
     let (first, rest) = chain.split_first()?;
     if rest.is_empty()
         && let Some(port) = port_of(node, first)
     {
-        return Some(End::Port { path: Vec::new(), port });
+        return Some((End::Port { path: Vec::new(), port }, true));
     }
     let mut path = vec![child_of(node, first)?];
     let mut current = &node.children[path[0]];
-    for name in rest {
+    for (i, name) in rest.iter().enumerate() {
+        let last = i + 1 == rest.len();
         if let Some(c) = child_of(current, name) {
             path.push(c);
             current = &current.children[c];
         } else if let Some(port) = port_of(current, name) {
             // The rest of the chain, if any, is inside the port (an item it
             // carries): the port is as far as the drawing goes.
-            return Some(End::Port { path, port });
+            return Some((End::Port { path, port }, last));
         } else if current.children.is_empty() {
             // A closed part: the rest of the chain is inside it.
-            return Some(End::Part { path });
+            return Some((End::Part { path }, false));
         } else {
             return None;
         }
     }
-    Some(End::Part { path })
+    Some((End::Part { path }, true))
 }
 
 fn port_direction(node: &BoxNode, end: &End) -> Option<Direction> {

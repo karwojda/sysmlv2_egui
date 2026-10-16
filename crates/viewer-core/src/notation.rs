@@ -84,7 +84,10 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
     ("attributes", &[ElementKind::AttributeUsage]),
     ("ports", &[ElementKind::PortUsage]),
     ("parts", &[ElementKind::PartUsage]),
-    ("connections", &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage, ElementKind::FlowUsage]),
+    (
+        "connections",
+        &[ElementKind::ConnectionUsage, ElementKind::InterfaceUsage, ElementKind::FlowUsage, ElementKind::BindingConnection],
+    ),
 ];
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
@@ -117,6 +120,7 @@ pub(crate) fn connector_label(element: &Element) -> String {
     match (&element.kind, &element.payload) {
         (ElementKind::FlowUsage, Some(payload)) => format!("{}:{}", element.name, payload.simple_name()),
         (ElementKind::FlowUsage, None) => element.name.clone(),
+        (ElementKind::BindingConnection, _) => "=".to_owned(),
         _ => usage_label(element),
     }
 }
@@ -161,6 +165,12 @@ fn feature_row(feature: &Element) -> String {
     if let Some(direction) = feature.direction {
         row.push_str(direction.keyword());
         row.push(' ');
+    }
+    if feature.kind == ElementKind::BindingConnection {
+        // `bind a = b`, with the binding's name first if it has one.
+        let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
+        let name = if feature.name.is_empty() { String::new() } else { format!("{} ", feature.name) };
+        return format!("bind {name}{}", ends.join(" = "));
     }
     if feature.kind == ElementKind::FlowUsage {
         row.push_str("flow ");
