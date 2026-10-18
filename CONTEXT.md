@@ -58,6 +58,13 @@ A Layout entry whose element qualified name no longer matches anything in the Mo
 **Standard Notation**:
 The SysML v2 specification's graphical notation, which every Diagram follows by default.
 
+**Satisfaction Claim**:
+A `satisfy` in the Model stating that a part (the satisfier) satisfies a requirement usage. It is drawn as a `«satisfy»` edge from the satisfier to the requirement.
+
+**Satisfaction Status**:
+Whether a requirement usage is met, as checked by evaluating its Satisfaction Claims against the Model's values: Satisfied (every claim holds), Violated (a claim's condition is false), Undecided (a claim couldn't be evaluated, for example a value is missing), or Not claimed (nothing claims to satisfy it). With several claims, the worst one decides.
+_Avoid_: verified, passed (verification cases are a separate thing)
+
 **Style**:
 A set of Style Rules layered on the Standard Notation, coloring node fills only. It is defined once for the Model and can be overridden per Diagram: a Diagram's own rules come on top of the Model's, or replace them when it switches the Model Style off.
 _Avoid_: theme, color scheme, skin
