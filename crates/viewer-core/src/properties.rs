@@ -1,6 +1,7 @@
 //! What the properties panel shows for an element: labelled values, some of
 //! which refer to other elements and can be followed.
 
+use crate::constraint;
 use crate::diagram::DiagramKind;
 use crate::model::{ClaimResult, ElementKind, Model, QualifiedName, SourceLocation};
 use crate::satisfaction;
@@ -67,6 +68,38 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     }
     if let Some(value) = &e.value {
         rows.push(text("Value", value.clone()));
+    }
+    if let Some(expression) = &e.expression {
+        rows.push(text("Expression", expression.clone()));
+    }
+    if e.is_asserted {
+        rows.push(text("Asserted", "yes".to_owned()));
+    }
+    // An asserted constraint: what checking it found on each part.
+    for check in &e.checks {
+        rows.push(link(
+            "Result",
+            &check.part,
+            format!("on {} {}", check.part, constraint::describe(&check.result)),
+        ));
+    }
+    // A part: what checking each of its constraints found on it.
+    for (constraint_element, check) in constraint::checks_on(model, element) {
+        let mark = constraint::check_status(&check.result).mark();
+        rows.push(link(
+            "Asserts",
+            &constraint_element.qualified_name,
+            format!("{} {mark}", constraint_element.name),
+        ));
+        match &check.result {
+            ClaimResult::Violated { condition } => {
+                rows.push(text("Failing condition", condition.clone()))
+            }
+            ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason } => {
+                rows.push(text("Undecided because", reason.clone()))
+            }
+            ClaimResult::Holds => {}
+        }
     }
     for constraint in &e.require {
         rows.push(text("Requires", format!("{{{constraint}}}")));

@@ -228,10 +228,7 @@ pub fn node_content(
             }
         } else {
             // A part's constraints, asserted and plain, follow its attributes.
-            let row = |c: &Element| match &c.expression {
-                Some(expression) => format!("{{{expression}}}"),
-                None => usage_label(c),
-            };
+            let row = crate::constraint::row_text;
             let owned = || {
                 model
                     .owned_members(&element.qualified_name)
@@ -241,7 +238,42 @@ pub fn node_content(
             if !plain.is_empty() {
                 insert_after_attributes(&mut compartments, "constraints", plain);
             }
-            let asserted: Vec<String> = owned().filter(|c| c.is_asserted).map(row).collect();
+            // On a part, each asserted row ends with what checking it on this
+            // part found (? if never checked), and inherited ones follow
+            // with `^`. A definition has no values to check: no marks.
+            let part = &element.qualified_name;
+            let checked = !element.kind.is_definition();
+            let mark_on = |c: &Element| {
+                c.checks
+                    .iter()
+                    .find(|check| &check.part == part)
+                    .map_or("?", |check| {
+                        crate::constraint::check_status(&check.result).mark()
+                    })
+            };
+            let mut asserted: Vec<String> = owned()
+                .filter(|c| c.is_asserted)
+                .map(|c| {
+                    if checked {
+                        format!("{} {}", row(c), mark_on(c))
+                    } else {
+                        row(c)
+                    }
+                })
+                .collect();
+            if checked {
+                asserted.extend(
+                    crate::constraint::checks_on(model, part)
+                        .filter(|(c, _)| c.owner.as_ref() != Some(part))
+                        .map(|(c, check)| {
+                            format!(
+                                "^{} {}",
+                                row(c),
+                                crate::constraint::check_status(&check.result).mark()
+                            )
+                        }),
+                );
+            }
             if !asserted.is_empty() {
                 insert_after_attributes(&mut compartments, "assert constraints", asserted);
             }
@@ -285,7 +317,9 @@ pub fn node_content(
             format!("{short_id}{}", element.name)
         },
         subtitle,
-        badge: crate::satisfaction::status(model, &element.qualified_name).map(|s| s.mark()),
+        badge: crate::satisfaction::status(model, &element.qualified_name)
+            .map(|s| s.mark())
+            .or_else(|| crate::constraint::status(element).map(|s| s.mark())),
         usage,
         compartments,
     }

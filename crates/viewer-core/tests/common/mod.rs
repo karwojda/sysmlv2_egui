@@ -441,6 +441,13 @@ pub fn assertions() -> Model {
         .constraint("C::Tank::fits")
         .asserted()
         .expression("fuelMass <= fuelMassMax")
+        // Inherited by the vehicle's tank, which holds 50 of at most 45.
+        .checked_on(
+            "C::vehicle::tank",
+            ClaimResult::Violated {
+                condition: "fuelMass <= fuelMassMax".to_owned(),
+            },
+        )
         .attribute("C::Tank::fuelMass")
         .typed_by(real)
         .attribute("C::Tank::fuelMassMax")
@@ -459,13 +466,21 @@ pub fn assertions() -> Model {
         .constraint("C::vehicle::light")
         .asserted()
         .expression("mass <= 1500.0")
+        .checked_on("C::vehicle", ClaimResult::Holds)
         .attribute("C::vehicle::mass")
         .value("1400.0")
         .attribute("C::vehicle::power")
         .value("90.0")
         .constraint("C::vehicle::powerToWeight")
         .asserted()
-        .typed_by("C::MaxRatio");
+        .typed_by("C::MaxRatio")
+        // 1400 / 90 > 12.
+        .checked_on(
+            "C::vehicle",
+            ClaimResult::Violated {
+                condition: "numerator / denominator <= limit".to_owned(),
+            },
+        );
     let b = parameter(b, "C::vehicle::powerToWeight::denominator").value("power");
     let b = parameter(b, "C::vehicle::powerToWeight::limit").value("12.0");
     let b = parameter(b, "C::vehicle::powerToWeight::numerator").value("mass");

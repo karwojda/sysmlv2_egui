@@ -195,6 +195,15 @@ pub enum ClaimResult {
     },
 }
 
+/// What checking an asserted constraint on one part found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstraintCheck {
+    /// The part the constraint was checked on: the one that owns it, or one
+    /// that inherits it from its definition.
+    pub part: QualifiedName,
+    pub result: ClaimResult,
+}
+
 /// How much of its target an `expose` shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExposeScope {
@@ -275,6 +284,8 @@ pub struct Element {
     pub is_asserted: bool,
     /// A constraint's own expression, as text (`fuelMass <= fuelMassMax`).
     pub expression: Option<String>,
+    /// For an asserted constraint, what checking it on each part found.
+    pub checks: Vec<ConstraintCheck>,
     /// For a Satisfaction Claim, the requirement usage it claims is
     /// satisfied.
     pub satisfies: Option<QualifiedName>,
@@ -338,6 +349,7 @@ impl Element {
             value: None,
             is_asserted: false,
             expression: None,
+            checks: Vec::new(),
             satisfies: None,
             satisfier: None,
             claim_result: None,
@@ -553,6 +565,15 @@ impl ModelBuilder {
     /// Makes the last constraint usage asserted (`assert constraint`).
     pub fn asserted(mut self) -> Self {
         self.last().is_asserted = true;
+        self
+    }
+
+    /// Records what checking the last constraint on `part` found.
+    pub fn checked_on(mut self, part: &str, result: ClaimResult) -> Self {
+        self.last().checks.push(ConstraintCheck {
+            part: QualifiedName::new(part),
+            result,
+        });
         self
     }
 

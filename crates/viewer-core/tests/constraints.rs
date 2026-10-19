@@ -69,7 +69,7 @@ fn a_part_lists_asserted_and_plain_constraints_separately() {
 
     assert_eq!(
         compartment(&vehicle, "assert constraints", &TITLES),
-        ["{mass <= 1500.0}", "powerToWeight:MaxRatio"],
+        ["{mass <= 1500.0} ✓", "powerToWeight:MaxRatio ✗"],
         "an expression is shown in braces; a usage of a definition by name and type"
     );
     assert_eq!(
@@ -160,7 +160,7 @@ fn a_constraint_drawn_as_a_node_leaves_its_owner_s_compartment() {
 
     assert_eq!(
         compartment(&vehicle, "assert constraints", &TITLES),
-        ["{mass <= 1500.0}"]
+        ["{mass <= 1500.0} ✓"]
     );
 }
 
@@ -192,4 +192,121 @@ fn a_package_with_constraints_matches_the_golden_file() {
 #[test]
 fn a_constraint_usage_node_matches_the_golden_file() {
     assert_golden("constraints-usage.svg", &usage_node());
+}
+
+/// The vehicle and its tank as nodes, as a view exposing both would draw them.
+fn vehicle_and_tank() -> Scene {
+    let elements = [
+        qn("C::vehicle"),
+        qn("C::vehicle::tank"),
+        qn("C::vehicle::heavy"),
+        qn("C::vehicle::powerToWeight"),
+    ];
+    build_general_scene(&common::assertions(), &elements, &Default::default())
+}
+
+#[test]
+fn a_part_shows_constraints_it_inherits_with_its_own_result() {
+    let tank = texts_of(&vehicle_and_tank(), "C::vehicle::tank");
+
+    assert_eq!(
+        compartment(&tank, "assert constraints", &TITLES),
+        ["^{fuelMass <= fuelMassMax} ✗"]
+    );
+}
+
+#[test]
+fn a_part_def_s_constraints_carry_no_mark() {
+    let tank = texts_of(&package(), "C::Tank");
+
+    assert_eq!(
+        compartment(&tank, "assert constraints", &TITLES),
+        ["{fuelMass <= fuelMassMax}"]
+    );
+}
+
+#[test]
+fn an_asserted_constraint_never_checked_on_a_part_reads_undecided() {
+    let model = viewer_core::Model::builder()
+        .package("P")
+        .part("P::p")
+        .constraint("P::p::c")
+        .asserted()
+        .expression("x <= 1")
+        .build();
+    let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
+
+    assert_eq!(
+        compartment(&texts_of(&scene, "P::p"), "assert constraints", &TITLES),
+        ["{x <= 1} ?"]
+    );
+}
+
+fn badge(scene: &Scene, element: &str) -> Option<String> {
+    let node = Depicts::Element(qn(element));
+    let circle = scene.items_depicting(&node).any(
+        |s| matches!(s, Shape::Rect { corner_radius, rect, .. } if *corner_radius * 2.0 == rect.width),
+    );
+    circle.then(|| {
+        scene
+            .items_depicting(&node)
+            .find_map(|s| match s {
+                Shape::Text { text, .. } if ["✓", "✗", "?"].contains(&text.as_str()) => {
+                    Some(text.clone())
+                }
+                _ => None,
+            })
+            .unwrap()
+    })
+}
+
+#[test]
+fn only_asserted_constraint_nodes_wear_a_badge() {
+    let scene = vehicle_and_tank();
+
+    assert_eq!(
+        badge(&scene, "C::vehicle::powerToWeight").as_deref(),
+        Some("✗")
+    );
+    assert_eq!(
+        badge(&scene, "C::vehicle::heavy"),
+        None,
+        "a plain constraint is no claim"
+    );
+    assert_eq!(badge(&scene, "C::vehicle"), None, "parts carry no badge");
+}
+
+#[test]
+fn properties_explain_each_result_on_a_part_and_on_a_constraint() {
+    use viewer_core::properties::properties;
+    let model = common::assertions();
+    let rows = |element: &str| -> Vec<(&'static str, String)> {
+        properties(&model, &qn(element))
+            .unwrap()
+            .rows
+            .into_iter()
+            .map(|p| (p.label, p.value))
+            .collect()
+    };
+
+    let tank = rows("C::vehicle::tank");
+    assert!(tank.contains(&("Asserts", "fits ✗".to_owned())), "{tank:?}");
+    assert!(
+        tank.contains(&("Failing condition", "fuelMass <= fuelMassMax".to_owned())),
+        "{tank:?}"
+    );
+    let vehicle = rows("C::vehicle");
+    assert!(
+        vehicle.contains(&("Asserts", "light ✓".to_owned()))
+            && vehicle.contains(&("Asserts", "powerToWeight ✗".to_owned()))
+    );
+    assert!(rows("C::Tank::fits").contains(&(
+        "Result",
+        "on C::vehicle::tank ✗ violated: fuelMass <= fuelMassMax".to_owned()
+    )));
+}
+
+#[test]
+fn parts_with_checked_constraints_match_the_golden_file() {
+    assert_golden("constraints-checked.svg", &vehicle_and_tank());
 }

@@ -12,6 +12,7 @@
 //! connection ends, documentation, port conjugation and source lines.
 
 mod api_json;
+mod constraints;
 mod expression;
 mod satisfaction;
 
@@ -196,6 +197,13 @@ impl ModelBackend for OpenSysmlBackend {
                 message: format!(
                     "requirements could not be checked, so their status is Undecided: {reason}"
                 ),
+                location: None,
+            });
+        }
+        for warning in constraints::check(&parsed, &mut elements) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Warning,
+                message: warning,
                 location: None,
             });
         }
