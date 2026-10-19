@@ -240,6 +240,8 @@ pub struct Element {
     pub short_name: Option<String>,
     /// A requirement's subject: the owned feature it constrains.
     pub subject: Option<QualifiedName>,
+    /// A requirement's own `require` constraints, as text, in order.
+    pub require: Vec<String>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
@@ -281,6 +283,7 @@ impl Element {
             metadata: Vec::new(),
             short_name: None,
             subject: None,
+            require: Vec::new(),
             documentation: None,
             source: None,
         }
@@ -447,6 +450,12 @@ impl ModelBuilder {
     /// Makes `feature` (an owned feature, added separately) the subject.
     pub fn subject(mut self, feature: &str) -> Self {
         self.last().subject = Some(QualifiedName::new(feature));
+        self
+    }
+
+    /// Adds a `require` constraint, as its text (`v.mass <= limit`).
+    pub fn requires(mut self, constraint: &str) -> Self {
+        self.last().require.push(constraint.to_owned());
         self
     }
 

@@ -12,6 +12,7 @@
 //! connection ends, documentation, port conjugation and source lines.
 
 mod api_json;
+mod expression;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

@@ -64,6 +64,9 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             .unwrap_or_else(|| subject.to_string());
         rows.push(link("Subject", subject, label));
     }
+    for constraint in &e.require {
+        rows.push(text("Requires", format!("{{{constraint}}}")));
+    }
     if e.is_reference {
         rows.push(text("Reference", "yes".to_owned()));
     }

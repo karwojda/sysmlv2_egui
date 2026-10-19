@@ -342,3 +342,29 @@ fn loads_requirements_like_the_fake_twin() {
 
     assert_same_model(&without_sources(&real), &common::requirements());
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn rebuilds_require_constraint_text_from_the_service_s_expression_trees() {
+    let real = OpenSysmlBackend::new()
+        .load(&fixture("constraints"))
+        .unwrap();
+    assert!(real.diagnostics().is_empty(), "{:?}", real.diagnostics());
+
+    let requirement = real.element(&QualifiedName::new("E::R")).unwrap();
+
+    assert_eq!(
+        requirement.require,
+        [
+            "v.a <= limit",
+            "(v.a + v.b) * 2 > 10 and not v.ok",
+            "v.a == 3 or v.b != -1.5 implies v.ok",
+            // Library elements arrive without their short names, so a
+            // unit reads as its full name.
+            "v.m <= 1650 [kilogram]",
+            "\"x\" == \"y\" xor true",
+            "Cap(v.a)",
+            "v.a - (v.b - 1) >= v.b ** 2",
+        ]
+    );
+}

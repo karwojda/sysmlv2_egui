@@ -185,6 +185,13 @@ pub fn enrich(
         }
         if matches!(
             element.kind,
+            ElementKind::RequirementDefinition | ElementKind::RequirementUsage
+        ) {
+            let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
+            element.require = require_constraints(&items, &children, id);
+        }
+        if matches!(
+            element.kind,
             ElementKind::ViewUsage | ElementKind::ViewDefinition
         ) {
             let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
@@ -267,6 +274,47 @@ fn member_index(item: &Value) -> u32 {
         .and_then(|name| name.rsplit_once("::@"))
         .and_then(|(_, index)| index.parse().ok())
         .unwrap_or(u32::MAX)
+}
+
+/// The text of each `require` constraint a requirement owns, in order: the
+/// expression its constraint usage results in, or `…` if it has none (a
+/// constraint given by reference, say).
+fn require_constraints(
+    items: &HashMap<String, (Value, PathBuf)>,
+    children: &HashMap<&str, Vec<&Value>>,
+    requirement: &str,
+) -> Vec<String> {
+    let mut constraints: Vec<&Value> = children
+        .get(requirement)
+        .into_iter()
+        .flatten()
+        .filter(|c| {
+            c.get("@type").and_then(Value::as_str) == Some("RequirementConstraintMembership")
+        })
+        .filter(|c| c.get("kind").and_then(Value::as_str) == Some("requirement"))
+        .filter_map(|membership| reference(membership, "memberElement"))
+        .filter_map(|id| items.get(id).map(|(item, _)| item))
+        .collect();
+    constraints.sort_by_key(|c| member_index(c));
+    constraints
+        .iter()
+        .map(|constraint| {
+            let id = constraint
+                .get("@id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            children
+                .get(id)
+                .into_iter()
+                .flatten()
+                .find(|c| {
+                    c.get("@type").and_then(Value::as_str) == Some("ResultExpressionMembership")
+                })
+                .and_then(|membership| reference(membership, "memberElement"))
+                .map(|expression| crate::expression::text(items, expression))
+                .unwrap_or_else(|| crate::expression::UNKNOWN.to_owned())
+        })
+        .collect()
 }
 
 /// The id the first entry of a many-valued reference property points at.

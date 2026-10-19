@@ -150,6 +150,7 @@ pub fn node_content(
     listed: impl Fn(&QualifiedName) -> bool,
 ) -> NodeContent {
     let usage = !element.kind.is_definition();
+    let compartments_shown = compartments;
     let requirement = matches!(
         element.kind,
         ElementKind::RequirementDefinition | ElementKind::RequirementUsage
@@ -180,6 +181,28 @@ pub fn node_content(
             .unwrap_or_else(|| subject.simple_name().to_owned());
         format!("subject {label}")
     });
+    // A requirement's constraints follow its attributes, as in the notation.
+    let mut compartments: Vec<(&'static str, Vec<String>)> =
+        doc.into_iter().chain(features).collect();
+    if compartments_shown && !element.require.is_empty() {
+        let rows = element
+            .require
+            .iter()
+            .map(|text| format!("require {{{text}}}"))
+            .collect();
+        let after = compartments
+            .iter()
+            .position(|(title, _)| *title == "attributes")
+            .map_or(
+                usize::from(
+                    compartments
+                        .first()
+                        .is_some_and(|(title, _)| *title == "doc"),
+                ),
+                |i| i + 1,
+            );
+        compartments.insert(after, ("constraints", rows));
+    }
     let short_id = element
         .short_name
         .as_ref()
@@ -194,7 +217,7 @@ pub fn node_content(
         },
         subtitle,
         usage,
-        compartments: doc.into_iter().chain(features).collect(),
+        compartments,
     }
 }
 

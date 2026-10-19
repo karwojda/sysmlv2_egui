@@ -43,8 +43,57 @@ fn a_requirement_def_shows_its_short_id_subject_doc_and_attributes() {
             "limit.",
             "attributes",
             "limit:Real",
+            "constraints",
+            "require {v.mass <= limit}",
         ]
     );
+}
+
+#[test]
+fn constraints_follow_the_header_when_there_is_no_doc_or_attribute() {
+    let scene = general("Req");
+
+    assert_eq!(
+        texts_of(&scene, "Req::RangeTarget"),
+        [
+            "«requirement def»",
+            "RangeTarget",
+            "subject v:Vehicle",
+            "constraints",
+            "require {v.range >= 500.0}"
+        ]
+    );
+}
+
+#[test]
+fn a_collapsed_requirement_hides_its_constraints() {
+    let mut layout = viewer_core::Layout::default();
+    layout.collapsed.insert(qn("Req::RangeTarget"));
+    let scene = viewer_core::build_scene_with_layout(
+        &common::requirements(),
+        DiagramKind::General,
+        &qn("Req"),
+        &layout,
+    )
+    .unwrap();
+
+    assert_eq!(
+        texts_of(&scene, "Req::RangeTarget"),
+        ["«requirement def»", "RangeTarget", "subject v:Vehicle"]
+    );
+}
+
+#[test]
+fn properties_list_each_require_constraint() {
+    let props = properties(&common::requirements(), &qn("Req::MassLimit")).unwrap();
+    let requires: Vec<&str> = props
+        .rows
+        .iter()
+        .filter(|p| p.label == "Requires")
+        .map(|p| p.value.as_str())
+        .collect();
+
+    assert_eq!(requires, ["{v.mass <= limit}"]);
 }
 
 #[test]
@@ -206,4 +255,24 @@ fn a_subject_draws_no_composition_edge_to_its_type() {
         .collect();
 
     assert!(to_vehicle.is_empty(), "{to_vehicle:?}");
+}
+
+#[test]
+fn a_package_of_requirements_matches_the_golden_file() {
+    let svg = svg::render(&general("Req"));
+    let golden =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/requirements-package.svg");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &svg).unwrap();
+    }
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
 }
