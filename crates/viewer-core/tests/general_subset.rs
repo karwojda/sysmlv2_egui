@@ -64,7 +64,7 @@ fn structure() -> Model {
         .connection("Structure::link")
         .end(&["Structure::vehicle"])
         .end(&["Structure::spare"])
-        .unsupported("Structure::TopSpeed", "requirement def")
+        .unsupported("Structure::TopSpeed", "use case def")
         .build()
 }
 
@@ -326,7 +326,7 @@ fn unsupported_elements_and_their_features_are_never_drawn() {
         .package("P")
         .part_def("P::A")
         .unsupported("P::A::doSomething", "action")
-        .unsupported("P::Req", "requirement def")
+        .unsupported("P::Req", "use case def")
         .build();
 
     let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();

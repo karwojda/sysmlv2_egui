@@ -69,7 +69,7 @@ impl Condition {
 }
 
 /// The kinds a kind rule can name: those drawn as nodes.
-pub const KINDS: [&str; 10] = [
+pub const KINDS: [&str; 12] = [
     "part def",
     "part",
     "port def",
@@ -80,6 +80,8 @@ pub const KINDS: [&str; 10] = [
     "interface def",
     "view def",
     "view",
+    "requirement def",
+    "requirement",
 ];
 
 impl Condition {

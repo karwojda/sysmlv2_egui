@@ -113,6 +113,25 @@ pub fn enrich(
             }
             continue;
         }
+        if item.get("@type").and_then(Value::as_str) == Some("SubjectMembership") {
+            let owner = reference(item, "owner").and_then(qualified_name);
+            let member = reference(item, "memberElement");
+            let Some(subject) = member.and_then(qualified_name) else {
+                continue;
+            };
+            if let Some(element) = owner.and_then(|o| elements.get_mut(&o)) {
+                element.subject = Some(subject.clone());
+            }
+            // The symbol tree leaves a subject untyped; the element form has it.
+            let typed = member
+                .and_then(|id| items.get(id))
+                .and_then(|(subject_item, _)| first_reference(subject_item, "type"))
+                .and_then(qualified_name);
+            if let Some(feature) = elements.get_mut(&subject).filter(|f| f.typed_by.is_none()) {
+                feature.typed_by = typed;
+            }
+            continue;
+        }
         let Some(element) = item
             .get("qualifiedName")
             .and_then(Value::as_str)
@@ -120,6 +139,9 @@ pub fn enrich(
         else {
             continue;
         };
+        if let Some(id) = item.get("declaredShortName").and_then(Value::as_str) {
+            element.short_name = Some(id.to_owned());
+        }
         if let Some(line) = item.get("sysx:sourceLine").and_then(Value::as_u64) {
             element.source = Some(SourceLocation {
                 file: file.clone(),

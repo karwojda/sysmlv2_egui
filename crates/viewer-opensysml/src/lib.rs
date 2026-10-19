@@ -263,6 +263,8 @@ fn element_kind(kind: &str) -> ElementKind {
         "flowUsage" => ElementKind::FlowUsage,
         "bindingConnectorAsUsage" | "bindingConnector" => ElementKind::BindingConnection,
         "viewDef" => ElementKind::ViewDefinition,
+        "requirementDef" => ElementKind::RequirementDefinition,
+        "requirementUsage" => ElementKind::RequirementUsage,
         "viewUsage" => ElementKind::ViewUsage,
         other => ElementKind::Unsupported(keyword_of(other)),
     }
@@ -331,7 +333,15 @@ mod tests {
         assert_eq!(element_kind("interfaceUsage"), ElementKind::InterfaceUsage);
         assert_eq!(
             element_kind("requirementDef"),
-            ElementKind::Unsupported("requirement def".into())
+            ElementKind::RequirementDefinition
+        );
+        assert_eq!(
+            element_kind("requirementUsage"),
+            ElementKind::RequirementUsage
+        );
+        assert_eq!(
+            element_kind("useCaseDef"),
+            ElementKind::Unsupported("use case def".into())
         );
         assert_eq!(
             element_kind("actionUsage"),

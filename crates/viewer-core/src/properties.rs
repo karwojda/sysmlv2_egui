@@ -47,12 +47,22 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         ),
         text("Qualified name", e.qualified_name.to_string()),
     ];
+    if let Some(id) = &e.short_name {
+        rows.push(text("Short id", id.clone()));
+    }
     if let Some(owner) = &e.owner {
         rows.push(link("Owner", owner, owner.to_string()));
     }
     if let Some(definition) = &e.typed_by {
         let conjugate = if e.conjugated { "~" } else { "" };
         rows.push(link("Type", definition, format!("{conjugate}{definition}")));
+    }
+    if let Some(subject) = &e.subject {
+        let label = model
+            .element(subject)
+            .map(crate::notation::usage_label)
+            .unwrap_or_else(|| subject.to_string());
+        rows.push(link("Subject", subject, label));
     }
     if e.is_reference {
         rows.push(text("Reference", "yes".to_owned()));

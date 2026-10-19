@@ -25,7 +25,9 @@ impl DiagramKind {
     /// How the kind reads in a sentence, e.g. "an Interconnection Diagram".
     pub fn description(self) -> &'static str {
         match self {
-            DiagramKind::General => "a General Diagram",
+            DiagramKind::General => {
+                "a General Diagram (it must be a package, definition or requirement)"
+            }
             DiagramKind::Interconnection => {
                 "an Interconnection Diagram (it must be a part or part def)"
             }
@@ -37,7 +39,9 @@ impl DiagramKind {
     pub fn accepts_root(self, element: &Element) -> bool {
         match self {
             DiagramKind::General => {
-                element.kind == ElementKind::Package || element.kind.is_definition()
+                element.kind == ElementKind::Package
+                    || element.kind.is_definition()
+                    || element.kind == ElementKind::RequirementUsage
             }
             DiagramKind::Interconnection => {
                 element.kind == ElementKind::PartDefinition
@@ -163,9 +167,13 @@ pub fn build_scene_with_layout(
     }
     match kind {
         DiagramKind::General => {
-            let nodes: Vec<&Element> = model
-                .owned_members(root)
-                .filter(|e| is_node_in_general(e))
+            // A requirement is drawn as the top of its tree, its nested
+            // requirements below it; its subject is on its header already.
+            let itself = (element.kind == ElementKind::RequirementUsage).then_some(element);
+            let nodes: Vec<&Element> = itself
+                .into_iter()
+                .chain(model.owned_members(root).filter(|e| is_node_in_general(e)))
+                .filter(|e| element.subject.as_ref() != Some(&e.qualified_name))
                 .collect();
             let connections = model
                 .owned_members(root)
@@ -183,7 +191,10 @@ pub(crate) fn is_node_in_general(element: &Element) -> bool {
     element.kind.is_definition()
         || matches!(
             element.kind,
-            ElementKind::PartUsage | ElementKind::AttributeUsage | ElementKind::PortUsage
+            ElementKind::PartUsage
+                | ElementKind::AttributeUsage
+                | ElementKind::PortUsage
+                | ElementKind::RequirementUsage
         )
 }
 
@@ -271,7 +282,11 @@ fn general<'a>(
         }
         for usage in model
             .owned_members(&element.qualified_name)
-            .filter(|m| m.kind == ElementKind::PartUsage)
+            // A requirement's subject is what it constrains, not a part of it.
+            .filter(|m| {
+                m.kind == ElementKind::PartUsage
+                    && element.subject.as_ref() != Some(&m.qualified_name)
+            })
         {
             if let Some(part_type) = usage
                 .typed_by

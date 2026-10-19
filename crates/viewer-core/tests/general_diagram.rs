@@ -20,7 +20,7 @@ fn vehicles() -> Model {
         .part_def("Vehicles::ElectricCar")
         .specializes("Vehicles::Car")
         .part_def("Vehicles::Engine")
-        .unsupported("Vehicles::TopSpeed", "requirement def")
+        .unsupported("Vehicles::TopSpeed", "use case def")
         .package("Vehicles::Parts")
         .part_def("Vehicles::Parts::Wheel")
         .build();

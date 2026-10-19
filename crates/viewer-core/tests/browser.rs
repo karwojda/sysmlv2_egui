@@ -11,7 +11,7 @@ fn model() -> Model {
         .part_def("Vehicles::Car")
         .attribute("Vehicles::Car::mass")
         .part_def("Vehicles::Truck")
-        .unsupported("Vehicles::TopSpeed", "requirement def")
+        .unsupported("Vehicles::TopSpeed", "use case def")
         .package("Vehicles::Parts")
         .part_def("Vehicles::Parts::Wheel")
         .package("Fleet")
@@ -50,7 +50,7 @@ fn shows_the_ownership_tree_with_names_and_kinds() {
             "    «attribute» mass",
             "  «package» Parts",
             "    «part def» Wheel",
-            "  «requirement def» TopSpeed",
+            "  «use case def» TopSpeed",
             "  «part def» Truck",
         ]
     );

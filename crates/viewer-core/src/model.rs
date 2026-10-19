@@ -65,6 +65,8 @@ pub enum ElementKind {
     BindingConnection,
     ViewDefinition,
     ViewUsage,
+    RequirementDefinition,
+    RequirementUsage,
     Unsupported(String),
 }
 
@@ -87,6 +89,8 @@ impl ElementKind {
             ElementKind::BindingConnection => "bind",
             ElementKind::ViewDefinition => "view def",
             ElementKind::ViewUsage => "view",
+            ElementKind::RequirementDefinition => "requirement def",
+            ElementKind::RequirementUsage => "requirement",
             ElementKind::Unsupported(keyword) => keyword,
         }
     }
@@ -99,6 +103,7 @@ impl ElementKind {
                 | ElementKind::PortDefinition
                 | ElementKind::ConnectionDefinition
                 | ElementKind::InterfaceDefinition
+                | ElementKind::RequirementDefinition
         )
     }
 
@@ -231,6 +236,10 @@ pub struct Element {
     /// The metadata defs the element is annotated with (`@Safety`,
     /// `#Safety`, `metadata Safety`), in order.
     pub metadata: Vec<QualifiedName>,
+    /// The short id written in angle brackets (`<'1'> massReq`).
+    pub short_name: Option<String>,
+    /// A requirement's subject: the owned feature it constrains.
+    pub subject: Option<QualifiedName>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
@@ -270,6 +279,8 @@ impl Element {
             exposes: Vec::new(),
             rendering: None,
             metadata: Vec::new(),
+            short_name: None,
+            subject: None,
             documentation: None,
             source: None,
         }
@@ -417,6 +428,25 @@ impl ModelBuilder {
 
     pub fn payload(mut self, item: &str) -> Self {
         self.last().payload = Some(QualifiedName::new(item));
+        self
+    }
+
+    pub fn requirement_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::RequirementDefinition)
+    }
+
+    pub fn requirement(self, name: &str) -> Self {
+        self.element(name, ElementKind::RequirementUsage)
+    }
+
+    pub fn short_name(mut self, id: &str) -> Self {
+        self.last().short_name = Some(id.to_owned());
+        self
+    }
+
+    /// Makes `feature` (an owned feature, added separately) the subject.
+    pub fn subject(mut self, feature: &str) -> Self {
+        self.last().subject = Some(QualifiedName::new(feature));
         self
     }
 

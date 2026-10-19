@@ -54,7 +54,7 @@ fn vehicles() -> Model {
         .at(&vehicles, 5)
         .part_def("Vehicles::Engine")
         .at(&vehicles, 6)
-        .unsupported("Vehicles::TopSpeed", "requirement def")
+        .requirement_def("Vehicles::TopSpeed")
         .at(&vehicles, 7)
         .package("Vehicles::Parts")
         .at(&vehicles, 8)
@@ -331,4 +331,14 @@ fn loads_metadata_annotations_like_the_fake_twin() {
     let real = OpenSysmlBackend::new().load(&fixture("metadata")).unwrap();
 
     assert_same_model(&without_sources(&real), &common::metadata());
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_requirements_like_the_fake_twin() {
+    let real = OpenSysmlBackend::new()
+        .load(&fixture("requirements"))
+        .unwrap();
+
+    assert_same_model(&without_sources(&real), &common::requirements());
 }

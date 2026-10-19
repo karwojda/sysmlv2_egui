@@ -114,13 +114,15 @@ pub fn extent(shape: &Shape) -> Rect {
 pub struct NodeContent {
     keyword: String,
     title: String,
+    /// A line under the title: a requirement's `subject v:Vehicle`.
+    subtitle: Option<String>,
     usage: bool,
     compartments: Vec<(&'static str, Vec<String>)>,
 }
 
 /// The compartments a node lists, in order, with the kinds of owned
 /// feature each one holds.
-const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
+const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
     ("attributes", &[ElementKind::AttributeUsage]),
     ("ports", &[ElementKind::PortUsage]),
     ("parts", &[ElementKind::PartUsage]),
@@ -133,7 +135,11 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 4] = [
             ElementKind::BindingConnection,
         ],
     ),
+    ("requirements", &[ElementKind::RequirementUsage]),
 ];
+
+/// Characters per line of a wrapped `doc` compartment.
+const DOC_LINE_CHARS: usize = 40;
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
 /// its header. Compartments list the owned features `listed` accepts.
@@ -144,28 +150,68 @@ pub fn node_content(
     listed: impl Fn(&QualifiedName) -> bool,
 ) -> NodeContent {
     let usage = !element.kind.is_definition();
-    let compartments = COMPARTMENTS
+    let requirement = matches!(
+        element.kind,
+        ElementKind::RequirementDefinition | ElementKind::RequirementUsage
+    );
+    // A requirement's shall-statement leads its compartments.
+    let doc = element
+        .documentation
+        .as_deref()
+        .filter(|_| requirement && compartments)
+        .map(|text| ("doc", wrap(text, DOC_LINE_CHARS)));
+    let features = COMPARTMENTS
         .iter()
         .filter(|_| compartments)
         .filter_map(|(title, kinds)| {
             let rows: Vec<String> = model
                 .owned_members(&element.qualified_name)
                 .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
+                // The subject is on its own line in the header.
+                .filter(|m| element.subject.as_ref() != Some(&m.qualified_name))
                 .map(feature_row)
                 .collect();
             (!rows.is_empty()).then_some((*title, rows))
-        })
-        .collect();
+        });
+    let subtitle = element.subject.as_ref().map(|subject| {
+        let label = model
+            .element(subject)
+            .map(usage_label)
+            .unwrap_or_else(|| subject.simple_name().to_owned());
+        format!("subject {label}")
+    });
+    let short_id = element
+        .short_name
+        .as_ref()
+        .map(|id| format!("<{id}> "))
+        .unwrap_or_default();
     NodeContent {
         keyword: format!("«{}»", element.kind.keyword()),
         title: if usage {
-            usage_label(element)
+            format!("{short_id}{}", usage_label(element))
         } else {
-            element.name.clone()
+            format!("{short_id}{}", element.name)
         },
+        subtitle,
         usage,
-        compartments,
+        compartments: doc.into_iter().chain(features).collect(),
     }
+}
+
+/// `text` broken into lines of at most `width` characters at spaces (a
+/// longer word gets a line of its own).
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if line.chars().count() + 1 + word.chars().count() <= width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    lines
 }
 
 /// A connector's label: a flow's `name:Payload` (`:Payload` unnamed),
@@ -245,6 +291,9 @@ fn feature_row(feature: &Element) -> String {
     if feature.kind == ElementKind::FlowUsage {
         row.push_str("flow ");
     }
+    if let Some(id) = &feature.short_name {
+        row.push_str(&format!("<{id}> "));
+    }
     row.push_str(&connector_label(feature));
     if feature.kind.is_connection() && !feature.ends.is_empty() {
         let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
@@ -261,8 +310,13 @@ fn title_font(content: &NodeContent) -> Font {
     }
 }
 
-fn header_height() -> f32 {
-    2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + NAME_FONT.size
+fn header_height(content: &NodeContent) -> f32 {
+    let subtitle = if content.subtitle.is_some() {
+        LINE_GAP + ROW_FONT.size
+    } else {
+        0.0
+    };
+    2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + NAME_FONT.size + subtitle
 }
 
 fn compartment_height(rows: usize) -> f32 {
@@ -271,7 +325,13 @@ fn compartment_height(rows: usize) -> f32 {
 
 pub fn node_size(content: &NodeContent) -> (f32, f32) {
     let mut widest = text_width(&content.keyword, KEYWORD_FONT)
-        .max(text_width(&content.title, title_font(content)));
+        .max(text_width(&content.title, title_font(content)))
+        .max(
+            content
+                .subtitle
+                .as_deref()
+                .map_or(0.0, |s| text_width(s, ROW_FONT)),
+        );
     for (title, rows) in &content.compartments {
         widest = widest.max(text_width(title, COMPARTMENT_TITLE_FONT));
         for row in rows {
@@ -279,7 +339,7 @@ pub fn node_size(content: &NodeContent) -> (f32, f32) {
         }
     }
     let width = (widest + 2.0 * PADDING).max(MIN_NODE_WIDTH).ceil();
-    let height = header_height()
+    let height = header_height(content)
         + content
             .compartments
             .iter()
@@ -324,7 +384,19 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
             fill: Fill::Stroke,
         },
     ];
-    let mut top = rect.y + header_height();
+    if let Some(subtitle) = &content.subtitle {
+        shapes.push(Shape::Text {
+            position: Point::new(
+                rect.center_x(),
+                keyword_baseline + 2.0 * LINE_GAP + NAME_FONT.size + ROW_FONT.size,
+            ),
+            text: subtitle.clone(),
+            anchor: TextAnchor::Middle,
+            font: ROW_FONT,
+            fill: Fill::Stroke,
+        });
+    }
+    let mut top = rect.y + header_height(content);
     for (title, rows) in &content.compartments {
         shapes.push(Shape::Polyline {
             points: vec![Point::new(rect.x, top), Point::new(rect.right(), top)],
