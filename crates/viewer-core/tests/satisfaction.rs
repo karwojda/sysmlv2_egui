@@ -243,3 +243,165 @@ fn properties_explain_the_status_and_each_claim() {
     assert!(rows("Req::@9").contains(&("Result", "✗ violated: v.range >= 500.0".to_owned())));
     assert!(!rows("Req::MassLimit").iter().any(|(l, _)| *l == "Status"));
 }
+
+mod styles {
+    use super::*;
+    use viewer_core::DiagramStyle;
+    use viewer_core::scene::{Fill, Rgb};
+    use viewer_core::style::{Condition, Satisfaction, Style, StyleRule, apply_styles, rule_for};
+
+    const RED: Rgb = Rgb(0xf4, 0xcc, 0xcc);
+    const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
+    const AMBER: Rgb = Rgb(0xff, 0xe5, 0x99);
+    const GREY: Rgb = Rgb(0xee, 0xee, 0xee);
+    const NAVY: Rgb = Rgb(0x1f, 0x2a, 0x44);
+
+    fn on(status: Satisfaction, fill: Rgb) -> StyleRule {
+        StyleRule {
+            condition: Condition::Satisfaction(status),
+            fill,
+            label: None,
+        }
+    }
+
+    fn traffic_lights() -> Vec<StyleRule> {
+        vec![
+            on(Satisfaction::Satisfied, GREEN),
+            on(Satisfaction::Violated, RED),
+            on(Satisfaction::Undecided, AMBER),
+            on(Satisfaction::NotClaimed, GREY),
+        ]
+    }
+
+    fn fill_of(model: &Model, element: &str, rules: &[StyleRule]) -> Option<Rgb> {
+        rule_for(model, model.element(&qn(element)).unwrap(), &[rules]).map(|r| r.fill)
+    }
+
+    #[test]
+    fn a_satisfaction_rule_matches_requirement_usages_by_status() {
+        let m = common::requirements();
+        let rules = traffic_lights();
+        let of = |name: &str| fill_of(&m, &format!("Req::vehicleSpec::{name}"), &rules);
+
+        assert_eq!(of("massReq"), Some(GREEN));
+        assert_eq!(of("rangeReq"), Some(RED));
+        assert_eq!(of("costReq"), Some(AMBER));
+        assert_eq!(of("spareReq"), Some(GREY));
+        assert_eq!(
+            fill_of(&m, "Req::MassLimit", &rules),
+            None,
+            "a definition has no status"
+        );
+        assert_eq!(fill_of(&m, "Req::vehicle", &rules), None);
+    }
+
+    #[test]
+    fn satisfaction_beats_metadata_whatever_the_order() {
+        let m = Model::builder()
+            .package("P")
+            .requirement("P::r")
+            .annotated("P::Safety")
+            .part("P::a")
+            .satisfy("P::@1", "P::r", "P::a")
+            .result(violated("a.x <= 1"))
+            .build();
+        let rules = [
+            StyleRule {
+                condition: Condition::Metadata(qn("P::Safety")),
+                fill: NAVY,
+                label: None,
+            },
+            on(Satisfaction::Violated, RED),
+        ];
+
+        assert_eq!(fill_of(&m, "P::r", &rules), Some(RED));
+    }
+
+    #[test]
+    fn a_satisfaction_rule_is_written_by_status_name_in_the_style_file() {
+        let style = Style::new(vec![on(Satisfaction::NotClaimed, GREY)]);
+
+        let text = style.to_text();
+
+        assert!(text.contains(r#""satisfaction": "not-claimed""#), "{text}");
+        let folder = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(folder.path().join("diagrams")).unwrap();
+        std::fs::write(viewer_core::style::path_for(folder.path()), text).unwrap();
+        assert_eq!(
+            viewer_core::style::load(folder.path()).unwrap(),
+            Some(style)
+        );
+    }
+
+    #[test]
+    fn satisfaction_rules_are_never_marked_missing() {
+        assert!(Condition::Satisfaction(Satisfaction::Violated).exists_in(&Model::default()));
+    }
+
+    fn styled_tree(rules: Vec<StyleRule>) -> Scene {
+        let model = common::requirements();
+        let mut scene = build_scene(&model, DiagramKind::General, &qn("Req::vehicleSpec")).unwrap();
+        let diagram = DiagramStyle {
+            legend: true,
+            ..DiagramStyle::default()
+        };
+        apply_styles(&mut scene, &model, Some(&Style::new(rules)), &diagram);
+        scene
+    }
+
+    #[test]
+    fn the_legend_names_satisfaction_rules_by_status() {
+        let scene = styled_tree(traffic_lights());
+
+        let legend: Vec<String> = scene
+            .items_depicting(&Depicts::Legend)
+            .filter_map(|s| match s {
+                Shape::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            legend,
+            ["Satisfied", "Violated", "Undecided", "Not claimed"]
+        );
+    }
+
+    #[test]
+    fn the_badge_keeps_its_mark_readable_on_a_dark_fill() {
+        let scene = styled_tree(vec![on(Satisfaction::Violated, NAVY)]);
+        let node = Depicts::Element(qn("Req::vehicleSpec::rangeReq"));
+
+        let mark = scene.items_depicting(&node).find_map(|s| match s {
+            Shape::Text { text, fill, .. } if text == "✗" => Some(*fill),
+            _ => None,
+        });
+        let body = scene.items_depicting(&node).find_map(|s| match s {
+            Shape::Rect { fill, .. } => Some(*fill),
+            _ => None,
+        });
+
+        assert_eq!(body, Some(Fill::Color(NAVY)));
+        assert_eq!(mark, Some(Fill::Background), "white on navy");
+    }
+
+    #[test]
+    fn a_traffic_light_tree_matches_the_golden_file() {
+        let svg = viewer_core::svg::render(&styled_tree(traffic_lights()));
+        let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/golden/requirements-status-styled.svg");
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::write(&golden, &svg).unwrap();
+        }
+        let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+            panic!(
+                "missing {}; run with UPDATE_GOLDEN=1 to create it",
+                golden.display()
+            )
+        });
+        assert_eq!(
+            svg, expected,
+            "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+        );
+    }
+}

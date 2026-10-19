@@ -57,7 +57,7 @@ fn model() -> Model {
 
 fn fill_for(element: &str, levels: &[&[StyleRule]]) -> Option<Rgb> {
     let model = model();
-    rule_for(model.element(&qn(element)).unwrap(), levels).map(|r| r.fill)
+    rule_for(&model, model.element(&qn(element)).unwrap(), levels).map(|r| r.fill)
 }
 
 #[test]

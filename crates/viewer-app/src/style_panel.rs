@@ -3,7 +3,7 @@
 
 use eframe::egui;
 use viewer_core::scene::Rgb;
-use viewer_core::style::{self, Condition, KINDS, StyleRule};
+use viewer_core::style::{self, Condition, KINDS, Satisfaction, StyleRule};
 use viewer_core::{ElementKind, Model, QualifiedName};
 
 /// What an edit of the rule list did: `changed` the rules at all, and
@@ -135,6 +135,7 @@ fn condition_picker(
         Condition::Kind(_) => "Kind",
         Condition::Package(_) => "Package",
         Condition::Metadata(_) => "Metadata",
+        Condition::Satisfaction(_) => "Satisfaction",
     };
     egui::ComboBox::from_id_salt("type")
         .selected_text(type_name)
@@ -150,6 +151,10 @@ fn condition_picker(
                 ("Kind", Condition::Kind(KINDS[0].to_owned())),
                 ("Package", Condition::Package(first(packages))),
                 ("Metadata", Condition::Metadata(first(metadata))),
+                (
+                    "Satisfaction",
+                    Condition::Satisfaction(Satisfaction::Violated),
+                ),
             ];
             for (name, fresh) in options {
                 if ui.selectable_label(type_name == name, name).clicked() && type_name != name {
@@ -177,6 +182,26 @@ fn condition_picker(
         }
         Condition::Package(name) => changed |= name_picker(ui, name, packages),
         Condition::Metadata(name) => changed |= name_picker(ui, name, metadata),
+        Condition::Satisfaction(wanted) => {
+            egui::ComboBox::from_id_salt("satisfaction")
+                .selected_text(format!(
+                    "{} {}",
+                    wanted.status().mark(),
+                    wanted.status().label()
+                ))
+                .show_ui(ui, |ui| {
+                    for option in Satisfaction::ALL {
+                        let text =
+                            format!("{} {}", option.status().mark(), option.status().label());
+                        if ui.selectable_label(*wanted == option, text).clicked()
+                            && *wanted != option
+                        {
+                            *wanted = option;
+                            changed = true;
+                        }
+                    }
+                });
+        }
     }
     changed
 }

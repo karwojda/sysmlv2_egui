@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::diagram_file::{DiagramStyle, FOLDER};
 use crate::model::{Element, Model, QualifiedName};
 use crate::notation::{LABEL_FONT, text_width};
+use crate::satisfaction::{self, SatisfactionStatus};
 use crate::scene::{Depicts, Fill, Item, Point, Rect, Rgb, Scene, Shape, TextAnchor};
 
 /// Legend geometry.
@@ -32,21 +33,56 @@ pub enum Condition {
     Package(QualifiedName),
     /// Elements annotated with a metadata def.
     Metadata(QualifiedName),
+    /// Requirement usages with a Satisfaction Status.
+    Satisfaction(Satisfaction),
+}
+
+/// The Satisfaction Status a satisfaction rule matches, as written in the
+/// Style file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Satisfaction {
+    Satisfied,
+    Violated,
+    Undecided,
+    NotClaimed,
+}
+
+impl Satisfaction {
+    pub const ALL: [Satisfaction; 4] = [
+        Satisfaction::Satisfied,
+        Satisfaction::Violated,
+        Satisfaction::Undecided,
+        Satisfaction::NotClaimed,
+    ];
+
+    pub fn status(self) -> SatisfactionStatus {
+        match self {
+            Satisfaction::Satisfied => SatisfactionStatus::Satisfied,
+            Satisfaction::Violated => SatisfactionStatus::Violated,
+            Satisfaction::Undecided => SatisfactionStatus::Undecided,
+            Satisfaction::NotClaimed => SatisfactionStatus::NotClaimed,
+        }
+    }
 }
 
 impl Condition {
-    /// How strongly the condition singles an element out: metadata over
-    /// package over kind.
+    /// How strongly the condition singles an element out: satisfaction
+    /// over metadata over package over kind.
     fn rank(&self) -> u8 {
         match self {
             Condition::Kind(_) => 0,
             Condition::Package(_) => 1,
             Condition::Metadata(_) => 2,
+            Condition::Satisfaction(_) => 3,
         }
     }
 
-    pub fn matches(&self, element: &Element) -> bool {
+    pub fn matches(&self, model: &Model, element: &Element) -> bool {
         match self {
+            Condition::Satisfaction(wanted) => {
+                satisfaction::status(model, &element.qualified_name) == Some(wanted.status())
+            }
             Condition::Kind(keyword) => element.kind.keyword() == keyword,
             Condition::Package(package) => element
                 .qualified_name
@@ -64,6 +100,7 @@ impl Condition {
             Condition::Kind(keyword) => format!("«{keyword}»"),
             Condition::Package(package) => package.simple_name().to_owned(),
             Condition::Metadata(definition) => format!("@{}", definition.simple_name()),
+            Condition::Satisfaction(wanted) => wanted.status().label().to_owned(),
         }
     }
 }
@@ -91,6 +128,7 @@ impl Condition {
         match self {
             Condition::Kind(keyword) => KINDS.contains(&keyword.as_str()),
             Condition::Package(name) | Condition::Metadata(name) => model.element(name).is_some(),
+            Condition::Satisfaction(_) => true,
         }
     }
 }
@@ -196,14 +234,18 @@ pub fn load(model_folder: &Path) -> Result<Option<Style>, StyleError> {
 /// Diagram's own rules, then the Model's): the first level with a match
 /// decides, and within it the most specific rule wins. Among package rules
 /// the deepest package wins; otherwise the first listed.
-pub fn rule_for<'a>(element: &Element, levels: &[&'a [StyleRule]]) -> Option<&'a StyleRule> {
+pub fn rule_for<'a>(
+    model: &Model,
+    element: &Element,
+    levels: &[&'a [StyleRule]],
+) -> Option<&'a StyleRule> {
     levels.iter().find_map(|rules| {
         let depth = |rule: &StyleRule| match &rule.condition {
             Condition::Package(package) => package.as_str().split("::").count(),
             _ => 0,
         };
         let mut best: Option<&StyleRule> = None;
-        for rule in rules.iter().filter(|r| r.condition.matches(element)) {
+        for rule in rules.iter().filter(|r| r.condition.matches(model, element)) {
             let better = best.is_none_or(|b| {
                 (rule.condition.rank(), depth(rule)) > (b.condition.rank(), depth(b))
             });
@@ -333,7 +375,10 @@ pub fn apply<'a>(
             continue;
         }
         seen.push(&item.depicts);
-        let Some(rule) = model.element(element).and_then(|e| rule_for(e, levels)) else {
+        let Some(rule) = model
+            .element(element)
+            .and_then(|e| rule_for(model, e, levels))
+        else {
             continue;
         };
         *fill = Fill::Color(rule.fill);
