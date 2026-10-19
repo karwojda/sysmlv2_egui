@@ -390,9 +390,22 @@ fn demo_status(model: &Model, requirement: &str) -> viewer_core::satisfaction::S
     viewer_core::satisfaction::status(model, &QualifiedName::new(name)).unwrap()
 }
 
+/// What checking the demo's constraint `constraint` on `part` found.
+fn demo_constraint(
+    model: &Model,
+    constraint: &str,
+    part: &str,
+) -> Option<viewer_core::constraint::ConstraintStatus> {
+    let constraint = model.element(&QualifiedName::new(format!("MassRollup::{constraint}")))?;
+    let part = QualifiedName::new(format!("MassRollup::{part}"));
+    let check = constraint.checks.iter().find(|c| c.part == part)?;
+    Some(viewer_core::constraint::check_status(&check.result))
+}
+
 #[test]
 #[ignore = "needs the sysml-grpc service"]
 fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
+    use viewer_core::constraint::ConstraintStatus;
     use viewer_core::satisfaction::SatisfactionStatus::*;
     let model = mass_rollup("failing");
 
@@ -405,6 +418,16 @@ fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
         demo_status(&model, ""),
         Violated,
         "the specification rolls up its children"
+    );
+    // The tank carries 50 of at most 45; the vehicle has 1363 / 90 ≈ 15.1
+    // kg per kW of at most 16.
+    assert_eq!(
+        demo_constraint(&model, "FuelTank::fuelFits", "vehicle::fuelTank"),
+        Some(ConstraintStatus::Violated)
+    );
+    assert_eq!(
+        demo_constraint(&model, "vehicle::powerToWeight", "vehicle"),
+        Some(ConstraintStatus::Holds)
     );
     let satisfiers: Vec<String> = model
         .claims()
@@ -421,6 +444,7 @@ fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
 #[test]
 #[ignore = "needs the sysml-grpc service"]
 fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
+    use viewer_core::constraint::ConstraintStatus;
     use viewer_core::satisfaction::SatisfactionStatus::*;
     let model = mass_rollup("passing");
 
@@ -429,6 +453,16 @@ fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
             demo_status(&model, requirement),
             Satisfied,
             "{requirement:?}"
+        );
+    }
+    for (constraint, part) in [
+        ("FuelTank::fuelFits", "vehicle::fuelTank"),
+        ("vehicle::powerToWeight", "vehicle"),
+    ] {
+        assert_eq!(
+            demo_constraint(&model, constraint, part),
+            Some(ConstraintStatus::Holds),
+            "{constraint}"
         );
     }
 }

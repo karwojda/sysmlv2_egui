@@ -9,9 +9,17 @@ The failing variant breaks one and the passing variant meets both. The demo Styl
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Constraints in both variants: failing breaks one, passing meets both (checked against the service)
-- [ ] Demo Styles colour constraint results and offending parts
-- [ ] README text and pictures updated; the picture test passes
-- [ ] The `check` command fails on `failing/` and passes on `passing/`
+- [x] Constraints in both variants: failing breaks one, passing meets both (checked against the service)
+- [x] Demo Styles colour constraint results and offending parts
+- [x] README text and pictures updated; the picture test passes
+- [x] The `check` command fails on `failing/` and passes on `passing/`
+
+## Comments
+
+- Done.
+  - **Constraints:** both variants gain `FuelTank::fuelFits { fuelMass <= fuelMassMax }`, asserted on the definition and so inherited by `vehicle.fuelTank`, and `vehicle::powerToWeight : MassPerPower` (≤ 16 kg per kW) with bound parameters. Failing overfills the tank (50 > 45); passing carries 40. Power-to-weight holds in both (≈ 15.1 and 14.8).
+  - **Demo Styles:** new rules colour parts with a violated constraint, and violated constraint nodes, red.
+  - **README:** a constraints table, updated descriptions and a "make the tank's fuel fit" step. The CLI examples now use `check`.
+  - **Pictures:** refreshed, and the picture test passes. The service tests check both constraints in both variants.

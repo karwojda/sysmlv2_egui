@@ -21,10 +21,25 @@ package MassRollup {
     part def Engine :> Component;
     part def Transmission :> Component;
     part def Body :> Component;
-    part def FuelTank :> Component;
+    part def FuelTank :> Component {
+        attribute fuelMass : Real;
+        attribute fuelMassMax : Real;
+        // Every fuel tank: the fuel it carries must fit.
+        assert constraint fuelFits { fuelMass <= fuelMassMax }
+    }
     part def Wheel :> Component;
     part def Powertrain :> Component;
-    part def Vehicle :> Component;
+    part def Vehicle :> Component {
+        attribute power : Real;    // kW
+    }
+
+    // Mass per unit of power, kg/kW, at most a limit.
+    constraint def MassPerPower {
+        in totalMass : Real;
+        in power : Real;
+        in limit : Real;
+        totalMass / power <= limit
+    }
 
     part vehicle : Vehicle {
         part powertrain : Powertrain {
@@ -34,10 +49,21 @@ package MassRollup {
             attribute :>> mass = engine.mass + transmission.mass;
         }
         part body : Body { attribute :>> mass = 950.0; }
-        part fuelTank : FuelTank { attribute :>> mass = 60.0; }
+        part fuelTank : FuelTank {
+            attribute :>> mass = 60.0;
+            attribute :>> fuelMass = 50.0;
+            attribute :>> fuelMassMax = 45.0;
+        }
         part wheels : Wheel[4] { attribute :>> mass = 22.0; }
         // The vehicle's mass rolls up from its subsystems, all four wheels included.
         attribute :>> mass = powertrain.mass + body.mass + fuelTank.mass + sum(wheels.mass);
+        attribute :>> power = 90.0;
+        // The vehicle carries at most 16 kg per kW.
+        assert constraint powerToWeight : MassPerPower {
+            in totalMass = mass;
+            in power = power;
+            in limit = 16.0;
+        }
     }
 
     // ---- Requirements ----------------------------------------------------

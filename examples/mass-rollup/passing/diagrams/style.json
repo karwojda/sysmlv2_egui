@@ -16,6 +16,14 @@
     {
       "satisfaction": "not-claimed",
       "fill": "#eeeeee"
+    },
+    {
+      "constraints": "violated",
+      "fill": "#f4cccc"
+    },
+    {
+      "constraint": "violated",
+      "fill": "#f4cccc"
     }
   ]
 }
