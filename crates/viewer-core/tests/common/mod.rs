@@ -420,3 +420,59 @@ pub fn requirements() -> Model {
         })
         .build()
 }
+
+/// Asserted constraints after slides 85–87: a tank's inherited `fits`, a
+/// vehicle's inline `light`, a plain `heavy`, and `powerToWeight`, a
+/// constraint def with bound parameters. The fake-backend twin of
+/// `viewer-opensysml/tests/fixtures/assertions`.
+pub fn assertions() -> Model {
+    let real = "ScalarValues::Real";
+    let parameter =
+        |b: ModelBuilder, name: &str| b.unsupported(name, "reference").direction(Direction::In);
+    let b = Model::builder()
+        .package("C")
+        .constraint_def("C::MaxRatio")
+        .expression("numerator / denominator <= limit");
+    let b = parameter(b, "C::MaxRatio::denominator").typed_by(real);
+    let b = parameter(b, "C::MaxRatio::limit").typed_by(real);
+    let b = parameter(b, "C::MaxRatio::numerator").typed_by(real);
+    let b = b
+        .part_def("C::Tank")
+        .constraint("C::Tank::fits")
+        .asserted()
+        .expression("fuelMass <= fuelMassMax")
+        .attribute("C::Tank::fuelMass")
+        .typed_by(real)
+        .attribute("C::Tank::fuelMassMax")
+        .typed_by(real)
+        .part_def("C::Vehicle")
+        .attribute("C::Vehicle::mass")
+        .typed_by(real)
+        .attribute("C::Vehicle::power")
+        .typed_by(real)
+        .part("C::Vehicle::tank")
+        .typed_by("C::Tank")
+        .part("C::vehicle")
+        .typed_by("C::Vehicle")
+        .constraint("C::vehicle::heavy")
+        .expression("mass > 2000.0")
+        .constraint("C::vehicle::light")
+        .asserted()
+        .expression("mass <= 1500.0")
+        .attribute("C::vehicle::mass")
+        .value("1400.0")
+        .attribute("C::vehicle::power")
+        .value("90.0")
+        .constraint("C::vehicle::powerToWeight")
+        .asserted()
+        .typed_by("C::MaxRatio");
+    let b = parameter(b, "C::vehicle::powerToWeight::denominator").value("power");
+    let b = parameter(b, "C::vehicle::powerToWeight::limit").value("12.0");
+    let b = parameter(b, "C::vehicle::powerToWeight::numerator").value("mass");
+    b.part("C::vehicle::tank")
+        .attribute("C::vehicle::tank::fuelMass")
+        .value("50.0")
+        .attribute("C::vehicle::tank::fuelMassMax")
+        .value("45.0")
+        .build()
+}

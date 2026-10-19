@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="712" height="510" viewBox="0 0 712 510" font-family="sans-serif">
+<rect x="0" y="0" width="712" height="510" fill="#ffffff"/>
+<polyline points="457.73,196.55 424.2,275" fill="none" stroke="#000000"/>
+<polygon points="464.8,180 455.75,185.92 457.73,196.55 466.78,190.63" fill="#000000" stroke="#000000"/>
+<text x="439.24" y="253.85" text-anchor="start" font-size="11">tank</text>
+<polyline points="550.29,220 538.7,192.87" fill="none" stroke="#000000"/>
+<polygon points="533.2,180 546.05,189.73 531.34,196.02" fill="#ffffff" stroke="#000000"/>
+<circle cx="544.34" cy="195.9" r="1.8" fill="#000000"/>
+<circle cx="536.99" cy="199.04" r="1.8" fill="#000000"/>
+<rect x="20" y="20" width="236" height="176" fill="#ffffff" stroke="#000000"/>
+<text x="138" y="42" text-anchor="middle" font-size="12">«constraint def»</text>
+<text x="138" y="60" text-anchor="middle" font-size="14" font-weight="bold">MaxRatio</text>
+<polyline points="20,70 256,70" fill="none" stroke="#000000"/>
+<text x="138" y="91" text-anchor="middle" font-size="11" font-style="italic">parameters</text>
+<text x="30" y="107" text-anchor="start" font-size="12">in denominator:Real</text>
+<text x="30" y="123" text-anchor="start" font-size="12">in limit:Real</text>
+<text x="30" y="139" text-anchor="start" font-size="12">in numerator:Real</text>
+<polyline points="20,149 256,149" fill="none" stroke="#000000"/>
+<text x="138" y="170" text-anchor="middle" font-size="11" font-style="italic">expression</text>
+<text x="30" y="186" text-anchor="start" font-size="12">numerator / denominator &lt;= limit</text>
+<rect x="296" y="275" width="188" height="160" fill="#ffffff" stroke="#000000"/>
+<text x="390" y="297" text-anchor="middle" font-size="12">«part def»</text>
+<text x="390" y="315" text-anchor="middle" font-size="14" font-weight="bold">Tank</text>
+<polyline points="296,325 484,325" fill="none" stroke="#000000"/>
+<text x="390" y="346" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="306" y="362" text-anchor="start" font-size="12">fuelMass:Real</text>
+<text x="306" y="378" text-anchor="start" font-size="12">fuelMassMax:Real</text>
+<polyline points="296,388 484,388" fill="none" stroke="#000000"/>
+<text x="390" y="409" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
+<text x="306" y="425" text-anchor="start" font-size="12">{fuelMass &lt;= fuelMassMax}</text>
+<rect x="439" y="20" width="120" height="160" fill="#ffffff" stroke="#000000"/>
+<text x="499" y="42" text-anchor="middle" font-size="12">«part def»</text>
+<text x="499" y="60" text-anchor="middle" font-size="14" font-weight="bold">Vehicle</text>
+<polyline points="439,70 559,70" fill="none" stroke="#000000"/>
+<text x="499" y="91" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="449" y="107" text-anchor="start" font-size="12">mass:Real</text>
+<text x="449" y="123" text-anchor="start" font-size="12">power:Real</text>
+<polyline points="439,133 559,133" fill="none" stroke="#000000"/>
+<text x="499" y="154" text-anchor="middle" font-size="11" font-style="italic">parts</text>
+<text x="449" y="170" text-anchor="start" font-size="12">tank:Tank</text>
+<rect x="524" y="220" width="168" height="270" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="608" y="242" text-anchor="middle" font-size="12">«part»</text>
+<text x="608" y="260" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
+<polyline points="524,270 692,270" fill="none" stroke="#000000"/>
+<text x="608" y="291" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="534" y="307" text-anchor="start" font-size="12">mass = 1400.0</text>
+<text x="534" y="323" text-anchor="start" font-size="12">power = 90.0</text>
+<polyline points="524,333 692,333" fill="none" stroke="#000000"/>
+<text x="608" y="354" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
+<text x="534" y="370" text-anchor="start" font-size="12">{mass &lt;= 1500.0}</text>
+<text x="534" y="386" text-anchor="start" font-size="12">powerToWeight:MaxRatio</text>
+<polyline points="524,396 692,396" fill="none" stroke="#000000"/>
+<text x="608" y="417" text-anchor="middle" font-size="11" font-style="italic">constraints</text>
+<text x="534" y="433" text-anchor="start" font-size="12">{mass &gt; 2000.0}</text>
+<polyline points="524,443 692,443" fill="none" stroke="#000000"/>
+<text x="608" y="464" text-anchor="middle" font-size="11" font-style="italic">parts</text>
+<text x="534" y="480" text-anchor="start" font-size="12">tank</text>
+</svg>

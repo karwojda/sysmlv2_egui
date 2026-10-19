@@ -221,6 +221,23 @@ pub fn enrich(
         }
         if matches!(
             element.kind,
+            ElementKind::ConstraintDefinition | ElementKind::ConstraintUsage
+        ) {
+            let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
+            element.is_asserted =
+                item.get("@type").and_then(Value::as_str) == Some("AssertConstraintUsage");
+            element.expression = children
+                .get(id)
+                .into_iter()
+                .flatten()
+                .find(|c| {
+                    c.get("@type").and_then(Value::as_str) == Some("ResultExpressionMembership")
+                })
+                .and_then(|membership| reference(membership, "memberElement"))
+                .map(|expression| crate::expression::text(&items, expression));
+        }
+        if matches!(
+            element.kind,
             ElementKind::RequirementDefinition | ElementKind::RequirementUsage
         ) {
             let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
@@ -363,26 +380,28 @@ fn valued_element(
     id: &str,
 ) -> Option<QualifiedName> {
     let (feature, _) = items.get(id)?;
-    let named = |item: &Value| {
-        item.get("qualifiedName")
-            .and_then(Value::as_str)
-            .map(QualifiedName::new)
-    };
-    if feature.get("declaredName").is_some() {
-        return named(feature);
+    let qualified = feature.get("qualifiedName").and_then(Value::as_str)?;
+    // Names generated for unnamed elements (`@2`) don't match the symbol
+    // tree's; anything without one is already ours.
+    if !qualified
+        .split("::")
+        .any(|segment| segment.starts_with('@'))
+    {
+        return Some(QualifiedName::new(qualified));
     }
-    let redefined = children
-        .get(id)?
-        .iter()
-        .find(|c| c.get("@type").and_then(Value::as_str) == Some("Redefinition"))
-        .and_then(|r| reference(r, "redefinedFeature"))
-        .and_then(|r| items.get(r))
-        .and_then(|(r, _)| r.get("declaredName")?.as_str())?;
-    let (owner, _) = items.get(reference(feature, "owner")?)?;
-    Some(QualifiedName::new(format!(
-        "{}::{redefined}",
-        named(owner)?
-    )))
+    let name = match feature.get("declaredName").and_then(Value::as_str) {
+        Some(name) => name,
+        None => children
+            .get(id)?
+            .iter()
+            .find(|c| c.get("@type").and_then(Value::as_str) == Some("Redefinition"))
+            .and_then(|r| reference(r, "redefinedFeature"))
+            .and_then(|r| items.get(r))
+            .and_then(|(r, _)| r.get("declaredName")?.as_str())?,
+    };
+    // The owner may be an unnamed redefinition too (`part :>> tank { … }`).
+    let owner = valued_element(items, children, reference(feature, "owner")?)?;
+    Some(QualifiedName::new(format!("{owner}::{name}")))
 }
 
 /// The feature a claim's subject is bound to by value: `by vehicle.powertrain`

@@ -193,27 +193,59 @@ pub fn node_content(
             .unwrap_or_else(|| subject.simple_name().to_owned());
         format!("subject {label}")
     });
-    // A requirement's constraints follow its attributes, as in the notation.
     let mut compartments: Vec<(&'static str, Vec<String>)> =
         doc.into_iter().chain(features).collect();
+    // A requirement's constraints follow its attributes, as in the notation.
     if compartments_shown && !element.require.is_empty() {
         let rows = element
             .require
             .iter()
             .map(|text| format!("require {{{text}}}"))
             .collect();
-        let after = compartments
-            .iter()
-            .position(|(title, _)| *title == "attributes")
-            .map_or(
-                usize::from(
-                    compartments
-                        .first()
-                        .is_some_and(|(title, _)| *title == "doc"),
-                ),
-                |i| i + 1,
-            );
-        compartments.insert(after, ("constraints", rows));
+        insert_after_attributes(&mut compartments, "constraints", rows);
+    }
+    if compartments_shown {
+        let constraint = matches!(
+            element.kind,
+            ElementKind::ConstraintDefinition | ElementKind::ConstraintUsage
+        );
+        if constraint {
+            // A constraint lists its parameters, with their bound values,
+            // then its own expression.
+            // Parameters are positional: keep the order they're written in,
+            // where the Model knows it.
+            let mut parameters: Vec<&Element> = model
+                .owned_members(&element.qualified_name)
+                .filter(|m| m.direction.is_some() && listed(&m.qualified_name))
+                .collect();
+            parameters.sort_by_key(|m| m.source.as_ref().map(|s| s.line));
+            let parameters: Vec<String> = parameters.into_iter().map(feature_row).collect();
+            if !parameters.is_empty() {
+                compartments.push(("parameters", parameters));
+            }
+            if let Some(expression) = &element.expression {
+                compartments.push(("expression", vec![expression.clone()]));
+            }
+        } else {
+            // A part's constraints, asserted and plain, follow its attributes.
+            let row = |c: &Element| match &c.expression {
+                Some(expression) => format!("{{{expression}}}"),
+                None => usage_label(c),
+            };
+            let owned = || {
+                model
+                    .owned_members(&element.qualified_name)
+                    .filter(|m| m.kind == ElementKind::ConstraintUsage && listed(&m.qualified_name))
+            };
+            let plain: Vec<String> = owned().filter(|c| !c.is_asserted).map(row).collect();
+            if !plain.is_empty() {
+                insert_after_attributes(&mut compartments, "constraints", plain);
+            }
+            let asserted: Vec<String> = owned().filter(|c| c.is_asserted).map(row).collect();
+            if !asserted.is_empty() {
+                insert_after_attributes(&mut compartments, "assert constraints", asserted);
+            }
+        }
     }
     // What the element claims to satisfy joins its requirements compartment.
     let claims: Vec<String> = model
@@ -242,7 +274,11 @@ pub fn node_content(
         .map(|id| format!("<{id}> "))
         .unwrap_or_default();
     NodeContent {
-        keyword: format!("«{}»", element.kind.keyword()),
+        keyword: if element.kind == ElementKind::ConstraintUsage && element.is_asserted {
+            "«assert constraint»".to_owned()
+        } else {
+            format!("«{}»", element.kind.keyword())
+        },
         title: if usage {
             format!("{short_id}{}", usage_label(element))
         } else {
@@ -253,6 +289,22 @@ pub fn node_content(
         usage,
         compartments,
     }
+}
+
+/// Puts a compartment after `attributes` (or after `doc`, or first).
+fn insert_after_attributes(
+    compartments: &mut Vec<(&'static str, Vec<String>)>,
+    title: &'static str,
+    rows: Vec<String>,
+) {
+    let after = compartments
+        .iter()
+        .position(|(t, _)| *t == "attributes")
+        .map_or(
+            usize::from(compartments.first().is_some_and(|(t, _)| *t == "doc")),
+            |i| i + 1,
+        );
+    compartments.insert(after, (title, rows));
 }
 
 /// `text` broken into lines of at most `width` characters at spaces (a

@@ -195,6 +195,7 @@ pub(crate) fn is_node_in_general(element: &Element) -> bool {
                 | ElementKind::AttributeUsage
                 | ElementKind::PortUsage
                 | ElementKind::RequirementUsage
+                | ElementKind::ConstraintUsage
         )
 }
 

@@ -464,3 +464,13 @@ fn the_mass_rollup_readme_pictures_match_the_models() {
         );
     }
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_asserted_constraints_like_the_fake_twin() {
+    let real = OpenSysmlBackend::new()
+        .load(&fixture("assertions"))
+        .unwrap();
+
+    assert_same_model(&without_sources(&real), &common::assertions());
+}

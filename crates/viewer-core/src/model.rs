@@ -69,6 +69,8 @@ pub enum ElementKind {
     RequirementUsage,
     /// A Satisfaction Claim: `satisfy requirement by satisfier`.
     SatisfyRequirement,
+    ConstraintDefinition,
+    ConstraintUsage,
     Unsupported(String),
 }
 
@@ -94,6 +96,8 @@ impl ElementKind {
             ElementKind::RequirementDefinition => "requirement def",
             ElementKind::RequirementUsage => "requirement",
             ElementKind::SatisfyRequirement => "satisfy",
+            ElementKind::ConstraintDefinition => "constraint def",
+            ElementKind::ConstraintUsage => "constraint",
             ElementKind::Unsupported(keyword) => keyword,
         }
     }
@@ -107,6 +111,7 @@ impl ElementKind {
                 | ElementKind::ConnectionDefinition
                 | ElementKind::InterfaceDefinition
                 | ElementKind::RequirementDefinition
+                | ElementKind::ConstraintDefinition
         )
     }
 
@@ -266,6 +271,10 @@ pub struct Element {
     /// A feature's value, as text: `180.0`, `engine.mass + transmission.mass`,
     /// or `default 5` for a default.
     pub value: Option<String>,
+    /// Whether a constraint usage is asserted (`assert constraint`).
+    pub is_asserted: bool,
+    /// A constraint's own expression, as text (`fuelMass <= fuelMassMax`).
+    pub expression: Option<String>,
     /// For a Satisfaction Claim, the requirement usage it claims is
     /// satisfied.
     pub satisfies: Option<QualifiedName>,
@@ -327,6 +336,8 @@ impl Element {
             subject: None,
             require: Vec::new(),
             value: None,
+            is_asserted: false,
+            expression: None,
             satisfies: None,
             satisfier: None,
             claim_result: None,
@@ -528,6 +539,26 @@ impl ModelBuilder {
         self = self.unnamed(name, ElementKind::SatisfyRequirement);
         self.last().satisfies = Some(QualifiedName::new(requirement));
         self.last().satisfier = Some(QualifiedName::new(satisfier));
+        self
+    }
+
+    pub fn constraint_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::ConstraintDefinition)
+    }
+
+    pub fn constraint(self, name: &str) -> Self {
+        self.element(name, ElementKind::ConstraintUsage)
+    }
+
+    /// Makes the last constraint usage asserted (`assert constraint`).
+    pub fn asserted(mut self) -> Self {
+        self.last().is_asserted = true;
+        self
+    }
+
+    /// Sets the last constraint's own expression, as text.
+    pub fn expression(mut self, text: &str) -> Self {
+        self.last().expression = Some(text.to_owned());
         self
     }
 
