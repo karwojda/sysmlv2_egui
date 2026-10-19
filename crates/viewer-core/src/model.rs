@@ -280,6 +280,9 @@ pub struct Element {
     /// A feature's value, as text: `180.0`, `engine.mass + transmission.mass`,
     /// or `default 5` for a default.
     pub value: Option<String>,
+    /// What OpenSysML evaluates the feature to (Computed Values), one per
+    /// distinct value across the part's instances.
+    pub computed: Vec<String>,
     /// Whether a constraint usage is asserted (`assert constraint`).
     pub is_asserted: bool,
     /// A constraint's own expression, as text (`fuelMass <= fuelMassMax`).
@@ -347,6 +350,7 @@ impl Element {
             subject: None,
             require: Vec::new(),
             value: None,
+            computed: Vec::new(),
             is_asserted: false,
             expression: None,
             checks: Vec::new(),
@@ -580,6 +584,12 @@ impl ModelBuilder {
     /// Sets the last constraint's own expression, as text.
     pub fn expression(mut self, text: &str) -> Self {
         self.last().expression = Some(text.to_owned());
+        self
+    }
+
+    /// Adds a Computed Value to the last feature, as text (`1363.0`).
+    pub fn computed(mut self, text: &str) -> Self {
+        self.last().computed.push(text.to_owned());
         self
     }
 

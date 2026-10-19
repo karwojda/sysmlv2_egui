@@ -25,12 +25,6 @@ pub fn check(
     parsed: &opensysml::Model,
     elements: &mut BTreeMap<QualifiedName, Element>,
 ) -> Vec<String> {
-    if !elements
-        .values()
-        .any(|e| e.kind == ElementKind::ConstraintUsage && e.is_asserted)
-    {
-        return Vec::new();
-    }
     let roots: Vec<QualifiedName> = elements
         .values()
         .filter(|e| e.kind == ElementKind::PartUsage)
@@ -44,10 +38,10 @@ pub fn check(
         .collect();
     let mut warnings = Vec::new();
     for root in roots {
-        let verdicts = parsed
-            .validate_instance(root.as_str(), None)
-            .map(|validation| {
-                validation
+        let verdicts = match parsed.validate_instance(root.as_str(), None) {
+            Ok(validation) => {
+                record_values(elements, computed_values(validation.instances()));
+                Ok(validation
                     .verdicts
                     .iter()
                     .filter(|v| v.kind == opensysml::KIND_CONSTRAINT)
@@ -58,9 +52,10 @@ pub fn check(
                         condition: v.condition.clone(),
                         error: v.error.clone(),
                     })
-                    .collect()
-            })
-            .map_err(|error| error.to_string());
+                    .collect())
+            }
+            Err(error) => Err(error.to_string()),
+        };
         if let Some(warning) = record(elements, &root, verdicts) {
             warnings.push(format!(
                 "constraints of `{root}` could not be checked, so they are Undecided: {warning}"
@@ -68,6 +63,72 @@ pub fn check(
         }
     }
     warnings
+}
+
+/// Every evaluated feature value of `instances`, as `(feature, text)`: the
+/// value of feature `f` on an instance of type symbol `T` belongs to `T::f`.
+fn computed_values(instances: &[opensysml::Instance]) -> Vec<(QualifiedName, String)> {
+    let mut values = Vec::new();
+    for instance in instances {
+        let mut features: Vec<(&String, &opensysml::FeatureValue)> =
+            instance.feature_values().iter().collect();
+        features.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, feature) in features {
+            let feature_name = QualifiedName::new(format!("{}::{name}", instance.type_symbol_id()));
+            for value in feature.value().into_iter().chain(feature.values()) {
+                if let Some(text) = value_text(value) {
+                    values.push((feature_name.clone(), text));
+                }
+            }
+        }
+    }
+    values
+}
+
+/// A value written as the Model would write it: `1363.0`, `4`, `true`,
+/// `"x"`, `1650 [kg]`. `None` for anything else (instances, sequences, …).
+fn value_text(value: &opensysml::Value) -> Option<String> {
+    use opensysml::{Magnitude, Value};
+    let real = |r: f64| {
+        if r.fract() == 0.0 && r.abs() < 1e15 {
+            format!("{r:.1}")
+        } else {
+            r.to_string()
+        }
+    };
+    match value {
+        Value::Integer(i) => Some(i.to_string()),
+        Value::Real(r) => Some(real(*r)),
+        Value::Boolean(b) => Some(b.to_string()),
+        Value::Text(t) => Some(format!("\"{t}\"")),
+        Value::Quantity(q) => {
+            let magnitude = match &q.magnitude {
+                Magnitude::Integer(i) => i.to_string(),
+                Magnitude::Real(r) => real(*r),
+                _ => return None,
+            };
+            Some(format!("{magnitude} [{}]", q.unit))
+        }
+        _ => None,
+    }
+}
+
+/// Gives each feature in `elements` its Computed Values, distinct and in
+/// first-seen order. Values for features the Model doesn't have, and values
+/// equal to the feature's own written value, are dropped.
+fn record_values(
+    elements: &mut BTreeMap<QualifiedName, Element>,
+    values: Vec<(QualifiedName, String)>,
+) {
+    for (feature, text) in values {
+        // A value the Model writes out already says itself.
+        if let Some(element) = elements.get_mut(&feature)
+            && element.value.as_deref() != Some(text.as_str())
+            && !element.computed.contains(&text)
+        {
+            element.computed.push(text);
+        }
+    }
 }
 
 /// Records the verdicts of validating `root` on their constraints. A
@@ -173,6 +234,46 @@ mod tests {
             .iter()
             .map(|c| (c.part.to_string(), c.result.clone()))
             .collect()
+    }
+
+    #[test]
+    fn computed_values_go_to_their_features_distinct_and_in_order() {
+        let mut elements: BTreeMap<QualifiedName, Element> =
+            ["C::car::mass", "C::car::wheels::mass"]
+                .into_iter()
+                .map(|n| (qn(n), Element::new(qn(n), ElementKind::AttributeUsage)))
+                .collect();
+
+        record_values(
+            &mut elements,
+            vec![
+                (qn("C::car::mass"), "1363.0".to_owned()),
+                (qn("C::car::wheels::mass"), "22.0".to_owned()),
+                (qn("C::car::wheels::mass"), "22.0".to_owned()),
+                (qn("C::car::wheels::mass"), "25.0".to_owned()),
+                (qn("C::car::gone"), "1.0".to_owned()),
+            ],
+        );
+
+        assert_eq!(elements[&qn("C::car::mass")].computed, ["1363.0"]);
+        assert_eq!(
+            elements[&qn("C::car::wheels::mass")].computed,
+            ["22.0", "25.0"]
+        );
+    }
+
+    #[test]
+    fn values_are_written_like_literals() {
+        use opensysml::Value;
+        assert_eq!(value_text(&Value::Real(1363.0)).as_deref(), Some("1363.0"));
+        assert_eq!(value_text(&Value::Real(15.144)).as_deref(), Some("15.144"));
+        assert_eq!(value_text(&Value::Integer(4)).as_deref(), Some("4"));
+        assert_eq!(value_text(&Value::Boolean(true)).as_deref(), Some("true"));
+        assert_eq!(
+            value_text(&Value::Text("x".to_owned())).as_deref(),
+            Some("\"x\"")
+        );
+        assert_eq!(value_text(&Value::InstanceRef(3)), None);
     }
 
     #[test]

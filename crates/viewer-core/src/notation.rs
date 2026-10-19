@@ -325,6 +325,22 @@ pub fn node_content(
     }
 }
 
+/// Whether a value as written is a plain literal (`180.0`, `-1`, `true`,
+/// `"x"`, `1650 [kg]`), which needs no computed value beside it.
+fn is_literal(value: &str) -> bool {
+    let value = value.strip_prefix("default ").unwrap_or(value);
+    let number = |s: &str| s.trim().parse::<f64>().is_ok();
+    let quantity = value
+        .strip_suffix(']')
+        .and_then(|v| v.split_once(" ["))
+        .is_some_and(|(magnitude, unit)| number(magnitude) && !unit.contains(' '));
+    number(value)
+        || quantity
+        || value == "true"
+        || value == "false"
+        || (value.starts_with('"') && value.ends_with('"'))
+}
+
 /// Puts a compartment after `attributes` (or after `doc`, or first).
 fn insert_after_attributes(
     compartments: &mut Vec<(&'static str, Vec<String>)>,
@@ -442,6 +458,11 @@ fn feature_row(feature: &Element) -> String {
         Some(value) if value.starts_with("default ") => row.push_str(&format!(" {value}")),
         Some(value) => row.push_str(&format!(" = {value}")),
         None => {}
+    }
+    // What an expression comes to, after it; a literal says itself.
+    let expression = feature.value.as_deref().is_some_and(|v| !is_literal(v));
+    if expression && !feature.computed.is_empty() {
+        row.push_str(&format!(" = {}", feature.computed.join(", ")));
     }
     if feature.kind.is_connection() && !feature.ends.is_empty() {
         let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();

@@ -508,3 +508,11 @@ fn loads_asserted_constraints_like_the_fake_twin() {
 
     assert_same_model(&without_sources(&real), &common::assertions());
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn loads_computed_values_and_analyses_like_the_fake_twin() {
+    let real = OpenSysmlBackend::new().load(&fixture("analysis")).unwrap();
+
+    assert_same_model(&without_sources(&real), &common::analysis());
+}

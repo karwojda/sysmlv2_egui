@@ -69,6 +69,9 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     if let Some(value) = &e.value {
         rows.push(text("Value", value.clone()));
     }
+    if !e.computed.is_empty() {
+        rows.push(text("Computed", e.computed.join(", ")));
+    }
     if let Some(expression) = &e.expression {
         rows.push(text("Expression", expression.clone()));
     }

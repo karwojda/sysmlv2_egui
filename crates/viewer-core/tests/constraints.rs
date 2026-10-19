@@ -143,9 +143,9 @@ fn an_asserted_constraint_usage_node_shows_its_bound_parameters() {
     assert_eq!(
         compartment(&texts, "parameters", &["expression"]),
         [
-            "in denominator = power",
+            "in denominator = power = 90.0",
             "in limit = 12.0",
-            "in numerator = mass"
+            "in numerator = mass = 1400.0"
         ]
     );
     assert!(

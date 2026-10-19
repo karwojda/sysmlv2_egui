@@ -481,13 +481,43 @@ pub fn assertions() -> Model {
                 condition: "numerator / denominator <= limit".to_owned(),
             },
         );
-    let b = parameter(b, "C::vehicle::powerToWeight::denominator").value("power");
+    let b = parameter(b, "C::vehicle::powerToWeight::denominator")
+        .value("power")
+        .computed("90.0");
     let b = parameter(b, "C::vehicle::powerToWeight::limit").value("12.0");
-    let b = parameter(b, "C::vehicle::powerToWeight::numerator").value("mass");
+    let b = parameter(b, "C::vehicle::powerToWeight::numerator")
+        .value("mass")
+        .computed("1400.0");
     b.part("C::vehicle::tank")
         .attribute("C::vehicle::tank::fuelMass")
         .value("50.0")
         .attribute("C::vehicle::tank::fuelMassMax")
         .value("45.0")
+        .build()
+}
+
+/// A car whose mass rolls up from its engine and four wheels, for Computed
+/// Values. The fake-backend twin of `viewer-opensysml/tests/fixtures/analysis`.
+pub fn analysis() -> Model {
+    let real = "ScalarValues::Real";
+    Model::builder()
+        .package("A")
+        .part_def("A::Component")
+        .attribute("A::Component::mass")
+        .typed_by(real)
+        .part("A::car")
+        .typed_by("A::Component")
+        .part("A::car::engine")
+        .typed_by("A::Component")
+        .attribute("A::car::engine::mass")
+        .value("150.0")
+        .attribute("A::car::mass")
+        .value("engine.mass + sum(wheels.mass)")
+        .computed("230.0")
+        .part("A::car::wheels")
+        .typed_by("A::Component")
+        .multiplicity("4", "4")
+        .attribute("A::car::wheels::mass")
+        .value("20.0")
         .build()
 }
