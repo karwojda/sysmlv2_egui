@@ -129,6 +129,20 @@ pub fn enrich(
             }
             continue;
         }
+        if item.get("@type").and_then(Value::as_str) == Some("FeatureValue") {
+            let feature = reference(item, "featureWithValue");
+            let target = feature.and_then(|id| valued_element(&items, &children, id));
+            let text = reference(item, "memberElement").map(|e| crate::expression::text(&items, e));
+            if let (Some(element), Some(text)) = (target.and_then(|t| elements.get_mut(&t)), text) {
+                let default = item.get("isDefault").and_then(Value::as_bool) == Some(true);
+                element.value = Some(if default {
+                    format!("default {text}")
+                } else {
+                    text
+                });
+            }
+            continue;
+        }
         if item.get("@type").and_then(Value::as_str) == Some("SubjectMembership") {
             let owner = reference(item, "owner").and_then(qualified_name);
             let member = reference(item, "memberElement");
@@ -337,6 +351,38 @@ fn require_constraints(
                 .unwrap_or_else(|| crate::expression::UNKNOWN.to_owned())
         })
         .collect()
+}
+
+/// Our element for the feature `id` the element form gives a value to: the
+/// one of the same qualified name, or for a redefinition without a name of
+/// its own (`attribute :>> mass = 180.0`, which the element form calls
+/// `engine::@0`), the owner's feature named after the one it redefines.
+fn valued_element(
+    items: &HashMap<String, (Value, PathBuf)>,
+    children: &HashMap<&str, Vec<&Value>>,
+    id: &str,
+) -> Option<QualifiedName> {
+    let (feature, _) = items.get(id)?;
+    let named = |item: &Value| {
+        item.get("qualifiedName")
+            .and_then(Value::as_str)
+            .map(QualifiedName::new)
+    };
+    if feature.get("declaredName").is_some() {
+        return named(feature);
+    }
+    let redefined = children
+        .get(id)?
+        .iter()
+        .find(|c| c.get("@type").and_then(Value::as_str) == Some("Redefinition"))
+        .and_then(|r| reference(r, "redefinedFeature"))
+        .and_then(|r| items.get(r))
+        .and_then(|(r, _)| r.get("declaredName")?.as_str())?;
+    let (owner, _) = items.get(reference(feature, "owner")?)?;
+    Some(QualifiedName::new(format!(
+        "{}::{redefined}",
+        named(owner)?
+    )))
 }
 
 /// The feature a claim's subject is bound to by value: `by vehicle.powertrain`

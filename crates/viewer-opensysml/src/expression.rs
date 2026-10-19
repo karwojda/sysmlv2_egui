@@ -16,6 +16,27 @@ pub fn text(items: &HashMap<String, (Value, PathBuf)>, id: &str) -> String {
     render(items, id).0
 }
 
+/// How a feature is named in text: its short name, else its name, else,
+/// for a redefinition with no name of its own (`attribute :>> mass = 180.0`),
+/// the name of the feature it redefines.
+fn feature_name(items: &HashMap<String, (Value, PathBuf)>, feature: &Value) -> Option<String> {
+    if let Some(name) = feature
+        .get("declaredShortName")
+        .or_else(|| feature.get("declaredName"))
+    {
+        return name.as_str().map(str::to_owned);
+    }
+    let redefinition = feature
+        .get("ownedRedefinition")?
+        .as_array()?
+        .first()?
+        .get("@id")?
+        .as_str()?;
+    let (redefinition, _) = items.get(redefinition)?;
+    let redefined = redefinition.get("redefinedFeature")?.get("@id")?.as_str()?;
+    feature_name(items, &items.get(redefined)?.0)
+}
+
 /// Binding strength, weakest first; `[` (a unit) binds tightest.
 fn precedence(operator: &str, unary: bool) -> u8 {
     if unary {
@@ -64,22 +85,13 @@ fn render(items: &HashMap<String, (Value, PathBuf)>, id: &str) -> (String, u8) {
             let (target, _) = items.get(id)?;
             // An anonymous chain feature reads as its links: `vehicle.powertrain`.
             if let Some(chain) = target.get("chainingFeature").and_then(Value::as_array) {
-                let names: Option<Vec<&str>> = chain
+                let names: Option<Vec<String>> = chain
                     .iter()
-                    .map(|link| {
-                        let (link, _) = items.get(link.get("@id")?.as_str()?)?;
-                        link.get("declaredShortName")
-                            .or_else(|| link.get("declaredName"))?
-                            .as_str()
-                    })
+                    .map(|link| feature_name(items, &items.get(link.get("@id")?.as_str()?)?.0))
                     .collect();
                 return names.map(|n| n.join("."));
             }
-            let name = target
-                .get("declaredShortName")
-                .or_else(|| target.get("declaredName"))?
-                .as_str()?;
-            return Some(name.to_owned());
+            return feature_name(items, target);
         }
         // An unresolved reference keeps the name it was written with.
         reference
@@ -332,6 +344,28 @@ mod tests {
             "abs(v.b)",
             "an unresolved name is kept as written"
         );
+    }
+
+    #[test]
+    fn an_unnamed_redefinition_reads_as_the_feature_it_redefines() {
+        let extra = vec![
+            ("Component::mass", feature("mass")),
+            (
+                "rd",
+                json!({"@type": "Redefinition", "redefinedFeature": {"@id": "Component::mass"}}),
+            ),
+            (
+                "engine::@0",
+                json!({"@type": "AttributeUsage", "ownedRedefinition": [{"@id": "rd"}]}),
+            ),
+            ("engine", feature("engine")),
+            (
+                "chain",
+                json!({"@type": "Feature", "chainingFeature": [{"@id": "engine"}, {"@id": "engine::@0"}]}),
+            ),
+            ("e", reference("chain")),
+        ];
+        assert_eq!(render_with(extra, "e"), "engine.mass");
     }
 
     #[test]

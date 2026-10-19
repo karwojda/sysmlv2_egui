@@ -26,7 +26,7 @@
 <text x="1368" y="189.67" text-anchor="middle" font-size="11">?</text>
 <polyline points="1130,223 1381,223" fill="none" stroke="#000000"/>
 <text x="1255.5" y="244" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="1140" y="260" text-anchor="start" font-size="12">limit</text>
+<text x="1140" y="260" text-anchor="start" font-size="12">limit = 1600.0</text>
 <rect x="879" y="197" width="211" height="50" rx="10" fill="#ffe599" stroke="#000000"/>
 <text x="984.5" y="219" text-anchor="middle" font-size="12">«requirement»</text>
 <text x="984.5" y="237" text-anchor="middle" font-size="14">&lt;3&gt; costReq:CostCap</text>
@@ -39,7 +39,7 @@
 <text x="821" y="189.67" text-anchor="middle" font-size="11">✓</text>
 <polyline points="607,223 834,223" fill="none" stroke="#000000"/>
 <text x="720.5" y="244" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="617" y="260" text-anchor="start" font-size="12">limit</text>
+<text x="617" y="260" text-anchor="start" font-size="12">limit = 2000.0</text>
 <rect x="311" y="197" width="251" height="50" rx="10" fill="#f4cccc" stroke="#000000"/>
 <text x="436.5" y="219" text-anchor="middle" font-size="12">«requirement»</text>
 <text x="436.5" y="237" text-anchor="middle" font-size="14">&lt;2&gt; rangeReq:RangeTarget</text>

@@ -65,6 +65,9 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             .unwrap_or_else(|| subject.to_string());
         rows.push(link("Subject", subject, label));
     }
+    if let Some(value) = &e.value {
+        rows.push(text("Value", value.clone()));
+    }
     for constraint in &e.require {
         rows.push(text("Requires", format!("{{{constraint}}}")));
     }

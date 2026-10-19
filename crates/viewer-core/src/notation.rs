@@ -352,6 +352,11 @@ fn feature_row(feature: &Element) -> String {
         row.push_str(&format!("<{id}> "));
     }
     row.push_str(&connector_label(feature));
+    match feature.value.as_deref() {
+        Some(value) if value.starts_with("default ") => row.push_str(&format!(" {value}")),
+        Some(value) => row.push_str(&format!(" = {value}")),
+        None => {}
+    }
     if feature.kind.is_connection() && !feature.ends.is_empty() {
         let ends: Vec<String> = feature.ends.iter().map(ToString::to_string).collect();
         row.push_str(&format!(" ({})", ends.join(" → ")));

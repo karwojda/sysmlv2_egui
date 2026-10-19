@@ -263,6 +263,9 @@ pub struct Element {
     pub subject: Option<QualifiedName>,
     /// A requirement's own `require` constraints, as text, in order.
     pub require: Vec<String>,
+    /// A feature's value, as text: `180.0`, `engine.mass + transmission.mass`,
+    /// or `default 5` for a default.
+    pub value: Option<String>,
     /// For a Satisfaction Claim, the requirement usage it claims is
     /// satisfied.
     pub satisfies: Option<QualifiedName>,
@@ -323,6 +326,7 @@ impl Element {
             short_name: None,
             subject: None,
             require: Vec::new(),
+            value: None,
             satisfies: None,
             satisfier: None,
             claim_result: None,
@@ -524,6 +528,12 @@ impl ModelBuilder {
         self = self.unnamed(name, ElementKind::SatisfyRequirement);
         self.last().satisfies = Some(QualifiedName::new(requirement));
         self.last().satisfier = Some(QualifiedName::new(satisfier));
+        self
+    }
+
+    /// Sets the last feature's value, as text (`180.0`).
+    pub fn value(mut self, text: &str) -> Self {
+        self.last().value = Some(text.to_owned());
         self
     }
 

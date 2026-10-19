@@ -476,3 +476,47 @@ fn parts_with_satisfy_edges_match_the_golden_file() {
         "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
     );
 }
+
+#[test]
+fn a_feature_s_value_follows_it_in_its_compartment_row() {
+    let scene = general("Req");
+
+    let vehicle = texts_of(&scene, "Req::vehicle");
+    assert!(vehicle.contains(&"mass = 1800.0".to_owned()), "{vehicle:?}");
+    assert!(vehicle.contains(&"range = 420.0".to_owned()), "{vehicle:?}");
+    let tree = general("Req::vehicleSpec");
+    assert!(texts_of(&tree, "Req::vehicleSpec::massReq").contains(&"limit = 2000.0".to_owned()));
+}
+
+#[test]
+fn a_roll_up_reads_as_written_and_a_default_says_so() {
+    let model = viewer_core::Model::builder()
+        .package("P")
+        .part_def("P::Car")
+        .attribute("P::Car::mass")
+        .value("engine.mass + body.mass")
+        .attribute("P::Car::doors")
+        .value("default 4")
+        .build();
+
+    let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
+
+    let car = texts_of(&scene, "P::Car");
+    assert!(
+        car.contains(&"mass = engine.mass + body.mass".to_owned()),
+        "{car:?}"
+    );
+    assert!(car.contains(&"doors default 4".to_owned()), "{car:?}");
+}
+
+#[test]
+fn properties_show_a_feature_s_value() {
+    let props = properties(&common::requirements(), &qn("Req::vehicle::mass")).unwrap();
+
+    assert!(
+        props
+            .rows
+            .iter()
+            .any(|p| p.label == "Value" && p.value == "1800.0")
+    );
+}
