@@ -18,6 +18,8 @@ The Model is only ever read. Layout, saved Diagrams and Styles live in their own
 - **Live reload:** edits to the Model or its Style file show up in the open Diagrams.
 - **Export:** deterministic SVG, identical between the viewer and the CLI.
 
+For a quick tour, open [`examples/mass-rollup`](examples/mass-rollup): a vehicle whose mass rolls up from its parts, with requirements that turn green or red as you edit the masses.
+
 ## Requirements
 
 - Rust (stable, edition 2024).

@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "rules": [
+    {
+      "satisfaction": "satisfied",
+      "fill": "#d9ead3"
+    },
+    {
+      "satisfaction": "violated",
+      "fill": "#f4cccc"
+    },
+    {
+      "satisfaction": "undecided",
+      "fill": "#fff2cc"
+    },
+    {
+      "satisfaction": "not-claimed",
+      "fill": "#eeeeee"
+    }
+  ]
+}

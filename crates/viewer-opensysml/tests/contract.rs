@@ -368,3 +368,37 @@ fn rebuilds_require_constraint_text_from_the_service_s_expression_trees() {
         ]
     );
 }
+
+/// The mass roll-up demo in `examples/mass-rollup`: its requirements are
+/// checked against masses the service rolls up from the parts.
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn the_mass_rollup_demo_rolls_up_and_checks_its_requirements() {
+    use viewer_core::satisfaction::{SatisfactionStatus, status};
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/mass-rollup");
+    let model = OpenSysmlBackend::new().load(&folder).unwrap();
+    assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
+    let of = |name: &str| {
+        status(
+            &model,
+            &QualifiedName::new(format!("MassRollup::massSpec::{name}")),
+        )
+        .unwrap()
+    };
+
+    // 180 + 85 + 950 + 60 + 4 × 22 = 1363 kg ≤ 1400; the powertrain's
+    // 180 + 85 = 265 kg > 250.
+    assert_eq!(of("vehicleMass"), SatisfactionStatus::Satisfied);
+    assert_eq!(of("powertrainMass"), SatisfactionStatus::Violated);
+    assert_eq!(of("tankMass"), SatisfactionStatus::NotClaimed);
+    let satisfiers: Vec<String> = model
+        .claims()
+        .filter_map(|c| c.satisfier.as_ref())
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        satisfiers,
+        ["MassRollup::vehicle", "MassRollup::vehicle::powertrain"],
+        "a chained `by` is followed"
+    );
+}
