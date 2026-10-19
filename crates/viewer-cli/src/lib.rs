@@ -8,6 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
+use viewer_core::constraint::{self, ConstraintStatus};
 use viewer_core::model::ClaimResult;
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::satisfaction::{self, SatisfactionStatus};
@@ -96,6 +97,16 @@ enum Command {
         #[arg(long)]
         strict: bool,
     },
+    /// Report every requirement's status and every asserted constraint's
+    /// result, checked against the Model's values. Fails if anything is
+    /// violated: one gate for CI.
+    Check {
+        /// The Model folder.
+        model_folder: PathBuf,
+        /// Also fail on anything undecided or not claimed.
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 /// Runs the tool with `args` (program name first), loading Models through
@@ -153,6 +164,10 @@ pub fn run_with_output(
             model_folder,
             strict,
         } => requirements(&model_folder, strict, backend, stdout, stderr),
+        Command::Check {
+            model_folder,
+            strict,
+        } => check(&model_folder, strict, backend, stdout, stderr),
     };
     match result {
         Ok(()) => EXIT_OK,
@@ -174,12 +189,92 @@ fn requirements(
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
     let model = load_model_for(model_folder, backend, stderr, "no requirement was checked")?;
+    let counts = requirements_report(&model, model_folder, stdout);
+    match counts.failing(strict) {
+        0 => Ok(()),
+        n => Err(Failure(counts.failure(n, strict))),
+    }
+}
+
+/// The `requirements` report, then one line per Constraint Result. Fails on
+/// any violated requirement or constraint; with `strict`, on anything not
+/// satisfied or not holding.
+fn check(
+    model_folder: &Path,
+    strict: bool,
+    backend: &mut dyn ModelBackend,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), Failure> {
+    let model = load_model_for(model_folder, backend, stderr, "nothing was checked")?;
+    let requirements = requirements_report(&model, model_folder, stdout);
+    let constraints = constraints_report(&model, model_folder, stdout);
+    let failures: Vec<String> = [
+        (
+            requirements.failing(strict),
+            requirements.failure(requirements.failing(strict), strict),
+        ),
+        (
+            constraints.failing(strict),
+            constraints.failure(constraints.failing(strict), strict),
+        ),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(_, message)| message)
+    .collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure(failures.join("; ")))
+    }
+}
+
+/// How a report came out: how many lines it had of each kind.
+struct Counts {
+    /// What a line is about, singular and plural: `requirement(s)`.
+    noun: (&'static str, &'static str),
+    /// What failing means, leniently and strictly: `violated`, `not satisfied`.
+    fails: (&'static str, &'static str),
+    violated: usize,
+    /// Undecided, and for requirements also not claimed.
+    unsettled: usize,
+}
+
+impl Counts {
+    fn failing(&self, strict: bool) -> usize {
+        if strict {
+            self.violated + self.unsettled
+        } else {
+            self.violated
+        }
+    }
+
+    fn failure(&self, n: usize, strict: bool) -> String {
+        let (noun, verb) = if n == 1 {
+            (self.noun.0, "is")
+        } else {
+            (self.noun.1, "are")
+        };
+        let what = if strict { self.fails.1 } else { self.fails.0 };
+        format!("{n} {noun} {verb} {what}")
+    }
+}
+
+/// Prints the requirements report and counts its lines.
+fn requirements_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -> Counts {
+    let mut counts = Counts {
+        noun: ("requirement", "requirements"),
+        fails: ("violated", "not satisfied"),
+        violated: 0,
+        unsettled: 0,
+    };
     let requirements: Vec<(&QualifiedName, SatisfactionStatus)> = model
         .elements()
         .filter_map(|e| {
             Some((
                 &e.qualified_name,
-                satisfaction::status(&model, &e.qualified_name)?,
+                satisfaction::status(model, &e.qualified_name)?,
             ))
         })
         .collect();
@@ -189,7 +284,7 @@ fn requirements(
             "no requirement usages in {}",
             model_folder.display()
         );
-        return Ok(());
+        return counts;
     }
     let width = requirements
         .iter()
@@ -197,7 +292,7 @@ fn requirements(
         .max()
         .unwrap_or(0);
     for (name, status) in &requirements {
-        let claims: Vec<String> = satisfaction::claims_on(&model, name)
+        let claims: Vec<String> = satisfaction::claims_on(model, name)
             .map(|claim| {
                 let satisfier = claim
                     .satisfier
@@ -217,7 +312,7 @@ fn requirements(
             .collect();
         let nested = model
             .element(name)
-            .map_or(0, |e| satisfaction::nested(&model, e).count());
+            .map_or(0, |e| satisfaction::nested(model, e).count());
         let details = match (claims.is_empty(), nested) {
             (true, 0) => "nothing claims to satisfy it".to_owned(),
             (true, n) => format!("rolled up from {n} nested requirements"),
@@ -232,7 +327,7 @@ fn requirements(
             "{} {:<11} {:<width$}  {details}",
             status.mark(),
             status.label(),
-            name.as_str(),
+            name.as_str()
         );
     }
     let count =
@@ -248,21 +343,71 @@ fn requirements(
         "{} requirements: {satisfied} satisfied, {violated} violated, {undecided} undecided, {unclaimed} not claimed",
         requirements.len()
     );
-    let failing = if strict {
-        violated + undecided + unclaimed
-    } else {
-        violated
+    counts.violated = violated;
+    counts.unsettled = undecided + unclaimed;
+    counts
+}
+
+/// Prints one line per Constraint Result, by constraint and then part, and
+/// counts them.
+fn constraints_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -> Counts {
+    let mut counts = Counts {
+        noun: ("constraint", "constraints"),
+        fails: ("violated", "not holding"),
+        violated: 0,
+        unsettled: 0,
     };
-    if failing > 0 {
-        let what = if strict { "not satisfied" } else { "violated" };
-        let plural = if failing == 1 {
-            "requirement is"
-        } else {
-            "requirements are"
-        };
-        return Err(Failure(format!("{failing} {plural} {what}")));
+    let mut results: Vec<(&QualifiedName, &viewer_core::model::ConstraintCheck)> = model
+        .elements()
+        .filter(|e| e.is_asserted)
+        .flat_map(|c| c.checks.iter().map(move |check| (&c.qualified_name, check)))
+        .collect();
+    results.sort_by(|a, b| (a.0, &a.1.part).cmp(&(b.0, &b.1.part)));
+    if results.is_empty() {
+        let _ = writeln!(
+            stdout,
+            "no checked constraints in {}",
+            model_folder.display()
+        );
+        return counts;
     }
-    Ok(())
+    let width = results
+        .iter()
+        .map(|(name, _)| name.as_str().chars().count())
+        .max()
+        .unwrap_or(0);
+    let (mut holding, mut undecided) = (0, 0);
+    for (name, check) in &results {
+        let status = constraint::check_status(&check.result);
+        match status {
+            ConstraintStatus::Holds => holding += 1,
+            ConstraintStatus::Violated => counts.violated += 1,
+            ConstraintStatus::Undecided => undecided += 1,
+        }
+        let detail = match &check.result {
+            ClaimResult::Holds => String::new(),
+            ClaimResult::Violated { condition } => format!(": {condition}"),
+            ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason } => {
+                format!(": {reason}")
+            }
+        };
+        let _ = writeln!(
+            stdout,
+            "{} {:<11} {:<width$}  on {}{detail}",
+            status.mark(),
+            status.label(),
+            name.as_str(),
+            check.part
+        );
+    }
+    let _ = writeln!(
+        stdout,
+        "{} constraint results: {holding} hold, {} violated, {undecided} undecided",
+        results.len(),
+        counts.violated
+    );
+    counts.unsettled = undecided;
+    counts
 }
 
 fn export_one(
