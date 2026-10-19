@@ -65,6 +65,12 @@ A `satisfy` in the Model stating that a part (the satisfier) satisfies a require
 Whether a requirement usage is met, as checked by evaluating its Satisfaction Claims against the Model's values: Satisfied (every claim holds), Violated (a claim's condition is false), Undecided (a claim couldn't be evaluated, for example a value is missing), or Not claimed (nothing claims to satisfy it). With several claims, the worst one decides. A composite requirement also rolls up its nested requirements' statuses, worst first: Violated, Undecided, Not claimed, Satisfied. A claim on a composite with no constraint of its own has nothing to check, so only the nested requirements count.
 _Avoid_: verified, passed (verification cases are a separate thing)
 
+**Asserted Constraint**:
+A constraint the Model asserts must hold (`assert constraint { mass <= 1500 }`), in a part or part def, either written out or as a usage of a constraint def with its parameters bound. A violated one makes the Model inconsistent.
+
+**Constraint Result**:
+What checking an Asserted Constraint on one part found: holds, violated (with the failing condition), or undecided (with the reason). An inherited constraint has a result for each part that inherits it. A plain, unasserted constraint has none.
+
 **Style**:
 A set of Style Rules layered on the Standard Notation, coloring node fills only. It is defined once for the Model and can be overridden per Diagram: a Diagram's own rules come on top of the Model's, or replace them when it switches the Model Style off.
 _Avoid_: theme, color scheme, skin
