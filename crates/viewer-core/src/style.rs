@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::constraint::{self, ConstraintStatus};
 use crate::diagram_file::{DiagramStyle, FOLDER};
 use crate::model::{Element, Model, QualifiedName};
 use crate::notation::{LABEL_FONT, text_width};
@@ -35,6 +36,43 @@ pub enum Condition {
     Metadata(QualifiedName),
     /// Requirement usages with a Satisfaction Status.
     Satisfaction(Satisfaction),
+    /// Asserted constraint usages, by their worst Constraint Result.
+    Constraint(ConstraintResult),
+    /// Parts with a violated constraint of their own.
+    Constraints(PartConstraints),
+}
+
+/// The Constraint Result a constraint rule matches, as written in the
+/// Style file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConstraintResult {
+    Holds,
+    Violated,
+    Undecided,
+}
+
+impl ConstraintResult {
+    pub const ALL: [ConstraintResult; 3] = [
+        ConstraintResult::Holds,
+        ConstraintResult::Violated,
+        ConstraintResult::Undecided,
+    ];
+
+    pub fn status(self) -> ConstraintStatus {
+        match self {
+            ConstraintResult::Holds => ConstraintStatus::Holds,
+            ConstraintResult::Violated => ConstraintStatus::Violated,
+            ConstraintResult::Undecided => ConstraintStatus::Undecided,
+        }
+    }
+}
+
+/// What a parts rule matches: parts with a violated constraint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PartConstraints {
+    Violated,
 }
 
 /// The Satisfaction Status a satisfaction rule matches, as written in the
@@ -74,12 +112,17 @@ impl Condition {
             Condition::Kind(_) => 0,
             Condition::Package(_) => 1,
             Condition::Metadata(_) => 2,
-            Condition::Satisfaction(_) => 3,
+            Condition::Satisfaction(_) | Condition::Constraint(_) | Condition::Constraints(_) => 3,
         }
     }
 
     pub fn matches(&self, model: &Model, element: &Element) -> bool {
         match self {
+            Condition::Constraint(wanted) => constraint::status(element) == Some(wanted.status()),
+            Condition::Constraints(PartConstraints::Violated) => {
+                element.kind == crate::model::ElementKind::PartUsage
+                    && constraint::has_violation(model, &element.qualified_name)
+            }
             Condition::Satisfaction(wanted) => {
                 satisfaction::status(model, &element.qualified_name) == Some(wanted.status())
             }
@@ -101,6 +144,12 @@ impl Condition {
             Condition::Package(package) => package.simple_name().to_owned(),
             Condition::Metadata(definition) => format!("@{}", definition.simple_name()),
             Condition::Satisfaction(wanted) => wanted.status().label().to_owned(),
+            Condition::Constraint(wanted) => {
+                format!("Constraint {}", wanted.status().label().to_lowercase())
+            }
+            Condition::Constraints(PartConstraints::Violated) => {
+                "Part with a violated constraint".to_owned()
+            }
         }
     }
 }
@@ -128,7 +177,9 @@ impl Condition {
         match self {
             Condition::Kind(keyword) => KINDS.contains(&keyword.as_str()),
             Condition::Package(name) | Condition::Metadata(name) => model.element(name).is_some(),
-            Condition::Satisfaction(_) => true,
+            Condition::Satisfaction(_) | Condition::Constraint(_) | Condition::Constraints(_) => {
+                true
+            }
         }
     }
 }

@@ -310,3 +310,157 @@ fn properties_explain_each_result_on_a_part_and_on_a_constraint() {
 fn parts_with_checked_constraints_match_the_golden_file() {
     assert_golden("constraints-checked.svg", &vehicle_and_tank());
 }
+
+mod styles {
+    use super::*;
+    use viewer_core::DiagramStyle;
+    use viewer_core::model::Model;
+    use viewer_core::scene::Rgb;
+    use viewer_core::style::{
+        Condition, ConstraintResult, PartConstraints, Style, StyleRule, apply_styles, rule_for,
+    };
+
+    const RED: Rgb = Rgb(0xf4, 0xcc, 0xcc);
+    const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
+    const AMBER: Rgb = Rgb(0xff, 0xe5, 0x99);
+    const NAVY: Rgb = Rgb(0x1f, 0x2a, 0x44);
+
+    fn rule(condition: Condition, fill: Rgb) -> StyleRule {
+        StyleRule {
+            condition,
+            fill,
+            label: None,
+        }
+    }
+
+    fn rules() -> Vec<StyleRule> {
+        vec![
+            rule(Condition::Constraint(ConstraintResult::Holds), GREEN),
+            rule(Condition::Constraint(ConstraintResult::Violated), RED),
+            rule(Condition::Constraint(ConstraintResult::Undecided), AMBER),
+            rule(Condition::Constraints(PartConstraints::Violated), RED),
+        ]
+    }
+
+    fn fill_of(model: &Model, element: &str, rules: &[StyleRule]) -> Option<Rgb> {
+        rule_for(model, model.element(&qn(element)).unwrap(), &[rules]).map(|r| r.fill)
+    }
+
+    #[test]
+    fn a_constraint_rule_matches_asserted_constraints_by_result() {
+        let m = common::assertions();
+
+        assert_eq!(fill_of(&m, "C::vehicle::light", &rules()), Some(GREEN));
+        assert_eq!(
+            fill_of(&m, "C::vehicle::powerToWeight", &rules()),
+            Some(RED)
+        );
+        assert_eq!(
+            fill_of(&m, "C::vehicle::heavy", &rules()),
+            None,
+            "not asserted"
+        );
+        assert_eq!(fill_of(&m, "C::MaxRatio", &rules()), None);
+    }
+
+    #[test]
+    fn a_parts_rule_matches_parts_with_a_violated_constraint_of_their_own() {
+        let m = Model::builder()
+            .package("P")
+            .part("P::car")
+            .part("P::car::tank")
+            .constraint("P::car::tank::full")
+            .asserted()
+            .checked_on(
+                "P::car::tank",
+                viewer_core::model::ClaimResult::Violated {
+                    condition: "x".to_owned(),
+                },
+            )
+            .build();
+
+        assert_eq!(fill_of(&m, "P::car::tank", &rules()), Some(RED));
+        assert_eq!(
+            fill_of(&m, "P::car", &rules()),
+            None,
+            "a nested part's violation doesn't colour its owner"
+        );
+        assert_eq!(
+            fill_of(&common::assertions(), "C::vehicle::tank", &rules()),
+            Some(RED),
+            "inherited counts"
+        );
+    }
+
+    #[test]
+    fn constraint_rules_beat_metadata() {
+        let m = Model::builder()
+            .package("P")
+            .part("P::p")
+            .annotated("P::Safety")
+            .constraint("P::p::c")
+            .asserted()
+            .checked_on(
+                "P::p",
+                viewer_core::model::ClaimResult::Violated {
+                    condition: "x".to_owned(),
+                },
+            )
+            .build();
+        let rules = [
+            rule(Condition::Metadata(qn("P::Safety")), NAVY),
+            rule(Condition::Constraints(PartConstraints::Violated), RED),
+        ];
+
+        assert_eq!(fill_of(&m, "P::p", &rules), Some(RED));
+    }
+
+    #[test]
+    fn both_rules_are_written_by_name_in_the_style_file() {
+        let style = Style::new(rules());
+
+        let text = style.to_text();
+
+        assert!(text.contains(r#""constraint": "violated""#), "{text}");
+        assert!(text.contains(r#""constraints": "violated""#), "{text}");
+        let folder = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(folder.path().join("diagrams")).unwrap();
+        std::fs::write(viewer_core::style::path_for(folder.path()), text).unwrap();
+        assert_eq!(
+            viewer_core::style::load(folder.path()).unwrap(),
+            Some(style)
+        );
+    }
+
+    fn styled() -> Scene {
+        let model = common::assertions();
+        let mut scene = vehicle_and_tank();
+        let diagram = DiagramStyle {
+            legend: true,
+            ..DiagramStyle::default()
+        };
+        apply_styles(&mut scene, &model, Some(&Style::new(rules())), &diagram);
+        scene
+    }
+
+    #[test]
+    fn the_legend_names_constraint_rules() {
+        let legend: Vec<String> = styled()
+            .items_depicting(&Depicts::Legend)
+            .filter_map(|s| match s {
+                Shape::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            legend,
+            ["Constraint violated", "Part with a violated constraint"]
+        );
+    }
+
+    #[test]
+    fn styled_constraints_match_the_golden_file() {
+        assert_golden("constraints-styled.svg", &styled());
+    }
+}

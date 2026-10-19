@@ -3,7 +3,9 @@
 
 use eframe::egui;
 use viewer_core::scene::Rgb;
-use viewer_core::style::{self, Condition, KINDS, Satisfaction, StyleRule};
+use viewer_core::style::{
+    self, Condition, ConstraintResult, KINDS, PartConstraints, Satisfaction, StyleRule,
+};
 use viewer_core::{ElementKind, Model, QualifiedName};
 
 /// What an edit of the rule list did: `changed` the rules at all, and
@@ -136,6 +138,8 @@ fn condition_picker(
         Condition::Package(_) => "Package",
         Condition::Metadata(_) => "Metadata",
         Condition::Satisfaction(_) => "Satisfaction",
+        Condition::Constraint(_) => "Constraint",
+        Condition::Constraints(_) => "Part constraints",
     };
     egui::ComboBox::from_id_salt("type")
         .selected_text(type_name)
@@ -154,6 +158,14 @@ fn condition_picker(
                 (
                     "Satisfaction",
                     Condition::Satisfaction(Satisfaction::Violated),
+                ),
+                (
+                    "Constraint",
+                    Condition::Constraint(ConstraintResult::Violated),
+                ),
+                (
+                    "Part constraints",
+                    Condition::Constraints(PartConstraints::Violated),
                 ),
             ];
             for (name, fresh) in options {
@@ -201,6 +213,29 @@ fn condition_picker(
                         }
                     }
                 });
+        }
+        Condition::Constraint(wanted) => {
+            egui::ComboBox::from_id_salt("constraint")
+                .selected_text(format!(
+                    "{} {}",
+                    wanted.status().mark(),
+                    wanted.status().label()
+                ))
+                .show_ui(ui, |ui| {
+                    for option in ConstraintResult::ALL {
+                        let text =
+                            format!("{} {}", option.status().mark(), option.status().label());
+                        if ui.selectable_label(*wanted == option, text).clicked()
+                            && *wanted != option
+                        {
+                            *wanted = option;
+                            changed = true;
+                        }
+                    }
+                });
+        }
+        Condition::Constraints(_) => {
+            ui.label("with a violated constraint");
         }
     }
     changed
