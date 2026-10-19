@@ -87,7 +87,7 @@ fn computed_values(instances: &[opensysml::Instance]) -> Vec<(QualifiedName, Str
 
 /// A value written as the Model would write it: `1363.0`, `4`, `true`,
 /// `"x"`, `1650 [kg]`. `None` for anything else (instances, sequences, …).
-fn value_text(value: &opensysml::Value) -> Option<String> {
+pub(crate) fn value_text(value: &opensysml::Value) -> Option<String> {
     use opensysml::{Magnitude, Value};
     let real = |r: f64| {
         if r.fract() == 0.0 && r.abs() < 1e15 {

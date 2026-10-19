@@ -540,6 +540,8 @@ pub fn analysis() -> Model {
         .typed_by("A::MassCheck")
         .subject("A::carMass::c")
         .subject_bound_to("A::car")
+        // 150 + 4 × 20 = 230 ≤ 300.
+        .analysed(&[("result", "230.0")], Some(ClaimResult::Holds))
         .part("A::carMass::c")
         .value("car")
         .build()

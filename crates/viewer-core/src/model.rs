@@ -208,6 +208,15 @@ pub struct Objective {
     pub require: Vec<String>,
 }
 
+/// What running an analysis usage found (an Analysis Result).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnalysisResult {
+    /// Its outputs, by name, with their values as text (`result`, `230.0`).
+    pub outputs: Vec<(String, String)>,
+    /// What its objective came to, if it has one.
+    pub objective: Option<ClaimResult>,
+}
+
 /// What checking an asserted constraint on one part found.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstraintCheck {
@@ -295,6 +304,8 @@ pub struct Element {
     pub objective: Option<Objective>,
     /// Whether a parameter is its owner's `return` result.
     pub is_return: bool,
+    /// What running an analysis usage found; `None` until run.
+    pub analysis_result: Option<AnalysisResult>,
     /// A requirement's own `require` constraints, as text, in order.
     pub require: Vec<String>,
     /// A feature's value, as text: `180.0`, `engine.mass + transmission.mass`,
@@ -371,6 +382,7 @@ impl Element {
             subject_target: None,
             objective: None,
             is_return: false,
+            analysis_result: None,
             require: Vec::new(),
             value: None,
             computed: Vec::new(),
@@ -600,6 +612,18 @@ impl ModelBuilder {
         self.last().objective = Some(Objective {
             doc: doc.map(str::to_owned),
             require: require.iter().map(|r| (*r).to_owned()).collect(),
+        });
+        self
+    }
+
+    /// Records what running the last analysis found.
+    pub fn analysed(mut self, outputs: &[(&str, &str)], objective: Option<ClaimResult>) -> Self {
+        self.last().analysis_result = Some(AnalysisResult {
+            outputs: outputs
+                .iter()
+                .map(|(n, v)| ((*n).to_owned(), (*v).to_owned()))
+                .collect(),
+            objective,
         });
         self
     }

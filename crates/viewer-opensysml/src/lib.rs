@@ -11,6 +11,7 @@
 //! which the service marks experimental, adds what the symbol tree lacks:
 //! connection ends, documentation, port conjugation and source lines.
 
+mod analyses;
 mod api_json;
 mod constraints;
 mod expression;
@@ -197,6 +198,13 @@ impl ModelBackend for OpenSysmlBackend {
                 message: format!(
                     "requirements could not be checked, so their status is Undecided: {reason}"
                 ),
+                location: None,
+            });
+        }
+        for warning in analyses::run(&parsed, &mut elements) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Warning,
+                message: warning,
                 location: None,
             });
         }

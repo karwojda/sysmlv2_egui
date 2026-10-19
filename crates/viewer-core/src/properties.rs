@@ -78,6 +78,19 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     if e.is_asserted {
         rows.push(text("Asserted", "yes".to_owned()));
     }
+    // An analysis usage: its outputs and what its objective came to.
+    if let Some(result) = &e.analysis_result {
+        for (name, value) in &result.outputs {
+            rows.push(text("Output", format!("{name} = {value}")));
+        }
+        match &result.objective {
+            Some(outcome) => rows.push(text("Objective", constraint::describe(outcome))),
+            None if crate::analysis::objective(model, e).is_some() => {
+                rows.push(text("Objective", "? no verdict".to_owned()))
+            }
+            None => {}
+        }
+    }
     // An asserted constraint: what checking it found on each part.
     for check in &e.checks {
         rows.push(link(

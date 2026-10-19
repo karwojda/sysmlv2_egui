@@ -4,6 +4,7 @@
 //! Nothing in this crate knows about egui, the command line, or any SysML
 //! parsing library (ADR-0001).
 
+pub mod analysis;
 pub mod backend;
 pub mod browser;
 pub mod constraint;

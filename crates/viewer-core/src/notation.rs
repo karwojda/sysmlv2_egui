@@ -242,6 +242,11 @@ pub fn node_content(
                 parameters.into_iter().map(feature_row).collect(),
             ));
         }
+        // What running it found, its `return` result among them.
+        let results = crate::analysis::result_rows(model, element);
+        if !results.is_empty() {
+            leading.push(("results", results));
+        }
         compartments.splice(0..0, leading);
     }
     if compartments_shown && !analysis {
@@ -359,7 +364,8 @@ pub fn node_content(
         subtitle,
         badge: crate::satisfaction::status(model, &element.qualified_name)
             .map(|s| s.mark())
-            .or_else(|| crate::constraint::status(element).map(|s| s.mark())),
+            .or_else(|| crate::constraint::status(element).map(|s| s.mark()))
+            .or_else(|| crate::analysis::status(model, element).map(|s| s.mark())),
         usage,
         compartments,
     }
