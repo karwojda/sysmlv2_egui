@@ -17,7 +17,7 @@ See `.scratch/styles/spec.md`.
 - [x] The panel edits the Model Style and saves `style.json`
 - [x] The panel edits the Diagram Style and marks the Diagram unsaved
 - [x] Rules naming missing elements are marked
-- [ ] Checked by hand with a screenshot
+- [x] Checked by hand with a screenshot
 
 ## Comments
 
@@ -29,4 +29,4 @@ See `.scratch/styles/spec.md`.
     - **This Diagram tab:** "Use Model Style" and "Legend" switches plus its own rules, as unsaved changes.
   - **Screenshots:** the example's `SCREENSHOT_STYLE=1` opens the Style tab.
 
-- [ ] Checked by hand (user)
+- [x] Checked by hand (user, 2026-10-19: "it is ok")
