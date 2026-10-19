@@ -37,7 +37,9 @@ pub trait ModelBackend {
     fn load_with(&mut self, folder: &Path, analyses: &Analyses) -> Result<Model, BackendError>;
 }
 
-/// Serves a fixed Model regardless of the folder asked for.
+/// Serves a fixed Model regardless of the folder asked for. Its Analysis
+/// Results count as the Model's setting; analyses a load doesn't run lose
+/// theirs, as on a real load.
 pub struct FakeBackend {
     model: Model,
 }
@@ -49,7 +51,18 @@ impl FakeBackend {
 }
 
 impl ModelBackend for FakeBackend {
-    fn load_with(&mut self, _folder: &Path, _analyses: &Analyses) -> Result<Model, BackendError> {
-        Ok(self.model.clone())
+    fn load_with(&mut self, _folder: &Path, analyses: &Analyses) -> Result<Model, BackendError> {
+        let runs = |name: &QualifiedName| match analyses {
+            Analyses::AsSet | Analyses::All => true,
+            Analyses::None => false,
+            Analyses::Only(only) => only == name,
+        };
+        let elements = self.model.elements().cloned().map(|mut e| {
+            if !runs(&e.qualified_name) {
+                e.analysis_result = None;
+            }
+            e
+        });
+        Ok(Model::new(elements, self.model.diagnostics().to_vec()))
     }
 }

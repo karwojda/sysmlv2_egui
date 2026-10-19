@@ -281,3 +281,148 @@ fn an_analysis_not_run_says_so_in_properties() {
             .any(|p| p.label == "Objective" && p.value == "? not run")
     );
 }
+
+mod styles {
+    use super::*;
+    use viewer_core::DiagramStyle;
+    use viewer_core::model::{ClaimResult, Model};
+    use viewer_core::scene::Rgb;
+    use viewer_core::style::{
+        Condition, ConstraintResult, Style, StyleRule, apply_styles, rule_for,
+    };
+
+    const RED: Rgb = Rgb(0xf4, 0xcc, 0xcc);
+    const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
+    const AMBER: Rgb = Rgb(0xff, 0xe5, 0x99);
+    const NAVY: Rgb = Rgb(0x1f, 0x2a, 0x44);
+
+    fn rule(condition: Condition, fill: Rgb) -> StyleRule {
+        StyleRule {
+            condition,
+            fill,
+            label: None,
+        }
+    }
+
+    fn rules() -> Vec<StyleRule> {
+        vec![
+            rule(Condition::Analysis(ConstraintResult::Holds), GREEN),
+            rule(Condition::Analysis(ConstraintResult::Violated), RED),
+            rule(Condition::Analysis(ConstraintResult::Undecided), AMBER),
+        ]
+    }
+
+    fn fill_of(model: &Model, element: &str, rules: &[StyleRule]) -> Option<Rgb> {
+        rule_for(model, model.element(&qn(element)).unwrap(), &[rules]).map(|r| r.fill)
+    }
+
+    /// Analyses of `P::D` (objective `x <= 1`): one violated, one not run,
+    /// and one of a definition without objective.
+    fn outcomes() -> Model {
+        Model::builder()
+            .package("P")
+            .analysis_def("P::D")
+            .objective(None, &["x <= 1"])
+            .analysis_def("P::Free")
+            .analysis("P::broken")
+            .typed_by("P::D")
+            .analysed(
+                &[("x", "2.0")],
+                Some(ClaimResult::Violated {
+                    condition: "x <= 1".to_owned(),
+                }),
+            )
+            .analysis("P::idle")
+            .typed_by("P::D")
+            .analysis("P::free")
+            .typed_by("P::Free")
+            .analysed(&[("x", "2.0")], None)
+            .annotated("P::Safety")
+            .build()
+    }
+
+    #[test]
+    fn an_analysis_rule_matches_analysis_usages_by_their_objective() {
+        assert_eq!(
+            fill_of(&common::analysis(), "A::carMass", &rules()),
+            Some(GREEN)
+        );
+        assert_eq!(fill_of(&outcomes(), "P::broken", &rules()), Some(RED));
+        assert_eq!(
+            fill_of(&outcomes(), "P::idle", &rules()),
+            Some(AMBER),
+            "not run reads undecided"
+        );
+        assert_eq!(
+            fill_of(&outcomes(), "P::free", &rules()),
+            None,
+            "no objective"
+        );
+        assert_eq!(fill_of(&outcomes(), "P::D", &rules()), None, "a definition");
+    }
+
+    #[test]
+    fn analysis_rules_beat_metadata() {
+        let m = Model::builder()
+            .package("P")
+            .analysis_def("P::D")
+            .objective(None, &["x <= 1"])
+            .analysis("P::a")
+            .typed_by("P::D")
+            .annotated("P::Safety")
+            .analysed(
+                &[],
+                Some(ClaimResult::Violated {
+                    condition: "x <= 1".to_owned(),
+                }),
+            )
+            .build();
+        let rules = [
+            rule(Condition::Metadata(qn("P::Safety")), NAVY),
+            rule(Condition::Analysis(ConstraintResult::Violated), RED),
+        ];
+
+        assert_eq!(fill_of(&m, "P::a", &rules), Some(RED));
+    }
+
+    #[test]
+    fn the_rule_is_written_by_name_in_the_style_file() {
+        let style = Style::new(rules());
+
+        let text = style.to_text();
+
+        assert!(text.contains(r#""analysis": "violated""#), "{text}");
+        let folder = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(folder.path().join("diagrams")).unwrap();
+        std::fs::write(viewer_core::style::path_for(folder.path()), text).unwrap();
+        assert_eq!(
+            viewer_core::style::load(folder.path()).unwrap(),
+            Some(style)
+        );
+    }
+
+    #[test]
+    fn the_legend_names_analysis_rules_in_use() {
+        let mut scene = with_car();
+        let diagram = DiagramStyle {
+            legend: true,
+            ..DiagramStyle::default()
+        };
+        apply_styles(
+            &mut scene,
+            &common::analysis(),
+            Some(&Style::new(rules())),
+            &diagram,
+        );
+
+        let legend: Vec<String> = scene
+            .items_depicting(&Depicts::Legend)
+            .filter_map(|s| match s {
+                Shape::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(legend, ["Analysis holds"]);
+    }
+}

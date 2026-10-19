@@ -140,6 +140,7 @@ fn condition_picker(
         Condition::Satisfaction(_) => "Satisfaction",
         Condition::Constraint(_) => "Constraint",
         Condition::Constraints(_) => "Part constraints",
+        Condition::Analysis(_) => "Analysis",
     };
     egui::ComboBox::from_id_salt("type")
         .selected_text(type_name)
@@ -167,6 +168,7 @@ fn condition_picker(
                     "Part constraints",
                     Condition::Constraints(PartConstraints::Violated),
                 ),
+                ("Analysis", Condition::Analysis(ConstraintResult::Violated)),
             ];
             for (name, fresh) in options {
                 if ui.selectable_label(type_name == name, name).clicked() && type_name != name {
@@ -214,7 +216,7 @@ fn condition_picker(
                     }
                 });
         }
-        Condition::Constraint(wanted) => {
+        Condition::Constraint(wanted) | Condition::Analysis(wanted) => {
             egui::ComboBox::from_id_salt("constraint")
                 .selected_text(format!(
                     "{} {}",

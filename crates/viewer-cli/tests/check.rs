@@ -1,4 +1,4 @@
-//! The `check` command: requirements and asserted constraints in one report
+//! The `check` command: requirements, asserted constraints and analyses in one report
 //! that fails CI on any violation, driven with the fake backend.
 
 #[path = "../../viewer-core/tests/common/mod.rs"]
@@ -18,11 +18,13 @@ struct Outcome {
 }
 
 fn check(model: Model, strict: bool) -> Outcome {
+    check_with(model, if strict { &["--strict"] } else { &[] })
+}
+
+fn check_with(model: Model, flags: &[&str]) -> Outcome {
     let folder = TempDir::new().unwrap();
     let mut args: Vec<OsString> = vec!["sysml-viewer".into(), "check".into(), folder.path().into()];
-    if strict {
-        args.push("--strict".into());
-    }
+    args.extend(flags.iter().map(OsString::from));
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
     let code = run_with_output(args, &mut FakeBackend::new(model), &mut stdout, &mut stderr);
     Outcome {
@@ -43,7 +45,7 @@ fn lists_every_constraint_result_by_constraint_and_part() {
         lines[0]
     );
     assert_eq!(
-        &lines[1..],
+        &lines[1..5],
         [
             "✗ Violated    C::Tank::fits              on C::vehicle::tank: fuelMass <= fuelMassMax",
             "✓ Holds       C::vehicle::light          on C::vehicle",
@@ -160,6 +162,7 @@ fn a_model_with_nothing_to_check_says_so_and_passes() {
     assert_eq!(outcome.code, EXIT_OK);
     assert!(outcome.stdout.contains("no requirement usages in "));
     assert!(outcome.stdout.contains("no checked constraints in "));
+    assert!(outcome.stdout.contains("no analysis usages in "));
 }
 
 #[test]
@@ -185,4 +188,115 @@ fn a_model_with_errors_fails_saying_nothing_was_checked() {
         outcome.stderr
     );
     assert!(outcome.stdout.is_empty());
+}
+
+/// Analyses of `P::D` (objective `x <= 1`): one holding, one violated, one
+/// undecided and one not run.
+fn analyses() -> Model {
+    Model::builder()
+        .package("P")
+        .analysis_def("P::D")
+        .objective(None, &["x <= 1"])
+        .analysis("P::good")
+        .typed_by("P::D")
+        .analysed(&[("x", "1.0")], Some(ClaimResult::Holds))
+        .analysis("P::bad")
+        .typed_by("P::D")
+        .analysed(
+            &[("x", "2.0")],
+            Some(ClaimResult::Violated {
+                condition: "x <= 1".to_owned(),
+            }),
+        )
+        .analysis("P::odd")
+        .typed_by("P::D")
+        .analysed(
+            &[],
+            Some(ClaimResult::Undecided {
+                reason: "x has no value".to_owned(),
+            }),
+        )
+        .analysis("P::idle")
+        .typed_by("P::D")
+        .build()
+}
+
+#[test]
+fn lists_every_analysis_usage_with_its_outputs_and_objective() {
+    let outcome = check(analyses(), false);
+
+    let lines: Vec<&str> = outcome.stdout.lines().collect();
+    assert_eq!(
+        &lines[2..],
+        [
+            "✗ Violated    P::bad   x = 2.0: x <= 1",
+            "✓ Holds       P::good  x = 1.0",
+            "? Not run     P::idle",
+            "? Undecided   P::odd   x has no value",
+            "4 analyses: 1 hold, 1 violated, 1 undecided, 1 not run",
+        ],
+        "{}",
+        outcome.stdout
+    );
+}
+
+#[test]
+fn the_analysis_twin_holds() {
+    let outcome = check(common::analysis(), true);
+
+    assert!(
+        outcome
+            .stdout
+            .contains("✓ Holds       A::carMass  result = 230.0"),
+        "{}",
+        outcome.stdout
+    );
+    assert_eq!(outcome.code, EXIT_OK, "{}", outcome.stderr);
+}
+
+#[test]
+fn a_violated_analysis_fails_and_strict_also_fails_on_undecided_and_not_run() {
+    let lenient = check(analyses(), false);
+    assert_eq!(lenient.code, EXIT_FAILURE);
+    assert!(
+        lenient.stderr.contains("error: 1 analysis is violated"),
+        "{}",
+        lenient.stderr
+    );
+
+    let strict = check(analyses(), true);
+    assert!(
+        strict.stderr.contains("error: 3 analyses are not holding"),
+        "{}",
+        strict.stderr
+    );
+}
+
+#[test]
+fn no_analyses_leaves_every_analysis_not_run() {
+    let outcome = check_with(common::analysis(), &["--no-analyses"]);
+
+    assert!(
+        outcome.stdout.contains("? Not run     A::carMass"),
+        "{}",
+        outcome.stdout
+    );
+    assert_eq!(outcome.code, EXIT_OK, "not run passes unless strict");
+
+    let strict = check_with(common::analysis(), &["--no-analyses", "--strict"]);
+    assert_eq!(strict.code, EXIT_FAILURE);
+}
+
+#[test]
+fn analyses_overrides_the_setting_and_the_two_flags_exclude_each_other() {
+    let outcome = check_with(common::analysis(), &["--analyses"]);
+    assert!(outcome.stdout.contains("✓ Holds       A::carMass"));
+
+    let both = check_with(common::analysis(), &["--analyses", "--no-analyses"]);
+    assert_ne!(both.code, EXIT_OK);
+    assert!(
+        both.stderr.contains("cannot be used with"),
+        "{}",
+        both.stderr
+    );
 }

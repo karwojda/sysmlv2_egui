@@ -8,8 +8,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
+use viewer_core::analysis;
+use viewer_core::backend::Analyses;
 use viewer_core::constraint::{self, ConstraintStatus};
-use viewer_core::model::ClaimResult;
+use viewer_core::model::{ClaimResult, ElementKind};
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::satisfaction::{self, SatisfactionStatus};
 use viewer_core::style::{self, Style};
@@ -103,9 +105,15 @@ enum Command {
     Check {
         /// The Model folder.
         model_folder: PathBuf,
-        /// Also fail on anything undecided or not claimed.
+        /// Also fail on anything undecided, not claimed or not run.
         #[arg(long)]
         strict: bool,
+        /// Run every analysis, whatever the Model's setting says.
+        #[arg(long, conflicts_with = "no_analyses")]
+        analyses: bool,
+        /// Run no analyses, whatever the Model's setting says.
+        #[arg(long)]
+        no_analyses: bool,
     },
 }
 
@@ -167,7 +175,18 @@ pub fn run_with_output(
         Command::Check {
             model_folder,
             strict,
-        } => check(&model_folder, strict, backend, stdout, stderr),
+            analyses,
+            no_analyses,
+        } => {
+            let analyses = if analyses {
+                Analyses::All
+            } else if no_analyses {
+                Analyses::None
+            } else {
+                Analyses::AsSet
+            };
+            check(&model_folder, strict, &analyses, backend, stdout, stderr)
+        }
     };
     match result {
         Ok(()) => EXIT_OK,
@@ -188,7 +207,13 @@ fn requirements(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
-    let model = load_model_for(model_folder, backend, stderr, "no requirement was checked")?;
+    let model = load_model_for(
+        model_folder,
+        &Analyses::AsSet,
+        backend,
+        stderr,
+        "no requirement was checked",
+    )?;
     let counts = requirements_report(&model, model_folder, stdout);
     match counts.failing(strict) {
         0 => Ok(()),
@@ -202,27 +227,29 @@ fn requirements(
 fn check(
     model_folder: &Path,
     strict: bool,
+    analyses: &Analyses,
     backend: &mut dyn ModelBackend,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
-    let model = load_model_for(model_folder, backend, stderr, "nothing was checked")?;
-    let requirements = requirements_report(&model, model_folder, stdout);
-    let constraints = constraints_report(&model, model_folder, stdout);
-    let failures: Vec<String> = [
-        (
-            requirements.failing(strict),
-            requirements.failure(requirements.failing(strict), strict),
-        ),
-        (
-            constraints.failing(strict),
-            constraints.failure(constraints.failing(strict), strict),
-        ),
-    ]
-    .into_iter()
-    .filter(|(n, _)| *n > 0)
-    .map(|(_, message)| message)
-    .collect();
+    let model = load_model_for(
+        model_folder,
+        analyses,
+        backend,
+        stderr,
+        "nothing was checked",
+    )?;
+    let reports = [
+        requirements_report(&model, model_folder, stdout),
+        constraints_report(&model, model_folder, stdout),
+        analyses_report(&model, model_folder, stdout),
+    ];
+    let failures: Vec<String> = reports
+        .iter()
+        .map(|counts| (counts.failing(strict), counts))
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, counts)| counts.failure(n, strict))
+        .collect();
     if failures.is_empty() {
         Ok(())
     } else {
@@ -410,6 +437,91 @@ fn constraints_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write
     counts
 }
 
+/// Prints one line per analysis usage, by name, and counts them. An
+/// analysis that wasn't run counts as unsettled.
+fn analyses_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -> Counts {
+    let mut counts = Counts {
+        noun: ("analysis", "analyses"),
+        fails: ("violated", "not holding"),
+        violated: 0,
+        unsettled: 0,
+    };
+    let usages: Vec<&viewer_core::model::Element> = model
+        .elements()
+        .filter(|e| e.kind == ElementKind::AnalysisUsage)
+        .collect();
+    if usages.is_empty() {
+        let _ = writeln!(stdout, "no analysis usages in {}", model_folder.display());
+        return counts;
+    }
+    let width = usages
+        .iter()
+        .map(|e| e.qualified_name.as_str().chars().count())
+        .max()
+        .unwrap_or(0);
+    let (mut holding, mut undecided, mut not_run, mut ran) = (0, 0, 0, 0);
+    for usage in &usages {
+        let name = usage.qualified_name.as_str();
+        let Some(result) = &usage.analysis_result else {
+            not_run += 1;
+            let _ = writeln!(stdout, "? {:<11} {name}", "Not run");
+            continue;
+        };
+        let outputs = result
+            .outputs
+            .iter()
+            .map(|(name, value)| format!("{name} = {value}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let (mark, label, detail) = match analysis::status(model, usage) {
+            None => {
+                ran += 1;
+                ("·", "Ran", String::new())
+            }
+            Some(status) => {
+                match status {
+                    ConstraintStatus::Holds => holding += 1,
+                    ConstraintStatus::Violated => counts.violated += 1,
+                    ConstraintStatus::Undecided => undecided += 1,
+                }
+                let detail = match &result.objective {
+                    Some(ClaimResult::Violated { condition }) => condition.clone(),
+                    Some(ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason }) => {
+                        reason.clone()
+                    }
+                    Some(ClaimResult::Holds) => String::new(),
+                    None => "no verdict".to_owned(),
+                };
+                (status.mark(), status.label(), detail)
+            }
+        };
+        let details: Vec<&str> = [outputs.as_str(), detail.as_str()]
+            .into_iter()
+            .filter(|d| !d.is_empty())
+            .collect();
+        let line = format!("{mark} {label:<11} {name:<width$}  {}", details.join(": "));
+        let _ = writeln!(stdout, "{}", line.trim_end());
+    }
+    let without = if ran > 0 {
+        format!(", {ran} without objective")
+    } else {
+        String::new()
+    };
+    let _ = writeln!(
+        stdout,
+        "{} {}: {holding} hold, {} violated, {undecided} undecided, {not_run} not run{without}",
+        usages.len(),
+        if usages.len() == 1 {
+            "analysis"
+        } else {
+            "analyses"
+        },
+        counts.violated
+    );
+    counts.unsettled = undecided + not_run;
+    counts
+}
+
 fn export_one(
     model_folder: &Path,
     name: &str,
@@ -566,18 +678,25 @@ fn load_model(
     backend: &mut dyn ModelBackend,
     stderr: &mut dyn Write,
 ) -> Result<Model, Failure> {
-    load_model_for(model_folder, backend, stderr, "nothing was Exported")
+    load_model_for(
+        model_folder,
+        &Analyses::AsSet,
+        backend,
+        stderr,
+        "nothing was Exported",
+    )
 }
 
 /// [`load_model`], with what a Model with errors stops (`outcome`).
 fn load_model_for(
     model_folder: &Path,
+    analyses: &Analyses,
     backend: &mut dyn ModelBackend,
     stderr: &mut dyn Write,
     outcome: &str,
 ) -> Result<Model, Failure> {
     let model = backend
-        .load(model_folder)
+        .load_with(model_folder, analyses)
         .map_err(|e| Failure(e.to_string()))?;
     for diagnostic in model.diagnostics() {
         let _ = writeln!(stderr, "{}", DiagnosticLine(diagnostic));

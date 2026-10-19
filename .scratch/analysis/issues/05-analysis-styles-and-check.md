@@ -12,8 +12,8 @@ See `.scratch/analysis/spec.md`.
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Style condition, rank, Legend and editor picker
-- [ ] `check` analysis lines and exit codes, with and without `--strict`
-- [ ] `--analyses` / `--no-analyses` and the setting
+- [x] Style condition, rank, Legend and editor picker
+- [x] `check` analysis lines and exit codes, with and without `--strict`
+- [x] `--analyses` / `--no-analyses` and the setting

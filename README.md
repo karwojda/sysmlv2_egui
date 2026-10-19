@@ -15,7 +15,9 @@ The Model is only ever read. Layout, saved Diagrams and Styles live in their own
 - **Editable layout:** move, resize, hide and collapse nodes, bend edges, and move ports. Save the result as a Diagram File.
 - **Requirements:** requirement nodes with their constraints, `«satisfy»` edges, and a status badge on each requirement (✓ satisfied, ✗ violated, ? undecided, ○ not claimed), checked by OpenSysML against the Model's values.
 - **Constraints:** constraint definitions and usages with their parameters and expressions, and `assert constraints` on parts, each marked ✓ / ✗ / ? from OpenSysML's check of the part it applies to.
-- **Styles:** colour node fills by element kind, package or metadata, with an optional Legend. Set them once for the Model and override them per Diagram.
+- **Computed values:** a row whose value is an expression shows what OpenSysML computes it to, `mass = engine.mass + body.mass = 1363.0`.
+- **Analysis cases:** analysis definitions and usages with their subject, objective, parameters and results, a `«subject»` edge to the part analysed, and a ✓ / ✗ / ? badge from running the analysis. Analyses run on every load; for a slow Model, untick "Run analyses on load" and use "Run now" on one analysis instead.
+- **Styles:** colour node fills by element kind, package, metadata, or requirement, constraint and analysis results, with an optional Legend. Set them once for the Model and override them per Diagram.
 - **Live reload:** edits to the Model or its Style file show up in the open Diagrams.
 - **Export:** deterministic SVG, identical between the viewer and the CLI.
 
@@ -53,8 +55,9 @@ cargo run --release -p viewer-cli -- export <model-folder> --all --out-dir docs/
 # (--strict also fails on undecided and unclaimed ones), for CI
 cargo run --release -p viewer-cli -- requirements <model-folder> [--strict]
 
-# requirements and asserted constraints together: one gate for CI
-cargo run --release -p viewer-cli -- check <model-folder> [--strict]
+# requirements, asserted constraints and analyses together: one gate for CI
+# (analyses run as the Model's setting says; --analyses / --no-analyses override it)
+cargo run --release -p viewer-cli -- check <model-folder> [--strict] [--analyses | --no-analyses]
 ```
 
 The binaries are `sysml-viewer-gui` and `sysml-viewer`.
@@ -66,10 +69,11 @@ my-model/
 ├── *.sysml
 └── diagrams/
     ├── overview.diagram.json   # a saved Diagram: what it shows, its Layout and its Style
-    └── style.json              # the Model Style
+    ├── style.json              # the Model Style
+    └── settings.json           # Model settings: whether analyses run on load
 ```
 
-Both are pretty-printed JSON, so they diff and review well. Commit them with the Model.
+All are pretty-printed JSON, so they diff and review well. Commit them with the Model.
 
 ## Development
 

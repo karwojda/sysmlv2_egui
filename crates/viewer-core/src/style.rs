@@ -40,6 +40,8 @@ pub enum Condition {
     Constraint(ConstraintResult),
     /// Parts with a violated constraint of their own.
     Constraints(PartConstraints),
+    /// Analysis usages, by what their objective came to.
+    Analysis(ConstraintResult),
 }
 
 /// The Constraint Result a constraint rule matches, as written in the
@@ -112,7 +114,10 @@ impl Condition {
             Condition::Kind(_) => 0,
             Condition::Package(_) => 1,
             Condition::Metadata(_) => 2,
-            Condition::Satisfaction(_) | Condition::Constraint(_) | Condition::Constraints(_) => 3,
+            Condition::Satisfaction(_)
+            | Condition::Constraint(_)
+            | Condition::Constraints(_)
+            | Condition::Analysis(_) => 3,
         }
     }
 
@@ -122,6 +127,9 @@ impl Condition {
             Condition::Constraints(PartConstraints::Violated) => {
                 element.kind == crate::model::ElementKind::PartUsage
                     && constraint::has_violation(model, &element.qualified_name)
+            }
+            Condition::Analysis(wanted) => {
+                crate::analysis::status(model, element) == Some(wanted.status())
             }
             Condition::Satisfaction(wanted) => {
                 satisfaction::status(model, &element.qualified_name) == Some(wanted.status())
@@ -150,6 +158,9 @@ impl Condition {
             Condition::Constraints(PartConstraints::Violated) => {
                 "Part with a violated constraint".to_owned()
             }
+            Condition::Analysis(wanted) => {
+                format!("Analysis {}", wanted.status().label().to_lowercase())
+            }
         }
     }
 }
@@ -177,9 +188,10 @@ impl Condition {
         match self {
             Condition::Kind(keyword) => KINDS.contains(&keyword.as_str()),
             Condition::Package(name) | Condition::Metadata(name) => model.element(name).is_some(),
-            Condition::Satisfaction(_) | Condition::Constraint(_) | Condition::Constraints(_) => {
-                true
-            }
+            Condition::Satisfaction(_)
+            | Condition::Constraint(_)
+            | Condition::Constraints(_)
+            | Condition::Analysis(_) => true,
         }
     }
 }
