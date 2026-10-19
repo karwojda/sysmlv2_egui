@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use opensysml::{Connection, ConvertOptions, ConvertSource};
 use serde_json::Value;
 use viewer_core::model::{
-    ConnectionEnd, Element, ElementKind, Expose, ExposeScope, QualifiedName, SourceLocation,
+    ConnectionEnd, Element, ElementKind, Expose, ExposeScope, Objective, QualifiedName,
+    SourceLocation,
 };
 
 /// Adds source locations, documentation, conjugation and connection ends
@@ -120,6 +121,8 @@ pub fn enrich(
         elements.insert(name, element);
     }
 
+    // `return` parameters, marked once the loop no longer holds their owner.
+    let mut returns: Vec<QualifiedName> = Vec::new();
     for (item, file) in items.values() {
         if item.get("@type").and_then(Value::as_str) == Some("Documentation") {
             let owner = reference(item, "owner").and_then(qualified_name);
@@ -149,11 +152,15 @@ pub fn enrich(
             let Some(subject) = member.and_then(qualified_name) else {
                 continue;
             };
-            // A requirement's subject; a claim's subject is its satisfier.
+            // A requirement's or analysis's subject; a claim's subject is its
+            // satisfier.
             let requirement = owner.and_then(|o| elements.get_mut(&o)).filter(|e| {
                 matches!(
                     e.kind,
-                    ElementKind::RequirementDefinition | ElementKind::RequirementUsage
+                    ElementKind::RequirementDefinition
+                        | ElementKind::RequirementUsage
+                        | ElementKind::AnalysisDefinition
+                        | ElementKind::AnalysisUsage
                 )
             });
             let Some(element) = requirement else { continue };
@@ -245,6 +252,46 @@ pub fn enrich(
         }
         if matches!(
             element.kind,
+            ElementKind::AnalysisDefinition | ElementKind::AnalysisUsage
+        ) {
+            let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
+            // `subject v = vehicle` binds the subject by value, as a chained
+            // `satisfy … by` does.
+            element.subject_target = subject_value(&items, &children, id).and_then(qualified_name);
+            let owned = |kind: &str| {
+                children
+                    .get(id)
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .filter(move |c| c.get("@type").and_then(Value::as_str) == Some(kind))
+                    .filter_map(|m| reference(m, "memberElement"))
+                    .collect::<Vec<_>>()
+            };
+            // The objective is an unnamed requirement with a doc and
+            // `require` constraints of its own.
+            element.objective = owned("ObjectiveMembership").first().map(|objective| {
+                let doc = children
+                    .get(*objective)
+                    .into_iter()
+                    .flatten()
+                    .find(|c| c.get("@type").and_then(Value::as_str) == Some("Documentation"))
+                    .and_then(|d| d.get("body").and_then(Value::as_str))
+                    .map(|body| body.trim().to_owned());
+                Objective {
+                    doc,
+                    require: require_constraints(&items, &children, objective),
+                }
+            });
+            for parameter in owned("ReturnParameterMembership")
+                .into_iter()
+                .filter_map(qualified_name)
+            {
+                returns.push(parameter);
+            }
+        }
+        if matches!(
+            element.kind,
             ElementKind::ViewUsage | ElementKind::ViewDefinition
         ) {
             let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
@@ -280,6 +327,11 @@ pub fn enrich(
                 .and_then(|c| first_reference(c, "type"))
                 .and_then(qualified_name);
             element.payload = payload.or_else(|| element.typed_by.clone());
+        }
+    }
+    for parameter in returns {
+        if let Some(parameter) = elements.get_mut(&parameter) {
+            parameter.is_return = true;
         }
     }
     failures

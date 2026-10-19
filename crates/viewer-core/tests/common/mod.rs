@@ -497,7 +497,7 @@ pub fn assertions() -> Model {
 }
 
 /// A car whose mass rolls up from its engine and four wheels, for Computed
-/// Values. The fake-backend twin of `viewer-opensysml/tests/fixtures/analysis`.
+/// Values, and an analysis checking that mass against a limit. The fake-backend twin of `viewer-opensysml/tests/fixtures/analysis`.
 pub fn analysis() -> Model {
     let real = "ScalarValues::Real";
     Model::builder()
@@ -505,6 +505,23 @@ pub fn analysis() -> Model {
         .part_def("A::Component")
         .attribute("A::Component::mass")
         .typed_by(real)
+        .analysis_def("A::MassCheck")
+        .subject("A::MassCheck::c")
+        .objective(
+            Some("The mass stays within the limit."),
+            &["result <= limit"],
+        )
+        .part("A::MassCheck::c")
+        .typed_by("A::Component")
+        .unsupported("A::MassCheck::limit", "reference")
+        .typed_by(real)
+        .direction(Direction::In)
+        .value("300.0")
+        .unsupported("A::MassCheck::result", "reference")
+        .typed_by(real)
+        .direction(Direction::Out)
+        .value("c.mass")
+        .returns()
         .part("A::car")
         .typed_by("A::Component")
         .part("A::car::engine")
@@ -519,5 +536,11 @@ pub fn analysis() -> Model {
         .multiplicity("4", "4")
         .attribute("A::car::wheels::mass")
         .value("20.0")
+        .analysis("A::carMass")
+        .typed_by("A::MassCheck")
+        .subject("A::carMass::c")
+        .subject_bound_to("A::car")
+        .part("A::carMass::c")
+        .value("car")
         .build()
 }

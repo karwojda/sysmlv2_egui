@@ -196,6 +196,7 @@ pub(crate) fn is_node_in_general(element: &Element) -> bool {
                 | ElementKind::PortUsage
                 | ElementKind::RequirementUsage
                 | ElementKind::ConstraintUsage
+                | ElementKind::AnalysisUsage
         )
 }
 
@@ -244,6 +245,11 @@ enum Edge<'a> {
         a: usize,
         b: usize,
         connection: &'a Element,
+    },
+    /// An analysis, to the part its subject is bound to.
+    Subject {
+        analysis: usize,
+        part: usize,
     },
     /// A Satisfaction Claim, from the satisfier to the requirement.
     Satisfy {
@@ -319,6 +325,11 @@ fn general<'a>(
             edges.push(Edge::Connection { a, b, connection });
         }
     }
+    for (analysis, element) in nodes.iter().enumerate() {
+        if let Some(part) = element.subject_target.as_ref().and_then(index_of) {
+            edges.push(Edge::Subject { analysis, part });
+        }
+    }
     for claim in model.claims() {
         let satisfier = claim.satisfier.as_ref().and_then(index_of);
         let requirement = claim.satisfies.as_ref().and_then(index_of);
@@ -349,6 +360,8 @@ fn general<'a>(
                 requirement,
                 ..
             } => (requirement, satisfier),
+            // The analysed part sits above its analysis.
+            Edge::Subject { analysis, part } => (part, analysis),
         })
         .collect();
 
@@ -435,6 +448,7 @@ fn general<'a>(
                 crate::satisfaction::claim_status(claim).mark(),
                 path,
             ),
+            Edge::Subject { .. } => notation::subject(depicts, path),
         });
     }
     for ((element, content), rect) in nodes.iter().zip(&contents).zip(&rects) {
@@ -472,6 +486,7 @@ pub(crate) fn page(items: Vec<Item>, rects: &[Rect]) -> Scene {
 fn describe(edge: &Edge, nodes: &[&Element]) -> (Depicts, usize, usize) {
     let name = |i: usize| nodes[i].qualified_name.clone();
     match *edge {
+        Edge::Subject { analysis, part } => (Depicts::Subject(name(analysis)), analysis, part),
         Edge::Specialization { specific, general } => (
             Depicts::Specialization {
                 specific: name(specific),

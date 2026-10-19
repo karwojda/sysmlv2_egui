@@ -286,6 +286,8 @@ fn element_kind(kind: &str) -> ElementKind {
         "requirementUsage" => ElementKind::RequirementUsage,
         "constraintDef" => ElementKind::ConstraintDefinition,
         "constraintUsage" => ElementKind::ConstraintUsage,
+        "analysisCaseDef" => ElementKind::AnalysisDefinition,
+        "analysisCaseUsage" => ElementKind::AnalysisUsage,
         "viewUsage" => ElementKind::ViewUsage,
         other => ElementKind::Unsupported(keyword_of(other)),
     }

@@ -186,13 +186,18 @@ pub fn node_content(
                 .collect();
             (!rows.is_empty()).then_some((*title, rows))
         });
-    let subtitle = element.subject.as_ref().map(|subject| {
-        let label = model
-            .element(subject)
-            .map(usage_label)
-            .unwrap_or_else(|| subject.simple_name().to_owned());
-        format!("subject {label}")
-    });
+    // A requirement names its subject under its title; an analysis lists it.
+    let subtitle = element
+        .subject
+        .as_ref()
+        .filter(|_| requirement)
+        .map(|subject| {
+            let label = model
+                .element(subject)
+                .map(usage_label)
+                .unwrap_or_else(|| subject.simple_name().to_owned());
+            format!("subject {label}")
+        });
     let mut compartments: Vec<(&'static str, Vec<String>)> =
         doc.into_iter().chain(features).collect();
     // A requirement's constraints follow its attributes, as in the notation.
@@ -204,7 +209,42 @@ pub fn node_content(
             .collect();
         insert_after_attributes(&mut compartments, "constraints", rows);
     }
-    if compartments_shown {
+    let analysis = matches!(
+        element.kind,
+        ElementKind::AnalysisDefinition | ElementKind::AnalysisUsage
+    );
+    if compartments_shown && analysis {
+        // As on slide 99: subject, objective and parameters come first.
+        let mut leading: Vec<(&'static str, Vec<String>)> = Vec::new();
+        if let Some(subject) = element.subject.as_ref().and_then(|s| model.element(s)) {
+            leading.push(("subject", vec![feature_row(subject)]));
+        }
+        if let Some(objective) = &element.objective {
+            let mut rows: Vec<String> = objective
+                .doc
+                .as_deref()
+                .map_or_else(Vec::new, |d| wrap(d, DOC_LINE_CHARS));
+            rows.extend(objective.require.iter().map(|r| format!("require {{{r}}}")));
+            if !rows.is_empty() {
+                leading.push(("objective", rows));
+            }
+        }
+        let mut parameters: Vec<&Element> = model
+            .owned_members(&element.qualified_name)
+            .filter(|m| {
+                m.direction.is_some() && element.subject.as_ref() != Some(&m.qualified_name)
+            })
+            .collect();
+        parameters.sort_by_key(|m| m.source.as_ref().map(|s| s.line));
+        if !parameters.is_empty() {
+            leading.push((
+                "parameters",
+                parameters.into_iter().map(feature_row).collect(),
+            ));
+        }
+        compartments.splice(0..0, leading);
+    }
+    if compartments_shown && !analysis {
         let constraint = matches!(
             element.kind,
             ElementKind::ConstraintDefinition | ElementKind::ConstraintUsage
@@ -433,7 +473,9 @@ pub(crate) fn usage_label(element: &Element) -> String {
 /// with their ends.
 fn feature_row(feature: &Element) -> String {
     let mut row = String::new();
-    if let Some(direction) = feature.direction {
+    if feature.is_return {
+        row.push_str("return ");
+    } else if let Some(direction) = feature.direction {
         row.push_str(direction.keyword());
         row.push(' ');
     }
@@ -745,6 +787,17 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
 /// A Satisfaction Claim: a solid line from the satisfier ending in an open
 /// arrowhead on the requirement, labelled `«satisfy»` like a connection.
 pub fn satisfy(depicts: Depicts, mark: &str, path: Vec<Point>) -> Vec<Item> {
+    labelled_arrow(depicts, &format!("«satisfy» {mark}"), false, path)
+}
+
+/// An analysis's subject: a dashed line from the analysis ending in an open
+/// arrowhead on the part it analyses, labelled `«subject»`.
+pub fn subject(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
+    labelled_arrow(depicts, "«subject»", true, path)
+}
+
+/// A line ending in an open arrowhead, labelled beside its middle.
+fn labelled_arrow(depicts: Depicts, label: &str, dashed: bool, path: Vec<Point>) -> Vec<Item> {
     // Beside a steep straight edge, so the line doesn't strike through it.
     let (position, anchor) = match path.as_slice() {
         [a, b] if (b.y - a.y).abs() > 2.0 * (b.x - a.x).abs() => (
@@ -764,7 +817,7 @@ pub fn satisfy(depicts: Depicts, mark: &str, path: Vec<Point>) -> Vec<Item> {
         vec![
             Shape::Polyline {
                 points: path,
-                dashed: false,
+                dashed,
             },
             Shape::Polyline {
                 points: vec![
@@ -776,7 +829,7 @@ pub fn satisfy(depicts: Depicts, mark: &str, path: Vec<Point>) -> Vec<Item> {
             },
             Shape::Text {
                 position,
-                text: format!("«satisfy» {mark}"),
+                text: label.to_owned(),
                 anchor,
                 font: LABEL_FONT,
                 fill: Fill::Stroke,

@@ -213,6 +213,8 @@ pub enum Depicts {
     /// A Satisfaction Claim drawn as a `«satisfy»` edge, by the claim's
     /// qualified name.
     Satisfy(QualifiedName),
+    /// An analysis's `«subject»` edge, by the analysis's qualified name.
+    Subject(QualifiedName),
 }
 
 impl Depicts {
@@ -232,6 +234,7 @@ impl Depicts {
             Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),
             Depicts::Connection(connection) => Some(format!("connection {connection}")),
             Depicts::Satisfy(claim) => Some(format!("satisfy {claim}")),
+            Depicts::Subject(analysis) => Some(format!("subject {analysis}")),
         }
     }
 }

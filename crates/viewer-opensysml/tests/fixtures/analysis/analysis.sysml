@@ -12,4 +12,17 @@ package A {
         // Rolls up from the engine and all four wheels.
         attribute :>> mass = engine.mass + sum(wheels.mass);
     }
+
+    analysis def MassCheck {
+        subject c : Component;
+        in limit : Real = 300.0;
+        objective {
+            doc /* The mass stays within the limit. */
+            require constraint { result <= limit }
+        }
+        return result : Real = c.mass;
+    }
+    analysis carMass : MassCheck {
+        subject c = car;
+    }
 }

@@ -71,6 +71,8 @@ pub enum ElementKind {
     SatisfyRequirement,
     ConstraintDefinition,
     ConstraintUsage,
+    AnalysisDefinition,
+    AnalysisUsage,
     Unsupported(String),
 }
 
@@ -98,6 +100,8 @@ impl ElementKind {
             ElementKind::SatisfyRequirement => "satisfy",
             ElementKind::ConstraintDefinition => "constraint def",
             ElementKind::ConstraintUsage => "constraint",
+            ElementKind::AnalysisDefinition => "analysis def",
+            ElementKind::AnalysisUsage => "analysis",
             ElementKind::Unsupported(keyword) => keyword,
         }
     }
@@ -112,6 +116,7 @@ impl ElementKind {
                 | ElementKind::InterfaceDefinition
                 | ElementKind::RequirementDefinition
                 | ElementKind::ConstraintDefinition
+                | ElementKind::AnalysisDefinition
         )
     }
 
@@ -195,6 +200,14 @@ pub enum ClaimResult {
     },
 }
 
+/// An analysis case's objective: what it must achieve.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Objective {
+    pub doc: Option<String>,
+    /// Its `require` constraints, as text.
+    pub require: Vec<String>,
+}
+
 /// What checking an asserted constraint on one part found.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstraintCheck {
@@ -273,8 +286,15 @@ pub struct Element {
     pub metadata: Vec<QualifiedName>,
     /// The short id written in angle brackets (`<'1'> massReq`).
     pub short_name: Option<String>,
-    /// A requirement's subject: the owned feature it constrains.
+    /// A requirement's or analysis's subject: the owned feature it
+    /// constrains or analyses.
     pub subject: Option<QualifiedName>,
+    /// The part a subject is bound to (`subject v = vehicle`).
+    pub subject_target: Option<QualifiedName>,
+    /// An analysis case's objective.
+    pub objective: Option<Objective>,
+    /// Whether a parameter is its owner's `return` result.
+    pub is_return: bool,
     /// A requirement's own `require` constraints, as text, in order.
     pub require: Vec<String>,
     /// A feature's value, as text: `180.0`, `engine.mass + transmission.mass`,
@@ -348,6 +368,9 @@ impl Element {
             metadata: Vec::new(),
             short_name: None,
             subject: None,
+            subject_target: None,
+            objective: None,
+            is_return: false,
             require: Vec::new(),
             value: None,
             computed: Vec::new(),
@@ -555,6 +578,35 @@ impl ModelBuilder {
         self = self.unnamed(name, ElementKind::SatisfyRequirement);
         self.last().satisfies = Some(QualifiedName::new(requirement));
         self.last().satisfier = Some(QualifiedName::new(satisfier));
+        self
+    }
+
+    pub fn analysis_def(self, name: &str) -> Self {
+        self.element(name, ElementKind::AnalysisDefinition)
+    }
+
+    pub fn analysis(self, name: &str) -> Self {
+        self.element(name, ElementKind::AnalysisUsage)
+    }
+
+    /// Binds the last element's subject to `part` (`subject v = vehicle`).
+    pub fn subject_bound_to(mut self, part: &str) -> Self {
+        self.last().subject_target = Some(QualifiedName::new(part));
+        self
+    }
+
+    /// Gives the last analysis an objective.
+    pub fn objective(mut self, doc: Option<&str>, require: &[&str]) -> Self {
+        self.last().objective = Some(Objective {
+            doc: doc.map(str::to_owned),
+            require: require.iter().map(|r| (*r).to_owned()).collect(),
+        });
+        self
+    }
+
+    /// Marks the last parameter as its owner's `return` result.
+    pub fn returns(mut self) -> Self {
+        self.last().is_return = true;
         self
     }
 
