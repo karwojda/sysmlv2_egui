@@ -71,6 +71,12 @@ A constraint the Model asserts must hold (`assert constraint { mass <= 1500 }`),
 **Constraint Result**:
 What checking an Asserted Constraint on one part found: holds, violated (with the failing condition), or undecided (with the reason). An inherited constraint has a result for each part that inherits it. A plain, unasserted constraint has none.
 
+**Computed Value**:
+The value OpenSysML evaluates for a feature of a part, from the Model's values and expressions (`powertrain.mass` = 265.0). It is shown beside the expression it comes from, never instead of it.
+
+**Analysis Result**:
+What running an analysis usage found: the values of its outputs (its `return` result among them), and, if it has an objective, whether the objective holds, is violated or is undecided.
+
 **Style**:
 A set of Style Rules layered on the Standard Notation, coloring node fills only. It is defined once for the Model and can be overridden per Diagram: a Diagram's own rules come on top of the Model's, or replace them when it switches the Model Style off.
 _Avoid_: theme, color scheme, skin
