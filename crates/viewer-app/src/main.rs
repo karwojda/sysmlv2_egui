@@ -27,6 +27,16 @@ struct Args {
     /// starting one (default: $OPENSYSML_SERVICE).
     #[arg(long, value_name = "HOST:PORT")]
     sysml_service: Option<String>,
+    /// How the window is drawn: `wgpu` (Vulkan or GL through wgpu), or
+    /// `glow` (OpenGL), which can behave better under WSLg.
+    #[arg(long, value_enum, default_value = "wgpu")]
+    renderer: Renderer,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Renderer {
+    Wgpu,
+    Glow,
 }
 
 fn main() -> eframe::Result {
@@ -43,6 +53,10 @@ fn main() -> eframe::Result {
     }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
+        renderer: match args.renderer {
+            Renderer::Wgpu => eframe::Renderer::Wgpu,
+            Renderer::Glow => eframe::Renderer::Glow,
+        },
         ..Default::default()
     };
     let (folder, root, interconnection) = (

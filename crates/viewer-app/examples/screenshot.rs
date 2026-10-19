@@ -24,14 +24,48 @@ struct Screenshot {
     app: ViewerApp,
     out: PathBuf,
     started: Instant,
+    resized: bool,
     requested: bool,
     saved: Arc<AtomicBool>,
 }
 
 impl eframe::App for Screenshot {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // SCREENSHOT_ADAPTER=1 prints which graphics adapter wgpu chose.
+        if !self.resized
+            && std::env::var_os("SCREENSHOT_ADAPTER").is_some()
+            && let Some(state) = frame.wgpu_render_state()
+        {
+            let info = state.adapter.get_info();
+            eprintln!(
+                "wgpu adapter: {} ({:?}, {:?})",
+                info.name, info.backend, info.device_type
+            );
+        }
         self.app.ui(ui, frame);
         let ctx = ui.ctx().clone();
+        // SCREENSHOT_RESIZE=WxH resizes the window halfway through the wait.
+        if !self.resized && self.started.elapsed() > settle() / 2 {
+            self.resized = true;
+            let size = std::env::var("SCREENSHOT_RESIZE").ok().and_then(|s| {
+                let (w, h) = s.split_once('x')?;
+                Some(egui::vec2(w.parse().ok()?, h.parse().ok()?))
+            });
+            if let Some(size) = size {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
+            // SCREENSHOT_MOVE=X,Y moves it too, as dragging a left or top edge does.
+            let position = std::env::var("SCREENSHOT_MOVE").ok().and_then(|s| {
+                let (x, y) = s.split_once(',')?;
+                Some(egui::pos2(x.parse().ok()?, y.parse().ok()?))
+            });
+            if let Some(position) = position {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
+            }
+            if std::env::var_os("SCREENSHOT_MAXIMIZE").is_some() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+            }
+        }
         if !self.requested && self.started.elapsed() > settle() {
             self.requested = true;
             let (out, saved, repaint) = (self.out.clone(), self.saved.clone(), ctx.clone());
@@ -61,6 +95,12 @@ fn main() -> eframe::Result {
         .map(|r| viewer_core::QualifiedName::new(r.to_string_lossy()));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
+        // SCREENSHOT_RENDERER=glow draws with OpenGL instead of wgpu.
+        renderer: if std::env::var("SCREENSHOT_RENDERER").as_deref() == Ok("glow") {
+            eframe::Renderer::Glow
+        } else {
+            eframe::Renderer::Wgpu
+        },
         ..Default::default()
     };
     eframe::run_native(
@@ -89,6 +129,7 @@ fn main() -> eframe::Result {
                 app,
                 out,
                 started: Instant::now(),
+                resized: false,
                 requested: false,
                 saved: Default::default(),
             }))

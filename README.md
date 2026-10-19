@@ -33,7 +33,7 @@ cargo run --release -p viewer-app -- <model-folder> [element] [--interconnection
 
 The optional element opens straight away: a General Diagram for a package or definition, an Interconnection Diagram for a part, or a view's own Diagram. Double-click an element in the Browser to open its Diagram, or pick one from the Views list.
 
-On WSL, start it over X11 if WSLg's Wayland compositor crashes: `WAYLAND_DISPLAY= cargo run …`.
+On WSL, start it over X11 if WSLg's Wayland compositor crashes: `WAYLAND_DISPLAY= cargo run …`. WSLg's X11 bridge may show a maximised window shifted or cropped. `--renderer glow` (OpenGL) avoids that, but WSLg then hides the mouse cursor over the window, so the default renderer stays Vulkan.
 
 ### Command line
 

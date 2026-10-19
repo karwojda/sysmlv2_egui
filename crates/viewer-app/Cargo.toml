@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-eframe = "0.37.0"
+eframe = { version = "0.37.0", features = ["glow"] }
 viewer-core = { version = "0.1.0", path = "../viewer-core" }
 viewer-opensysml = { version = "0.1.0", path = "../viewer-opensysml" }
 
