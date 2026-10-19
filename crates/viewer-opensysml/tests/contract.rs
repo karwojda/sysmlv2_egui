@@ -370,27 +370,42 @@ fn rebuilds_require_constraint_text_from_the_service_s_expression_trees() {
 }
 
 /// The mass roll-up demo in `examples/mass-rollup`: its requirements are
-/// checked against masses the service rolls up from the parts.
-#[test]
-#[ignore = "needs the sysml-grpc service"]
-fn the_mass_rollup_demo_rolls_up_and_checks_its_requirements() {
-    use viewer_core::satisfaction::{SatisfactionStatus, status};
-    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/mass-rollup");
+/// checked against masses the service rolls up from the parts, in a variant
+/// that fails and one that passes.
+fn mass_rollup(variant: &str) -> Model {
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/mass-rollup")
+        .join(variant);
     let model = OpenSysmlBackend::new().load(&folder).unwrap();
     assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
-    let of = |name: &str| {
-        status(
-            &model,
-            &QualifiedName::new(format!("MassRollup::massSpec::{name}")),
-        )
-        .unwrap()
+    model
+}
+
+fn demo_status(model: &Model, requirement: &str) -> viewer_core::satisfaction::SatisfactionStatus {
+    let name = if requirement.is_empty() {
+        "MassRollup::massSpec".to_owned()
+    } else {
+        format!("MassRollup::massSpec::{requirement}")
     };
+    viewer_core::satisfaction::status(model, &QualifiedName::new(name)).unwrap()
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
+    use viewer_core::satisfaction::SatisfactionStatus::*;
+    let model = mass_rollup("failing");
 
     // 180 + 85 + 950 + 60 + 4 × 22 = 1363 kg ≤ 1400; the powertrain's
-    // 180 + 85 = 265 kg > 250.
-    assert_eq!(of("vehicleMass"), SatisfactionStatus::Satisfied);
-    assert_eq!(of("powertrainMass"), SatisfactionStatus::Violated);
-    assert_eq!(of("tankMass"), SatisfactionStatus::NotClaimed);
+    // 180 + 85 = 265 kg > 250; nothing claims the tank.
+    assert_eq!(demo_status(&model, "vehicleMass"), Satisfied);
+    assert_eq!(demo_status(&model, "powertrainMass"), Violated);
+    assert_eq!(demo_status(&model, "tankMass"), NotClaimed);
+    assert_eq!(
+        demo_status(&model, ""),
+        Violated,
+        "the specification rolls up its children"
+    );
     let satisfiers: Vec<String> = model
         .claims()
         .filter_map(|c| c.satisfier.as_ref())
@@ -401,4 +416,19 @@ fn the_mass_rollup_demo_rolls_up_and_checks_its_requirements() {
         ["MassRollup::vehicle", "MassRollup::vehicle::powertrain"],
         "a chained `by` is followed"
     );
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
+    use viewer_core::satisfaction::SatisfactionStatus::*;
+    let model = mass_rollup("passing");
+
+    for requirement in ["vehicleMass", "powertrainMass", "tankMass", ""] {
+        assert_eq!(
+            demo_status(&model, requirement),
+            Satisfied,
+            "{requirement:?}"
+        );
+    }
 }

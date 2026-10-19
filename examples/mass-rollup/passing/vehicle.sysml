@@ -1,7 +1,11 @@
 package MassRollup {
     doc /* A vehicle whose mass rolls up from its parts, with requirements on
-         * the totals. Masses are in kilograms. Change a part's mass and save:
-         * the viewer re-checks the requirements and recolours them. */
+         * the totals. Masses are in kilograms.
+         *
+         * This variant meets the whole budget: a lighter engine brings the
+         * powertrain under 250 kg (150 + 85 = 235), and the fuel tank's
+         * requirement is claimed (60 <= 70). See ../failing for the one that
+         * doesn't. */
 
     private import ScalarValues::*;
     private import SequenceFunctions::*;
@@ -23,7 +27,7 @@ package MassRollup {
 
     part vehicle : Vehicle {
         part powertrain : Powertrain {
-            part engine : Engine { attribute :>> mass = 180.0; }
+            part engine : Engine { attribute :>> mass = 150.0; }
             part transmission : Transmission { attribute :>> mass = 85.0; }
             // The powertrain's mass rolls up from its parts.
             attribute :>> mass = engine.mass + transmission.mass;
@@ -56,13 +60,14 @@ package MassRollup {
             attribute :>> limit = 250.0;
         }
         requirement <'3'> tankMass : MassLimit {
-            doc /* Fuel tank mass at most 70 kg; not yet allocated. */
+            doc /* Fuel tank mass at most 70 kg. */
             attribute :>> limit = 70.0;
         }
     }
 
     satisfy massSpec.vehicleMass by vehicle;
     satisfy massSpec.powertrainMass by vehicle.powertrain;
+    satisfy massSpec.tankMass by vehicle.fuelTank;
 
     // ---- Views -----------------------------------------------------------
 
