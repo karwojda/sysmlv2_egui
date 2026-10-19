@@ -70,7 +70,7 @@
 <text x="531.5" y="323" text-anchor="middle" font-size="14">vehicleSpec</text>
 <text x="531.5" y="339" text-anchor="middle" font-size="12">subject v:Vehicle</text>
 <rect x="646" y="288" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="654" y="299.67" text-anchor="middle" font-size="11">○</text>
+<text x="654" y="299.67" text-anchor="middle" font-size="11">✗</text>
 <polyline points="396,349 667,349" fill="none" stroke="#000000"/>
 <text x="531.5" y="370" text-anchor="middle" font-size="11" font-style="italic">doc</text>
 <text x="406" y="386" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>

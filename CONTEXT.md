@@ -62,7 +62,7 @@ The SysML v2 specification's graphical notation, which every Diagram follows by 
 A `satisfy` in the Model stating that a part (the satisfier) satisfies a requirement usage. It is drawn as a `«satisfy»` edge from the satisfier to the requirement.
 
 **Satisfaction Status**:
-Whether a requirement usage is met, as checked by evaluating its Satisfaction Claims against the Model's values: Satisfied (every claim holds), Violated (a claim's condition is false), Undecided (a claim couldn't be evaluated, for example a value is missing), or Not claimed (nothing claims to satisfy it). With several claims, the worst one decides.
+Whether a requirement usage is met, as checked by evaluating its Satisfaction Claims against the Model's values: Satisfied (every claim holds), Violated (a claim's condition is false), Undecided (a claim couldn't be evaluated, for example a value is missing), or Not claimed (nothing claims to satisfy it). With several claims, the worst one decides. A composite requirement also rolls up its nested requirements' statuses, worst first: Violated, Undecided, Not claimed, Satisfied. A claim on a composite with no constraint of its own has nothing to check, so only the nested requirements count.
 _Avoid_: verified, passed (verification cases are a separate thing)
 
 **Style**:

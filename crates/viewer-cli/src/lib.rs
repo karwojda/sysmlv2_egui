@@ -215,10 +215,17 @@ fn requirements(
                 }
             })
             .collect();
-        let details = if claims.is_empty() {
-            "nothing claims to satisfy it".to_owned()
-        } else {
-            claims.join("; ")
+        let nested = model
+            .element(name)
+            .map_or(0, |e| satisfaction::nested(&model, e).count());
+        let details = match (claims.is_empty(), nested) {
+            (true, 0) => "nothing claims to satisfy it".to_owned(),
+            (true, n) => format!("rolled up from {n} nested requirements"),
+            (false, 0) => claims.join("; "),
+            (false, n) => format!(
+                "{}; rolled up from {n} nested requirements",
+                claims.join("; ")
+            ),
         };
         let _ = writeln!(
             stdout,

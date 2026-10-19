@@ -44,7 +44,7 @@ fn lists_every_requirement_usage_with_its_status_and_claims_in_name_order() {
     assert_eq!(lines.len(), 7, "{}", outcome.stdout);
     assert_eq!(
         lines[0],
-        "○ Not claimed Req::vehicleSpec              nothing claims to satisfy it"
+        "✗ Violated    Req::vehicleSpec              rolled up from 5 nested requirements"
     );
     assert!(
         lines[1].starts_with("? Undecided   Req::vehicleSpec::carMassReq  by Req::car ? "),
@@ -61,7 +61,7 @@ fn lists_every_requirement_usage_with_its_status_and_claims_in_name_order() {
     );
     assert_eq!(
         lines[6],
-        "6 requirements: 1 satisfied, 1 violated, 2 undecided, 2 not claimed"
+        "6 requirements: 1 satisfied, 2 violated, 2 undecided, 1 not claimed"
     );
 }
 
@@ -71,7 +71,9 @@ fn a_violated_requirement_fails_the_run() {
 
     assert_eq!(outcome.code, EXIT_FAILURE);
     assert!(
-        outcome.stderr.contains("error: 1 requirement is violated"),
+        outcome
+            .stderr
+            .contains("error: 2 requirements are violated"),
         "{}",
         outcome.stderr
     );

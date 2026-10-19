@@ -81,6 +81,15 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             "Status",
             format!("{} {}", status.mark(), status.label()),
         ));
+        let nested = model
+            .element(element)
+            .map_or(0, |e| satisfaction::nested(model, e).count());
+        if nested > 0 {
+            rows.push(text(
+                "Rolled up from",
+                format!("{nested} nested requirements"),
+            ));
+        }
     }
     for claim in model.claims() {
         let (Some(requirement), Some(satisfier)) = (&claim.satisfies, &claim.satisfier) else {

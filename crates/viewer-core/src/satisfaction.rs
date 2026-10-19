@@ -72,17 +72,56 @@ pub fn claims_on<'a>(
 
 /// The Satisfaction Status of a requirement usage; `None` for anything
 /// else (a requirement definition can't be satisfied).
+///
+/// A requirement's own claims decide it, the worst one winning. A
+/// composite requirement (one with nested requirement usages) also rolls
+/// up its children's statuses, worst first: Violated, Undecided, Not
+/// claimed, Satisfied. Claims on a composite with no constraint of its own
+/// have nothing to check, so only its children count.
 pub fn status(model: &Model, requirement: &QualifiedName) -> Option<SatisfactionStatus> {
     let element = model
         .element(requirement)
         .filter(|e| e.kind == ElementKind::RequirementUsage)?;
-    let worst = claims_on(model, &element.qualified_name)
+    let children: Vec<SatisfactionStatus> = nested(model, element)
+        .filter_map(|child| status(model, &child.qualified_name))
+        .collect();
+    let own_counts = children.is_empty() || has_constraints(model, element);
+    let own: Vec<SatisfactionStatus> = claims_on(model, &element.qualified_name)
+        .filter(|_| own_counts)
         .map(claim_status)
-        .max_by_key(|s| match s {
-            SatisfactionStatus::Satisfied => 0,
-            SatisfactionStatus::Undecided => 1,
-            SatisfactionStatus::Violated => 2,
-            SatisfactionStatus::NotClaimed => 0,
-        });
-    Some(worst.unwrap_or(SatisfactionStatus::NotClaimed))
+        .collect();
+    if children.is_empty() {
+        return Some(worst(&own).unwrap_or(SatisfactionStatus::NotClaimed));
+    }
+    worst(&own.into_iter().chain(children).collect::<Vec<_>>())
+}
+
+/// The requirement usages `element` owns: the requirements a composite
+/// requirement rolls up.
+pub fn nested<'a>(model: &'a Model, element: &'a Element) -> impl Iterator<Item = &'a Element> {
+    model
+        .owned_members(&element.qualified_name)
+        .filter(|m| m.kind == ElementKind::RequirementUsage)
+}
+
+/// Whether a requirement has a `require` constraint of its own or from its
+/// definition, so that a claim on it has something to check.
+fn has_constraints(model: &Model, element: &Element) -> bool {
+    !element.require.is_empty()
+        || element
+            .typed_by
+            .as_ref()
+            .and_then(|d| model.element(d))
+            .is_some_and(|d| !d.require.is_empty())
+}
+
+/// The worst of `statuses`: Violated, then Undecided, then Not claimed,
+/// then Satisfied.
+fn worst(statuses: &[SatisfactionStatus]) -> Option<SatisfactionStatus> {
+    statuses.iter().copied().max_by_key(|s| match s {
+        SatisfactionStatus::Satisfied => 0,
+        SatisfactionStatus::NotClaimed => 1,
+        SatisfactionStatus::Undecided => 2,
+        SatisfactionStatus::Violated => 3,
+    })
 }

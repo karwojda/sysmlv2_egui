@@ -177,8 +177,8 @@ fn requirement_usages_wear_their_status_badge_and_definitions_none() {
     }
     assert_eq!(
         badge_of(&tree, "Req::vehicleSpec").as_deref(),
-        Some("○"),
-        "nothing claims the specification itself"
+        Some("✗"),
+        "the specification rolls up its violated rangeReq"
     );
     let package = build_scene(&common::requirements(), DiagramKind::General, &qn("Req")).unwrap();
     assert_eq!(badge_of(&package, "Req::MassLimit"), None);
@@ -404,4 +404,133 @@ mod styles {
             "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
         );
     }
+}
+
+mod roll_up {
+    use super::*;
+
+    /// `P::spec` owning `P::spec::a` and `P::spec::b`, plus whatever `add`
+    /// puts in (claims, or a constraint on the spec).
+    fn spec(add: impl FnOnce(ModelBuilder) -> ModelBuilder) -> Model {
+        let builder = Model::builder()
+            .package("P")
+            .part("P::x")
+            .requirement("P::spec")
+            .requirement("P::spec::a")
+            .requires("x.m <= 1")
+            .requirement("P::spec::b")
+            .requires("x.m <= 2");
+        add(builder).build()
+    }
+
+    fn of(model: &Model) -> SatisfactionStatus {
+        status(model, &qn("P::spec")).unwrap()
+    }
+
+    fn holds(builder: ModelBuilder, name: &str, requirement: &str) -> ModelBuilder {
+        builder
+            .satisfy(name, requirement, "P::x")
+            .result(ClaimResult::Holds)
+    }
+
+    #[test]
+    fn a_composite_is_satisfied_when_every_child_is() {
+        let m = spec(|b| holds(holds(b, "P::@1", "P::spec::a"), "P::@2", "P::spec::b"));
+
+        assert_eq!(of(&m), SatisfactionStatus::Satisfied);
+    }
+
+    #[test]
+    fn an_unclaimed_child_leaves_the_composite_not_claimed() {
+        let m = spec(|b| holds(b, "P::@1", "P::spec::a"));
+
+        assert_eq!(of(&m), SatisfactionStatus::NotClaimed);
+    }
+
+    #[test]
+    fn violated_beats_undecided_beats_not_claimed_among_children() {
+        let one_undecided = spec(|b| {
+            b.satisfy("P::@1", "P::spec::a", "P::x")
+                .result(undecided("no value"))
+        });
+        assert_eq!(
+            of(&one_undecided),
+            SatisfactionStatus::Undecided,
+            "b is unclaimed, a undecided"
+        );
+
+        let one_violated = spec(|b| {
+            b.satisfy("P::@1", "P::spec::a", "P::x")
+                .result(undecided("no value"))
+                .satisfy("P::@2", "P::spec::b", "P::x")
+                .result(violated("x.m <= 2"))
+        });
+        assert_eq!(of(&one_violated), SatisfactionStatus::Violated);
+    }
+
+    #[test]
+    fn a_claim_on_a_composite_with_nothing_to_check_is_ignored() {
+        let m = spec(|b| {
+            let b = holds(holds(b, "P::@1", "P::spec::a"), "P::@2", "P::spec::b");
+            b.satisfy("P::@3", "P::spec", "P::x")
+                .result(undecided("no condition to evaluate"))
+        });
+
+        assert_eq!(of(&m), SatisfactionStatus::Satisfied);
+    }
+
+    #[test]
+    fn a_claim_on_a_composite_with_its_own_constraint_counts_too() {
+        let m = Model::builder()
+            .package("P")
+            .part("P::x")
+            .requirement("P::spec")
+            .requires("x.total <= 10")
+            .requirement("P::spec::a")
+            .requires("x.m <= 1")
+            .satisfy("P::@1", "P::spec::a", "P::x")
+            .result(ClaimResult::Holds)
+            .satisfy("P::@2", "P::spec", "P::x")
+            .result(violated("x.total <= 10"))
+            .build();
+
+        assert_eq!(of(&m), SatisfactionStatus::Violated);
+    }
+
+    #[test]
+    fn composites_roll_up_through_every_level() {
+        let m = Model::builder()
+            .package("P")
+            .part("P::x")
+            .requirement("P::top")
+            .requirement("P::top::mid")
+            .requirement("P::top::mid::leaf")
+            .requires("x.m <= 1")
+            .satisfy("P::@1", "P::top::mid::leaf", "P::x")
+            .result(violated("x.m <= 1"))
+            .build();
+
+        assert_eq!(
+            status(&m, &qn("P::top")),
+            Some(SatisfactionStatus::Violated)
+        );
+    }
+}
+
+#[test]
+fn properties_say_a_composite_s_status_is_rolled_up() {
+    let props = properties(&common::requirements(), &qn("Req::vehicleSpec")).unwrap();
+    let row = |label: &str| {
+        props
+            .rows
+            .iter()
+            .find(|p| p.label == label)
+            .map(|p| p.value.clone())
+    };
+
+    assert_eq!(row("Status").as_deref(), Some("✗ Violated"));
+    assert_eq!(
+        row("Rolled up from").as_deref(),
+        Some("5 nested requirements")
+    );
 }

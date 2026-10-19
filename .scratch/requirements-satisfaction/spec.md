@@ -127,11 +127,10 @@ OpenSysML can evaluate these claims against the Model's values. Today I'd have t
 - Showing `assume` constraints.
 - Derived-requirement (`#derive`) and `«allocate»` edges.
 - Satisfaction markers in Interconnection Diagrams.
-- Rolling statuses up from nested requirements to their parents.
 
 ## Further Notes
 
-- Decisions settled with the user on 2026-10-18 (Q1–Q13).
+- Decisions settled with the user on 2026-10-18 (Q1–Q13). Q6 (no roll-up) was reversed on 2026-10-19, after the mass roll-up demo showed a specification reading ○ with every child ✓. A composite requirement now rolls up its children worst first (✗, ?, ○, ✓). Claims on a composite with no constraint of its own are ignored, since the service answers them "no condition to evaluate".
 - **Backend probes:**
   - `Model::verify_satisfaction(None, …)` returns one verdict per `satisfy`, each holds, violated (with the condition text) or undecided (with an error).
   - `SatisfyRequirementUsage` items carry `subject` and `subsets`, or a feature chain for the inside-a-part form.
