@@ -396,5 +396,9 @@ pub fn requirements() -> Model {
         .typed_by("Req::RangeTarget")
         .part("Req::vehicleSpec::v")
         .typed_by("Req::Vehicle")
+        .satisfy("Req::@8", "Req::vehicleSpec::massReq", "Req::vehicle")
+        .satisfy("Req::@9", "Req::vehicleSpec::rangeReq", "Req::vehicle")
+        .satisfy("Req::@10", "Req::vehicleSpec::costReq", "Req::vehicle")
+        .satisfy("Req::car::@1", "Req::vehicleSpec::massReq", "Req::car")
         .build()
 }

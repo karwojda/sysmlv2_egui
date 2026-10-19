@@ -276,3 +276,196 @@ fn a_package_of_requirements_matches_the_golden_file() {
         "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
     );
 }
+
+/// The vehicles and the specification's requirements on one Diagram, as a
+/// view exposing both would draw them.
+fn parts_and_requirements(layout: &viewer_core::Layout) -> Scene {
+    let elements: Vec<QualifiedName> = [
+        "Req::vehicle",
+        "Req::car",
+        "Req::vehicleSpec::massReq",
+        "Req::vehicleSpec::rangeReq",
+        "Req::vehicleSpec::costReq",
+        "Req::vehicleSpec::spareReq",
+    ]
+    .iter()
+    .map(|n| qn(n))
+    .collect();
+    viewer_core::build_general_scene(&common::requirements(), &elements, layout)
+}
+
+fn satisfy_edges(scene: &Scene) -> Vec<String> {
+    let mut edges: Vec<String> = scene
+        .edges()
+        .into_iter()
+        .filter_map(|(d, _)| match d {
+            Depicts::Satisfy(claim) => Some(claim.to_string()),
+            _ => None,
+        })
+        .collect();
+    edges.sort();
+    edges
+}
+
+#[test]
+fn each_claim_is_a_satisfy_edge_from_the_satisfier_to_the_requirement() {
+    let scene = parts_and_requirements(&viewer_core::Layout::default());
+
+    assert_eq!(
+        satisfy_edges(&scene),
+        ["Req::@10", "Req::@8", "Req::@9", "Req::car::@1"]
+    );
+    let (_, path) = scene
+        .edges()
+        .into_iter()
+        .find(|(d, _)| **d == Depicts::Satisfy(qn("Req::@9")))
+        .unwrap();
+    let vehicle = scene.element_bounds(&qn("Req::vehicle")).unwrap();
+    let range = scene
+        .element_bounds(&qn("Req::vehicleSpec::rangeReq"))
+        .unwrap();
+    let near = |r: viewer_core::scene::Rect, p: viewer_core::scene::Point| {
+        p.x >= r.x - 1.0 && p.x <= r.right() + 1.0 && p.y >= r.y - 1.0 && p.y <= r.bottom() + 1.0
+    };
+    assert!(near(vehicle, path[0]), "starts at the satisfier");
+    assert!(
+        near(range, *path.last().unwrap()),
+        "ends at the requirement"
+    );
+}
+
+#[test]
+fn a_satisfy_edge_is_labelled_and_ends_in_an_open_arrowhead() {
+    let scene = parts_and_requirements(&viewer_core::Layout::default());
+    let claim = Depicts::Satisfy(qn("Req::@8"));
+
+    let shapes: Vec<&Shape> = scene.items_depicting(&claim).collect();
+
+    assert!(
+        shapes
+            .iter()
+            .any(|s| matches!(s, Shape::Text { text, .. } if text == "«satisfy»"))
+    );
+    assert_eq!(
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Polyline { .. }))
+            .count(),
+        2,
+        "the line and an open (unfilled) arrowhead"
+    );
+    assert!(
+        !shapes.iter().any(|s| matches!(s, Shape::Polygon { .. })),
+        "no filled head"
+    );
+}
+
+#[test]
+fn no_satisfy_edge_without_both_ends_on_the_diagram() {
+    let scene = general("Req");
+
+    assert!(
+        satisfy_edges(&scene).is_empty(),
+        "the nested requirements aren't nodes here"
+    );
+}
+
+#[test]
+fn a_satisfier_lists_its_claims_in_its_requirements_compartment() {
+    let scene = general("Req");
+
+    let vehicle = texts_of(&scene, "Req::vehicle");
+    let at = vehicle
+        .iter()
+        .position(|t| t == "requirements")
+        .expect("a requirements compartment");
+    assert_eq!(
+        &vehicle[at + 1..],
+        ["satisfy massReq", "satisfy rangeReq", "satisfy costReq"]
+    );
+    let car = texts_of(&scene, "Req::car");
+    assert!(
+        car.ends_with(&["requirements".to_owned(), "satisfy massReq".to_owned()]),
+        "{car:?}"
+    );
+}
+
+#[test]
+fn a_saved_route_bends_a_satisfy_edge() {
+    let mut layout = viewer_core::Layout::default();
+    let key = Depicts::Satisfy(qn("Req::@8")).edge_key().unwrap();
+    assert_eq!(key, "satisfy Req::@8");
+    layout.edges.insert(key, vec![[700.0, 40.0]]);
+
+    let scene = parts_and_requirements(&layout);
+
+    let (_, path) = scene
+        .edges()
+        .into_iter()
+        .find(|(d, _)| **d == Depicts::Satisfy(qn("Req::@8")))
+        .unwrap();
+    assert!(path.iter().any(|p| (p.x, p.y) == (700.0, 40.0)));
+}
+
+#[test]
+fn properties_link_requirements_and_satisfiers_both_ways() {
+    let model = common::requirements();
+    let rows = |element: &str, label: &str| -> Vec<String> {
+        properties(&model, &qn(element))
+            .unwrap()
+            .rows
+            .into_iter()
+            .filter(|p| p.label == label)
+            .map(|p| p.value)
+            .collect()
+    };
+
+    assert_eq!(
+        rows("Req::vehicleSpec::massReq", "Satisfied by"),
+        ["Req::vehicle", "Req::car"]
+    );
+    assert_eq!(
+        rows("Req::vehicle", "Satisfies"),
+        [
+            "Req::vehicleSpec::massReq",
+            "Req::vehicleSpec::rangeReq",
+            "Req::vehicleSpec::costReq"
+        ]
+    );
+    assert_eq!(
+        rows("Req::@9", "Requirement"),
+        ["Req::vehicleSpec::rangeReq"]
+    );
+    assert_eq!(rows("Req::@9", "Satisfier"), ["Req::vehicle"]);
+    assert!(rows("Req::vehicleSpec::spareReq", "Satisfied by").is_empty());
+}
+
+#[test]
+fn a_claim_is_named_by_what_it_claims() {
+    let model = common::requirements();
+
+    assert_eq!(
+        model.element(&qn("Req::car::@1")).unwrap().display_name(),
+        "massReq by car"
+    );
+}
+
+#[test]
+fn parts_with_satisfy_edges_match_the_golden_file() {
+    let svg = svg::render(&parts_and_requirements(&viewer_core::Layout::default()));
+    let golden =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/requirements-satisfy.svg");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &svg).unwrap();
+    }
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {}; run with UPDATE_GOLDEN=1 to create it",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        svg, expected,
+        "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
+    );
+}

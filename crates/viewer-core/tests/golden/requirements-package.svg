@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="786" height="585" viewBox="0 0 786 585" font-family="sans-serif">
-<rect x="0" y="0" width="786" height="585" fill="#ffffff"/>
-<polyline points="232.7,460 214.13,424.41" fill="none" stroke="#000000"/>
-<polygon points="207.65,412 221.22,420.71 207.04,428.11" fill="#ffffff" stroke="#000000"/>
-<circle cx="219.99" cy="426.99" r="1.8" fill="#000000"/>
-<circle cx="212.89" cy="430.7" r="1.8" fill="#000000"/>
-<polyline points="118.83,452 133.41,424.38" fill="none" stroke="#000000"/>
-<polygon points="139.95,412 140.49,428.12 126.34,420.65" fill="#ffffff" stroke="#000000"/>
-<circle cx="134.61" cy="430.67" r="1.8" fill="#000000"/>
-<circle cx="127.54" cy="426.93" r="1.8" fill="#000000"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="786" height="665" viewBox="0 0 786 665" font-family="sans-serif">
+<rect x="0" y="0" width="786" height="665" fill="#ffffff"/>
+<polyline points="228.95,477 206.84,424.89" fill="none" stroke="#000000"/>
+<polygon points="201.37,412 214.2,421.76 199.47,428.01" fill="#ffffff" stroke="#000000"/>
+<circle cx="212.47" cy="427.93" r="1.8" fill="#000000"/>
+<circle cx="205.11" cy="431.05" r="1.8" fill="#000000"/>
+<polyline points="129.5,453 141.35,424.9" fill="none" stroke="#000000"/>
+<polygon points="146.79,412 148.72,428.01 133.98,421.79" fill="#ffffff" stroke="#000000"/>
+<circle cx="143.09" cy="431.06" r="1.8" fill="#000000"/>
+<circle cx="135.72" cy="427.95" r="1.8" fill="#000000"/>
 <rect x="20" y="20" width="182" height="113" fill="#ffffff" stroke="#000000"/>
 <text x="111" y="42" text-anchor="middle" font-size="12">«requirement def»</text>
 <text x="111" y="60" text-anchor="middle" font-size="14" font-weight="bold">CostCap</text>
@@ -44,30 +44,38 @@
 <text x="124" y="370" text-anchor="start" font-size="12">cost:Real</text>
 <text x="124" y="386" text-anchor="start" font-size="12">mass:Real</text>
 <text x="124" y="402" text-anchor="start" font-size="12">range:Real</text>
-<rect x="198" y="460" width="120" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="258" y="482" text-anchor="middle" font-size="12">«part»</text>
-<text x="258" y="500" text-anchor="middle" font-size="14">car:Vehicle</text>
-<polyline points="198,510 318,510" fill="none" stroke="#000000"/>
-<text x="258" y="531" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="208" y="547" text-anchor="start" font-size="12">mass</text>
-<rect x="20" y="452" width="138" height="113" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="89" y="474" text-anchor="middle" font-size="12">«part»</text>
-<text x="89" y="492" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
-<polyline points="20,502 158,502" fill="none" stroke="#000000"/>
-<text x="89" y="523" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="30" y="539" text-anchor="start" font-size="12">mass</text>
-<text x="30" y="555" text-anchor="start" font-size="12">range</text>
-<rect x="358" y="283" width="229" height="208" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="472.5" y="305" text-anchor="middle" font-size="12">«requirement»</text>
-<text x="472.5" y="323" text-anchor="middle" font-size="14">vehicleSpec</text>
-<text x="472.5" y="339" text-anchor="middle" font-size="12">subject v:Vehicle</text>
-<polyline points="358,349 587,349" fill="none" stroke="#000000"/>
-<text x="472.5" y="370" text-anchor="middle" font-size="11" font-style="italic">doc</text>
-<text x="368" y="386" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>
-<polyline points="358,396 587,396" fill="none" stroke="#000000"/>
-<text x="472.5" y="417" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="368" y="433" text-anchor="start" font-size="12">&lt;3&gt; costReq:CostCap</text>
-<text x="368" y="449" text-anchor="start" font-size="12">&lt;1&gt; massReq:MassLimit</text>
-<text x="368" y="465" text-anchor="start" font-size="12">&lt;2&gt; rangeReq:RangeTarget</text>
-<text x="368" y="481" text-anchor="start" font-size="12">&lt;4&gt; spareReq:RangeTarget</text>
+<rect x="199" y="477" width="121" height="144" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="259.5" y="499" text-anchor="middle" font-size="12">«part»</text>
+<text x="259.5" y="517" text-anchor="middle" font-size="14">car:Vehicle</text>
+<polyline points="199,527 320,527" fill="none" stroke="#000000"/>
+<text x="259.5" y="548" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="209" y="564" text-anchor="start" font-size="12">mass</text>
+<polyline points="199,574 320,574" fill="none" stroke="#000000"/>
+<text x="259.5" y="595" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="209" y="611" text-anchor="start" font-size="12">satisfy massReq</text>
+<rect x="20" y="453" width="138" height="192" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="89" y="475" text-anchor="middle" font-size="12">«part»</text>
+<text x="89" y="493" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
+<polyline points="20,503 158,503" fill="none" stroke="#000000"/>
+<text x="89" y="524" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="30" y="540" text-anchor="start" font-size="12">mass</text>
+<text x="30" y="556" text-anchor="start" font-size="12">range</text>
+<polyline points="20,566 158,566" fill="none" stroke="#000000"/>
+<text x="89" y="587" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="30" y="603" text-anchor="start" font-size="12">satisfy massReq</text>
+<text x="30" y="619" text-anchor="start" font-size="12">satisfy rangeReq</text>
+<text x="30" y="635" text-anchor="start" font-size="12">satisfy costReq</text>
+<rect x="360" y="283" width="229" height="208" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="474.5" y="305" text-anchor="middle" font-size="12">«requirement»</text>
+<text x="474.5" y="323" text-anchor="middle" font-size="14">vehicleSpec</text>
+<text x="474.5" y="339" text-anchor="middle" font-size="12">subject v:Vehicle</text>
+<polyline points="360,349 589,349" fill="none" stroke="#000000"/>
+<text x="474.5" y="370" text-anchor="middle" font-size="11" font-style="italic">doc</text>
+<text x="370" y="386" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>
+<polyline points="360,396 589,396" fill="none" stroke="#000000"/>
+<text x="474.5" y="417" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="370" y="433" text-anchor="start" font-size="12">&lt;3&gt; costReq:CostCap</text>
+<text x="370" y="449" text-anchor="start" font-size="12">&lt;1&gt; massReq:MassLimit</text>
+<text x="370" y="465" text-anchor="start" font-size="12">&lt;2&gt; rangeReq:RangeTarget</text>
+<text x="370" y="481" text-anchor="start" font-size="12">&lt;4&gt; spareReq:RangeTarget</text>
 </svg>

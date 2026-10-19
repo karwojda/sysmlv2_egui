@@ -210,6 +210,9 @@ pub enum Depicts {
     },
     /// The Legend keying a Style's colors.
     Legend,
+    /// A Satisfaction Claim drawn as a `«satisfy»` edge, by the claim's
+    /// qualified name.
+    Satisfy(QualifiedName),
 }
 
 impl Depicts {
@@ -228,6 +231,7 @@ impl Depicts {
             }
             Depicts::Composition { owner, usage } => Some(format!("composition {owner} {usage}")),
             Depicts::Connection(connection) => Some(format!("connection {connection}")),
+            Depicts::Satisfy(claim) => Some(format!("satisfy {claim}")),
         }
     }
 }

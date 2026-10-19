@@ -67,6 +67,20 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     for constraint in &e.require {
         rows.push(text("Requires", format!("{{{constraint}}}")));
     }
+    if let (Some(requirement), Some(satisfier)) = (&e.satisfies, &e.satisfier) {
+        rows.push(link("Requirement", requirement, requirement.to_string()));
+        rows.push(link("Satisfier", satisfier, satisfier.to_string()));
+    }
+    for claim in model.claims() {
+        if let (Some(requirement), Some(satisfier)) = (&claim.satisfies, &claim.satisfier) {
+            if requirement == element {
+                rows.push(link("Satisfied by", satisfier, satisfier.to_string()));
+            }
+            if satisfier == element {
+                rows.push(link("Satisfies", requirement, requirement.to_string()));
+            }
+        }
+    }
     if e.is_reference {
         rows.push(text("Reference", "yes".to_owned()));
     }

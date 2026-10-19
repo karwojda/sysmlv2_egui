@@ -203,6 +203,22 @@ pub fn node_content(
             );
         compartments.insert(after, ("constraints", rows));
     }
+    // What the element claims to satisfy joins its requirements compartment.
+    let claims: Vec<String> = model
+        .claims()
+        .filter(|c| compartments_shown && c.satisfier.as_ref() == Some(&element.qualified_name))
+        .filter_map(|c| c.satisfies.as_ref())
+        .map(|requirement| format!("satisfy {}", requirement.simple_name()))
+        .collect();
+    if !claims.is_empty() {
+        match compartments
+            .iter_mut()
+            .find(|(title, _)| *title == "requirements")
+        {
+            Some((_, rows)) => rows.extend(claims),
+            None => compartments.push(("requirements", claims)),
+        }
+    }
     let short_id = element
         .short_name
         .as_ref()
@@ -543,9 +559,78 @@ pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) 
 /// its middle; a bent one beside its middle bend, on the outer side, so
 /// fanned-out parallel connections keep their labels apart.
 pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<Item> {
+    let (position, anchor) = label_place(&path);
+    let text = connector_label(element);
+    let mut shapes = vec![Shape::Polyline {
+        points: path.clone(),
+        dashed: false,
+    }];
+    if element.kind == ElementKind::FlowUsage {
+        shapes.push(flow_arrow(&path));
+    }
+    // An unnamed, untyped connection has no label.
+    if !text.is_empty() {
+        shapes.push(Shape::Text {
+            position,
+            text,
+            anchor,
+            font: LABEL_FONT,
+            fill: Fill::Stroke,
+        });
+    }
+    tag(depicts, shapes)
+}
+
+/// A Satisfaction Claim: a solid line from the satisfier ending in an open
+/// arrowhead on the requirement, labelled `«satisfy»` like a connection.
+pub fn satisfy(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
+    // Beside a steep straight edge, so the line doesn't strike through it.
+    let (position, anchor) = match path.as_slice() {
+        [a, b] if (b.y - a.y).abs() > 2.0 * (b.x - a.x).abs() => (
+            Point::new(
+                (a.x + b.x) / 2.0 + LABEL_OFFSET,
+                (a.y + b.y) / 2.0 + LABEL_FONT.size / 3.0,
+            ),
+            TextAnchor::Start,
+        ),
+        _ => label_place(&path),
+    };
+    let (before, end) = last_segment(&path);
+    let base = back_from(end, before, ARROW_LENGTH);
+    let (nx, ny) = normal(before, end, ARROW_HALF_WIDTH);
+    tag(
+        depicts,
+        vec![
+            Shape::Polyline {
+                points: path,
+                dashed: false,
+            },
+            Shape::Polyline {
+                points: vec![
+                    Point::new(base.x + nx, base.y + ny),
+                    end,
+                    Point::new(base.x - nx, base.y - ny),
+                ],
+                dashed: false,
+            },
+            Shape::Text {
+                position,
+                text: "«satisfy»".to_owned(),
+                anchor,
+                font: LABEL_FONT,
+                fill: Fill::Stroke,
+            },
+        ],
+    )
+}
+
+/// Where an edge's label goes: above a straight edge's middle, or beside a
+/// bent one's middle bend on the outer side, so fanned-out parallel edges
+/// keep their labels apart.
+fn label_place(path: &[Point]) -> (Point, TextAnchor) {
     let (first, last) = (path[0], path[path.len() - 1]);
     let chord_middle = Point::new((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
-    let (position, anchor) = if path.len() % 2 == 1 {
+    if path.len() % 2 == 1 {
         let bend = path[path.len() / 2];
         let (dx, dy) = (bend.x - chord_middle.x, bend.y - chord_middle.y);
         if dx.abs() < 0.5 && dy.abs() < 0.5 {
@@ -582,26 +667,7 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
             Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0 - LABEL_OFFSET),
             TextAnchor::Middle,
         )
-    };
-    let text = connector_label(element);
-    let mut shapes = vec![Shape::Polyline {
-        points: path.clone(),
-        dashed: false,
-    }];
-    if element.kind == ElementKind::FlowUsage {
-        shapes.push(flow_arrow(&path));
     }
-    // An unnamed, untyped connection has no label.
-    if !text.is_empty() {
-        shapes.push(Shape::Text {
-            position,
-            text,
-            anchor,
-            font: LABEL_FONT,
-            fill: Fill::Stroke,
-        });
-    }
-    tag(depicts, shapes)
 }
 
 /// Bends that fan out `count` parallel edges between `a` and `b`: edge

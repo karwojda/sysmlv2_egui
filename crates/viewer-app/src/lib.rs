@@ -1055,7 +1055,7 @@ impl ViewerApp {
                 .and_then(|p| scene.port_at(p))
                 .map(|(_, port, _)| port.clone());
             let connection = match &hovered_edge {
-                Some(Depicts::Connection(c)) => Some(c.clone()),
+                Some(Depicts::Connection(c) | Depicts::Satisfy(c)) => Some(c.clone()),
                 _ => None,
             };
             let node = pointer_scene
@@ -1109,7 +1109,7 @@ impl ViewerApp {
                         );
                     }
                     (
-                        Depicts::Connection(c),
+                        Depicts::Connection(c) | Depicts::Satisfy(c),
                         viewer_core::scene::Shape::Polyline { points, .. },
                     ) if c == selected => {
                         let points = points.iter().map(|p| view.to_screen(origin, *p)).collect();

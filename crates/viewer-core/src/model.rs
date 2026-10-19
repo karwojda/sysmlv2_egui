@@ -67,6 +67,8 @@ pub enum ElementKind {
     ViewUsage,
     RequirementDefinition,
     RequirementUsage,
+    /// A Satisfaction Claim: `satisfy requirement by satisfier`.
+    SatisfyRequirement,
     Unsupported(String),
 }
 
@@ -91,6 +93,7 @@ impl ElementKind {
             ElementKind::ViewUsage => "view",
             ElementKind::RequirementDefinition => "requirement def",
             ElementKind::RequirementUsage => "requirement",
+            ElementKind::SatisfyRequirement => "satisfy",
             ElementKind::Unsupported(keyword) => keyword,
         }
     }
@@ -242,6 +245,12 @@ pub struct Element {
     pub subject: Option<QualifiedName>,
     /// A requirement's own `require` constraints, as text, in order.
     pub require: Vec<String>,
+    /// For a Satisfaction Claim, the requirement usage it claims is
+    /// satisfied.
+    pub satisfies: Option<QualifiedName>,
+    /// For a Satisfaction Claim, the part (or other usage or definition)
+    /// that satisfies it.
+    pub satisfier: Option<QualifiedName>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
@@ -250,6 +259,15 @@ impl Element {
     /// How the element is named to a reader: its name, or for an unnamed
     /// connection-like element its ends (`a → b`, or `a = b` for a binding).
     pub fn display_name(&self) -> String {
+        if let (true, Some(requirement), Some(satisfier)) =
+            (self.name.is_empty(), &self.satisfies, &self.satisfier)
+        {
+            return format!(
+                "{} by {}",
+                requirement.simple_name(),
+                satisfier.simple_name()
+            );
+        }
         if !self.name.is_empty() || self.ends.is_empty() {
             return self.name.clone();
         }
@@ -284,6 +302,8 @@ impl Element {
             short_name: None,
             subject: None,
             require: Vec::new(),
+            satisfies: None,
+            satisfier: None,
             documentation: None,
             source: None,
         }
@@ -331,6 +351,28 @@ impl Model {
     /// All elements, ordered by qualified name.
     pub fn elements(&self) -> impl Iterator<Item = &Element> {
         self.elements.values()
+    }
+
+    /// Every Satisfaction Claim, in declaration order within each owner:
+    /// generated names number them (`Req::@8`, `Req::@10`), so they sort by
+    /// that number, not as text.
+    pub fn claims(&self) -> impl Iterator<Item = &Element> {
+        let mut claims: Vec<&Element> = self
+            .elements
+            .values()
+            .filter(|e| e.kind == ElementKind::SatisfyRequirement)
+            .collect();
+        claims.sort_by_key(|c| {
+            let name = c.qualified_name.as_str();
+            let numbered = name
+                .rsplit_once("::@")
+                .and_then(|(owner, n)| Some((owner, n.parse::<u64>().ok()?)));
+            match numbered {
+                Some((owner, n)) => (owner.to_owned(), n),
+                None => (name.to_owned(), 0),
+            }
+        });
+        claims.into_iter()
     }
 
     /// Elements directly owned by `owner`, ordered by qualified name.
@@ -450,6 +492,16 @@ impl ModelBuilder {
     /// Makes `feature` (an owned feature, added separately) the subject.
     pub fn subject(mut self, feature: &str) -> Self {
         self.last().subject = Some(QualifiedName::new(feature));
+        self
+    }
+
+    /// A Satisfaction Claim as the service reports one: a generated
+    /// qualified name (`Req::@10`), no name, the requirement usage it
+    /// claims and its satisfier.
+    pub fn satisfy(mut self, name: &str, requirement: &str, satisfier: &str) -> Self {
+        self = self.unnamed(name, ElementKind::SatisfyRequirement);
+        self.last().satisfies = Some(QualifiedName::new(requirement));
+        self.last().satisfier = Some(QualifiedName::new(satisfier));
         self
     }
 

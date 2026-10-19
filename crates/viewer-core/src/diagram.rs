@@ -244,6 +244,12 @@ enum Edge<'a> {
         b: usize,
         connection: &'a Element,
     },
+    /// A Satisfaction Claim, from the satisfier to the requirement.
+    Satisfy {
+        satisfier: usize,
+        requirement: usize,
+        claim: &'a Element,
+    },
 }
 
 /// A General Diagram of `nodes`, each listing in compartments the features
@@ -312,6 +318,17 @@ fn general<'a>(
             edges.push(Edge::Connection { a, b, connection });
         }
     }
+    for claim in model.claims() {
+        let satisfier = claim.satisfier.as_ref().and_then(index_of);
+        let requirement = claim.satisfies.as_ref().and_then(index_of);
+        if let (Some(satisfier), Some(requirement)) = (satisfier, requirement) {
+            edges.push(Edge::Satisfy {
+                satisfier,
+                requirement,
+                claim,
+            });
+        }
+    }
 
     // Generals, definitions and owners go in layers above what refers to
     // them; connected usages go in neighbouring layers.
@@ -325,6 +342,12 @@ fn general<'a>(
             } => (owner, part_type),
             Edge::Ownership { owner, usage } => (owner, usage),
             Edge::Connection { a, b, .. } => (a, b),
+            // Requirements sit above what satisfies them.
+            Edge::Satisfy {
+                satisfier,
+                requirement,
+                ..
+            } => (requirement, satisfier),
         })
         .collect();
 
@@ -406,6 +429,7 @@ fn general<'a>(
             Edge::Composition { usage, .. } => notation::composition(depicts, Some(usage), path),
             Edge::Ownership { .. } => notation::composition(depicts, None, path),
             Edge::Connection { connection, .. } => notation::connection(depicts, connection, path),
+            Edge::Satisfy { .. } => notation::satisfy(depicts, path),
         });
     }
     for ((element, content), rect) in nodes.iter().zip(&contents).zip(&rects) {
@@ -482,6 +506,15 @@ fn describe(edge: &Edge, nodes: &[&Element]) -> (Depicts, usize, usize) {
         Edge::Connection { a, b, connection } => {
             (Depicts::Connection(connection.qualified_name.clone()), a, b)
         }
+        Edge::Satisfy {
+            satisfier,
+            requirement,
+            claim,
+        } => (
+            Depicts::Satisfy(claim.qualified_name.clone()),
+            satisfier,
+            requirement,
+        ),
     }
 }
 

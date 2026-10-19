@@ -78,14 +78,16 @@ pub fn enrich(
         }
     }
 
-    // Unnamed connections, interfaces, flows and bindings aren't in the
-    // symbol tree; add them under the service's generated names.
+    // Unnamed connections, interfaces, flows and bindings, and Satisfaction
+    // Claims, aren't in the symbol tree; add them under the service's
+    // generated names.
     for (item, _) in items.values() {
         let kind = match item.get("@type").and_then(Value::as_str) {
             Some("ConnectionUsage") => ElementKind::ConnectionUsage,
             Some("InterfaceUsage") => ElementKind::InterfaceUsage,
             Some("FlowUsage") => ElementKind::FlowUsage,
             Some("BindingConnectorAsUsage") => ElementKind::BindingConnection,
+            Some("SatisfyRequirementUsage") => ElementKind::SatisfyRequirement,
             _ => continue,
         };
         let Some(name) = item
@@ -100,7 +102,19 @@ pub fn enrich(
         }
         let mut element = Element::new(name.clone(), kind);
         element.name = String::new();
-        element.typed_by = first_reference(item, "type").and_then(qualified_name);
+        if element.kind == ElementKind::SatisfyRequirement {
+            // `satisfy r by x` names its satisfier; `satisfy r;` inside a
+            // part is satisfied by that part. Either may be a feature chain.
+            element.satisfies = reference(item, "subsets")
+                .and_then(|id| chain_end(&items, id))
+                .and_then(qualified_name);
+            element.satisfier = reference(item, "subject")
+                .and_then(|id| chain_end(&items, id))
+                .or_else(|| reference(item, "owner"))
+                .and_then(qualified_name);
+        } else {
+            element.typed_by = first_reference(item, "type").and_then(qualified_name);
+        }
         elements.insert(name, element);
     }
 
@@ -119,9 +133,15 @@ pub fn enrich(
             let Some(subject) = member.and_then(qualified_name) else {
                 continue;
             };
-            if let Some(element) = owner.and_then(|o| elements.get_mut(&o)) {
-                element.subject = Some(subject.clone());
-            }
+            // A requirement's subject; a claim's subject is its satisfier.
+            let requirement = owner.and_then(|o| elements.get_mut(&o)).filter(|e| {
+                matches!(
+                    e.kind,
+                    ElementKind::RequirementDefinition | ElementKind::RequirementUsage
+                )
+            });
+            let Some(element) = requirement else { continue };
+            element.subject = Some(subject.clone());
             // The symbol tree leaves a subject untyped; the element form has it.
             let typed = member
                 .and_then(|id| items.get(id))
@@ -315,6 +335,16 @@ fn require_constraints(
                 .unwrap_or_else(|| crate::expression::UNKNOWN.to_owned())
         })
         .collect()
+}
+
+/// The feature `id` stands for: itself, or the last feature of a chain
+/// (`vehicleSpec.massReq`).
+fn chain_end<'a>(items: &'a HashMap<String, (Value, PathBuf)>, id: &'a str) -> Option<&'a str> {
+    let (item, _) = items.get(id)?;
+    match item.get("chainingFeature").and_then(Value::as_array) {
+        Some(chain) => chain.last()?.get("@id")?.as_str(),
+        None => Some(id),
+    }
 }
 
 /// The id the first entry of a many-valued reference property points at.
