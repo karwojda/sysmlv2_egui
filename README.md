@@ -13,6 +13,7 @@ The Model is only ever read. Layout, saved Diagrams and Styles live in their own
 - **Interconnection Diagrams:** nested parts and ports, connections, item flows, bindings, reference parts and composite ports. Parts can be opened in place.
 - **Model-defined Diagrams:** `view` usages that render `asTreeDiagram` or `asInterconnectionDiagram` (or are typed by `GeneralView` / `InterconnectionView`) are drawn from what they `expose`.
 - **Editable layout:** move, resize, hide and collapse nodes, bend edges, and move ports. Save the result as a Diagram File.
+- **Requirements:** requirement nodes with their constraints, `«satisfy»` edges, and a status badge on each requirement (✓ satisfied, ✗ violated, ? undecided, ○ not claimed), checked by OpenSysML against the Model's values.
 - **Styles:** colour node fills by element kind, package or metadata, with an optional Legend. Set them once for the Model and override them per Diagram.
 - **Live reload:** edits to the Model or its Style file show up in the open Diagrams.
 - **Export:** deterministic SVG, identical between the viewer and the CLI.
@@ -44,6 +45,10 @@ cargo run --release -p viewer-cli -- export <model-folder> --view "vehicle tree"
 
 # every saved Diagram and every supported view
 cargo run --release -p viewer-cli -- export <model-folder> --all --out-dir docs/img
+
+# requirement status, checked by OpenSysML; exits 1 if any is violated
+# (--strict also fails on undecided and unclaimed ones), for CI
+cargo run --release -p viewer-cli -- requirements <model-folder> [--strict]
 ```
 
 The binaries are `sysml-viewer-gui` and `sysml-viewer`.

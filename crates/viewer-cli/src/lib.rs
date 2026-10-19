@@ -8,7 +8,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
+use viewer_core::model::ClaimResult;
 use viewer_core::model::{Diagnostic, Severity};
+use viewer_core::satisfaction::{self, SatisfactionStatus};
 use viewer_core::style::{self, Style};
 use viewer_core::view::{self, ViewError};
 use viewer_core::{
@@ -85,13 +87,33 @@ enum Command {
         #[arg(long, conflicts_with_all = ["diagram", "view"])]
         out_dir: Option<PathBuf>,
     },
+    /// Report every requirement's Satisfaction Status, checked against the
+    /// Model's values. Fails if any requirement is violated.
+    Requirements {
+        /// The Model folder.
+        model_folder: PathBuf,
+        /// Also fail on requirements that are undecided or not claimed.
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 /// Runs the tool with `args` (program name first), loading Models through
-/// `backend`. Messages go to `stderr`; the result is the process exit code.
+/// `backend`. Reports go to standard output, messages to `stderr`; the
+/// result is the process exit code.
 pub fn run(
     args: impl IntoIterator<Item = OsString>,
     backend: &mut dyn ModelBackend,
+    stderr: &mut dyn Write,
+) -> u8 {
+    run_with_output(args, backend, &mut std::io::stdout(), stderr)
+}
+
+/// [`run`], with reports written to `stdout`.
+pub fn run_with_output(
+    args: impl IntoIterator<Item = OsString>,
+    backend: &mut dyn ModelBackend,
+    stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> u8 {
     let cli = match Cli::try_parse_from(args) {
@@ -127,6 +149,10 @@ pub fn run(
         Command::Export { .. } => {
             unreachable!("clap enforces --diagram or --view with --out, or --all with --out-dir")
         }
+        Command::Requirements {
+            model_folder,
+            strict,
+        } => requirements(&model_folder, strict, backend, stdout, stderr),
     };
     match result {
         Ok(()) => EXIT_OK,
@@ -135,6 +161,101 @@ pub fn run(
             EXIT_FAILURE
         }
     }
+}
+
+/// Prints one line per requirement usage, in qualified-name order: its
+/// mark and status, its name, and each claim on it with its result. Fails
+/// on any Violated requirement; with `strict`, on any not Satisfied.
+fn requirements(
+    model_folder: &Path,
+    strict: bool,
+    backend: &mut dyn ModelBackend,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<(), Failure> {
+    let model = load_model(model_folder, backend, stderr)?;
+    let requirements: Vec<(&QualifiedName, SatisfactionStatus)> = model
+        .elements()
+        .filter_map(|e| {
+            Some((
+                &e.qualified_name,
+                satisfaction::status(&model, &e.qualified_name)?,
+            ))
+        })
+        .collect();
+    if requirements.is_empty() {
+        let _ = writeln!(
+            stdout,
+            "no requirement usages in {}",
+            model_folder.display()
+        );
+        return Ok(());
+    }
+    let width = requirements
+        .iter()
+        .map(|(name, _)| name.as_str().chars().count())
+        .max()
+        .unwrap_or(0);
+    for (name, status) in &requirements {
+        let claims: Vec<String> = satisfaction::claims_on(&model, name)
+            .map(|claim| {
+                let satisfier = claim
+                    .satisfier
+                    .as_ref()
+                    .map_or("?".to_owned(), ToString::to_string);
+                let mark = satisfaction::claim_status(claim).mark();
+                match &claim.claim_result {
+                    Some(ClaimResult::Violated { condition }) => {
+                        format!("by {satisfier} {mark} {condition}")
+                    }
+                    Some(ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason }) => {
+                        format!("by {satisfier} {mark} {reason}")
+                    }
+                    _ => format!("by {satisfier} {mark}"),
+                }
+            })
+            .collect();
+        let details = if claims.is_empty() {
+            "nothing claims to satisfy it".to_owned()
+        } else {
+            claims.join("; ")
+        };
+        let _ = writeln!(
+            stdout,
+            "{} {:<11} {:<width$}  {details}",
+            status.mark(),
+            status.label(),
+            name.as_str(),
+        );
+    }
+    let count =
+        |wanted: SatisfactionStatus| requirements.iter().filter(|(_, s)| *s == wanted).count();
+    let (satisfied, violated, undecided, unclaimed) = (
+        count(SatisfactionStatus::Satisfied),
+        count(SatisfactionStatus::Violated),
+        count(SatisfactionStatus::Undecided),
+        count(SatisfactionStatus::NotClaimed),
+    );
+    let _ = writeln!(
+        stdout,
+        "{} requirements: {satisfied} satisfied, {violated} violated, {undecided} undecided, {unclaimed} not claimed",
+        requirements.len()
+    );
+    let failing = if strict {
+        violated + undecided + unclaimed
+    } else {
+        violated
+    };
+    if failing > 0 {
+        let what = if strict { "not satisfied" } else { "violated" };
+        let plural = if failing == 1 {
+            "requirement is"
+        } else {
+            "requirements are"
+        };
+        return Err(Failure(format!("{failing} {plural} {what}")));
+    }
+    Ok(())
 }
 
 fn export_one(
