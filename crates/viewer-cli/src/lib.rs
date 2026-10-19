@@ -173,7 +173,7 @@ fn requirements(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
-    let model = load_model(model_folder, backend, stderr)?;
+    let model = load_model_for(model_folder, backend, stderr, "no requirement was checked")?;
     let requirements: Vec<(&QualifiedName, SatisfactionStatus)> = model
         .elements()
         .filter_map(|e| {
@@ -407,11 +407,22 @@ fn read_diagram(model_folder: &Path, name: &str) -> Result<DiagramFile, Failure>
     DiagramFile::parse(&text).map_err(|e| Failure(format!("{}: {e}", path.display())))
 }
 
-/// Loads the Model and prints its diagnostics; a Model with errors fails.
+/// Loads the Model and prints its diagnostics; a Model with errors fails,
+/// saying nothing was Exported.
 fn load_model(
     model_folder: &Path,
     backend: &mut dyn ModelBackend,
     stderr: &mut dyn Write,
+) -> Result<Model, Failure> {
+    load_model_for(model_folder, backend, stderr, "nothing was Exported")
+}
+
+/// [`load_model`], with what a Model with errors stops (`outcome`).
+fn load_model_for(
+    model_folder: &Path,
+    backend: &mut dyn ModelBackend,
+    stderr: &mut dyn Write,
+    outcome: &str,
 ) -> Result<Model, Failure> {
     let model = backend
         .load(model_folder)
@@ -420,9 +431,7 @@ fn load_model(
         let _ = writeln!(stderr, "{}", DiagnosticLine(diagnostic));
     }
     if model.has_errors() {
-        return Err(Failure(
-            "the Model has errors; nothing was Exported".to_owned(),
-        ));
+        return Err(Failure(format!("the Model has errors; {outcome}")));
     }
     Ok(model)
 }

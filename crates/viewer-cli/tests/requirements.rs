@@ -158,6 +158,13 @@ fn a_model_with_errors_fails_with_its_diagnostics() {
         "{}",
         outcome.stderr
     );
+    assert!(
+        outcome
+            .stderr
+            .contains("the Model has errors; no requirement was checked"),
+        "{}",
+        outcome.stderr
+    );
     assert!(outcome.stdout.is_empty());
 }
 

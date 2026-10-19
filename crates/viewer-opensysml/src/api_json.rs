@@ -108,8 +108,10 @@ pub fn enrich(
             element.satisfies = reference(item, "subsets")
                 .and_then(|id| chain_end(&items, id))
                 .and_then(qualified_name);
+            let id = item.get("@id").and_then(Value::as_str).unwrap_or_default();
             element.satisfier = reference(item, "subject")
                 .and_then(|id| chain_end(&items, id))
+                .or_else(|| subject_value(&items, &children, id))
                 .or_else(|| reference(item, "owner"))
                 .and_then(qualified_name);
         } else {
@@ -335,6 +337,32 @@ fn require_constraints(
                 .unwrap_or_else(|| crate::expression::UNKNOWN.to_owned())
         })
         .collect()
+}
+
+/// The feature a claim's subject is bound to by value: `by vehicle.powertrain`
+/// gives no `subject` reference but a subject feature whose value is the
+/// chain, so the satisfier is the chain's target (`powertrain`).
+fn subject_value<'a>(
+    items: &'a HashMap<String, (Value, PathBuf)>,
+    children: &HashMap<&str, Vec<&'a Value>>,
+    claim: &str,
+) -> Option<&'a str> {
+    let owned_of_type = |owner: &str, kind: &str| -> Option<&'a Value> {
+        children
+            .get(owner)?
+            .iter()
+            .copied()
+            .find(|c| c.get("@type").and_then(Value::as_str) == Some(kind))
+    };
+    let subject = reference(owned_of_type(claim, "SubjectMembership")?, "memberElement")?;
+    let value = reference(owned_of_type(subject, "FeatureValue")?, "memberElement")?;
+    let (expression, _) = items.get(value)?;
+    match expression.get("@type").and_then(Value::as_str)? {
+        // The referent may itself be a chain (`vehicle.powertrain`).
+        "FeatureReferenceExpression" => chain_end(items, reference(expression, "referent")?),
+        "FeatureChainExpression" => reference(expression, "targetFeature"),
+        _ => None,
+    }
 }
 
 /// The feature `id` stands for: itself, or the last feature of a chain

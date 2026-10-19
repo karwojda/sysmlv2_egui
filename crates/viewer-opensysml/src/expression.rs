@@ -62,6 +62,19 @@ fn render(items: &HashMap<String, (Value, PathBuf)>, id: &str) -> (String, u8) {
         let reference = item.get(property)?;
         if let Some(id) = reference.get("@id").and_then(Value::as_str) {
             let (target, _) = items.get(id)?;
+            // An anonymous chain feature reads as its links: `vehicle.powertrain`.
+            if let Some(chain) = target.get("chainingFeature").and_then(Value::as_array) {
+                let names: Option<Vec<&str>> = chain
+                    .iter()
+                    .map(|link| {
+                        let (link, _) = items.get(link.get("@id")?.as_str()?)?;
+                        link.get("declaredShortName")
+                            .or_else(|| link.get("declaredName"))?
+                            .as_str()
+                    })
+                    .collect();
+                return names.map(|n| n.join("."));
+            }
             let name = target
                 .get("declaredShortName")
                 .or_else(|| target.get("declaredName"))?
@@ -319,6 +332,20 @@ mod tests {
             "abs(v.b)",
             "an unresolved name is kept as written"
         );
+    }
+
+    #[test]
+    fn a_reference_to_a_chain_reads_as_its_links() {
+        let extra = vec![
+            ("vehicle", feature("vehicle")),
+            ("powertrain", feature("powertrain")),
+            (
+                "chain",
+                json!({"@type": "Feature", "chainingFeature": [{"@id": "vehicle"}, {"@id": "powertrain"}]}),
+            ),
+            ("e", reference("chain")),
+        ];
+        assert_eq!(render_with(extra, "e"), "vehicle.powertrain");
     }
 
     #[test]
