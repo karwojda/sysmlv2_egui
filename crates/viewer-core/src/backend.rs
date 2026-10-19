@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::model::Model;
+use crate::model::{Model, QualifiedName};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
@@ -12,11 +12,29 @@ pub enum BackendError {
     Unavailable(String),
 }
 
+/// Which analysis usages a load runs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Analyses {
+    /// As the Model's settings say (`run_analyses`).
+    #[default]
+    AsSet,
+    All,
+    None,
+    /// Just this one, as "Run now" asks.
+    Only(QualifiedName),
+}
+
 /// Loads a Model from a folder of SysML v2 files. Parse and resolution
 /// problems are reported as Model diagnostics; `Err` means the backend
 /// itself could not do its job.
 pub trait ModelBackend {
-    fn load(&mut self, folder: &Path) -> Result<Model, BackendError>;
+    /// Loads with analyses as the Model's settings say.
+    fn load(&mut self, folder: &Path) -> Result<Model, BackendError> {
+        self.load_with(folder, &Analyses::AsSet)
+    }
+
+    /// Loads, running the analyses `analyses` asks for.
+    fn load_with(&mut self, folder: &Path, analyses: &Analyses) -> Result<Model, BackendError>;
 }
 
 /// Serves a fixed Model regardless of the folder asked for.
@@ -31,7 +49,7 @@ impl FakeBackend {
 }
 
 impl ModelBackend for FakeBackend {
-    fn load(&mut self, _folder: &Path) -> Result<Model, BackendError> {
+    fn load_with(&mut self, _folder: &Path, _analyses: &Analyses) -> Result<Model, BackendError> {
         Ok(self.model.clone())
     }
 }

@@ -2,8 +2,10 @@
 //! Analysis Result.
 
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use opensysml::AnalysisOptions;
+use viewer_core::backend::Analyses;
 use viewer_core::model::{AnalysisResult, ClaimResult, Element, ElementKind, QualifiedName};
 
 /// An objective verdict, reduced to what recording needs.
@@ -21,17 +23,28 @@ struct Run {
     objective: Option<Objective>,
 }
 
-/// Runs every analysis usage in `elements` and records its result. Returns
-/// a warning for each that couldn't be run.
+/// Above this, a load's analyses are slow enough to point at the switch.
+const SLOW: Duration = Duration::from_secs(3);
+
+/// Runs the analysis usages in `elements` that `which` asks for and records
+/// their results; the rest have none ("not run"). Returns a warning for
+/// each that couldn't be run, and one if they were slow.
 pub fn run(
     parsed: &opensysml::Model,
     elements: &mut BTreeMap<QualifiedName, Element>,
+    which: &Analyses,
 ) -> Vec<String> {
     let analyses: Vec<QualifiedName> = elements
         .values()
         .filter(|e| e.kind == ElementKind::AnalysisUsage)
+        .filter(|e| match which {
+            Analyses::All | Analyses::AsSet => true,
+            Analyses::None => false,
+            Analyses::Only(name) => &e.qualified_name == name,
+        })
         .map(|e| e.qualified_name.clone())
         .collect();
+    let started = Instant::now();
     let mut warnings = Vec::new();
     for analysis in analyses {
         let run = parsed
@@ -60,6 +73,13 @@ pub fn run(
                 "analysis `{analysis}` could not be run, so it is Undecided: {warning}"
             ));
         }
+    }
+    let took = started.elapsed();
+    if took > SLOW {
+        warnings.push(format!(
+            "analyses took {:.1} s; to load faster, untick \"Run analyses on load\" (run_analyses in diagrams/settings.json)",
+            took.as_secs_f32()
+        ));
     }
     warnings
 }

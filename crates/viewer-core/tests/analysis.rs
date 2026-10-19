@@ -261,3 +261,23 @@ fn an_analysis_with_its_result_matches_the_golden_file() {
         "Export differs from the golden file; if intended, rerun with UPDATE_GOLDEN=1"
     );
 }
+
+#[test]
+fn an_analysis_not_run_says_so_in_properties() {
+    let model = viewer_core::Model::builder()
+        .package("P")
+        .analysis_def("P::D")
+        .objective(None, &["x <= 1"])
+        .analysis("P::a")
+        .typed_by("P::D")
+        .build();
+
+    let props = viewer_core::properties::properties(&model, &qn("P::a")).unwrap();
+
+    assert!(
+        props
+            .rows
+            .iter()
+            .any(|p| p.label == "Objective" && p.value == "? not run")
+    );
+}

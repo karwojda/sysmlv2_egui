@@ -79,6 +79,13 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         rows.push(text("Asserted", "yes".to_owned()));
     }
     // An analysis usage: its outputs and what its objective came to.
+    if e.kind == ElementKind::AnalysisUsage && e.analysis_result.is_none() {
+        let objective = crate::analysis::objective(model, e).is_some();
+        rows.push(text(
+            if objective { "Objective" } else { "Result" },
+            "? not run".to_owned(),
+        ));
+    }
     if let Some(result) = &e.analysis_result {
         for (name, value) in &result.outputs {
             rows.push(text("Output", format!("{name} = {value}")));

@@ -21,6 +21,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
+use viewer_core::backend::Analyses;
 use viewer_core::model::{
     Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity,
     SourceLocation,
@@ -137,7 +138,7 @@ impl OpenSysmlBackend {
 }
 
 impl ModelBackend for OpenSysmlBackend {
-    fn load(&mut self, folder: &Path) -> Result<Model, BackendError> {
+    fn load_with(&mut self, folder: &Path, analyses: &Analyses) -> Result<Model, BackendError> {
         if !folder.is_dir() {
             return Err(BackendError::FolderNotFound(folder.to_path_buf()));
         }
@@ -201,7 +202,23 @@ impl ModelBackend for OpenSysmlBackend {
                 location: None,
             });
         }
-        for warning in analyses::run(&parsed, &mut elements) {
+        // The Model's settings decide unless the caller does.
+        let which = match analyses {
+            Analyses::AsSet => match viewer_core::settings::load(folder) {
+                Ok(settings) if settings.run_analyses => Analyses::All,
+                Ok(_) => Analyses::None,
+                Err(error) => {
+                    diagnostics.push(Diagnostic {
+                        severity: Severity::Warning,
+                        message: format!("{error}; using the default settings"),
+                        location: None,
+                    });
+                    Analyses::All
+                }
+            },
+            other => other.clone(),
+        };
+        for warning in analyses::run(&parsed, &mut elements, &which) {
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 message: warning,

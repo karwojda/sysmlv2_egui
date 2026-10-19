@@ -3826,6 +3826,7 @@ version = "0.1.0"
 dependencies = [
  "opensysml",
  "serde_json",
+ "tempfile",
  "viewer-core",
 ]
 

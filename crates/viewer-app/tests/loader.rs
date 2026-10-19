@@ -43,7 +43,11 @@ fn delivers_the_loaded_model_for_the_folder_asked_for() {
 fn delivers_backend_errors() {
     struct Failing;
     impl ModelBackend for Failing {
-        fn load(&mut self, folder: &Path) -> Result<Model, BackendError> {
+        fn load_with(
+            &mut self,
+            folder: &Path,
+            _analyses: &viewer_core::backend::Analyses,
+        ) -> Result<Model, BackendError> {
             Err(BackendError::FolderNotFound(folder.to_path_buf()))
         }
     }
@@ -64,7 +68,11 @@ fn delivers_backend_errors() {
 fn dropping_the_loader_drops_the_backend() {
     struct Tracked(Arc<AtomicBool>);
     impl ModelBackend for Tracked {
-        fn load(&mut self, _: &Path) -> Result<Model, BackendError> {
+        fn load_with(
+            &mut self,
+            _: &Path,
+            _analyses: &viewer_core::backend::Analyses,
+        ) -> Result<Model, BackendError> {
             Ok(Model::default())
         }
     }

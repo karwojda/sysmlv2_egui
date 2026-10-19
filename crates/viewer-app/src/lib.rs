@@ -49,6 +49,10 @@ pub struct ViewerApp {
     saved_names: Vec<String>,
     /// The Model Style, and why it couldn't be read if it couldn't.
     model_style: Option<viewer_core::style::Style>,
+    /// The Model's settings, as last loaded.
+    settings: viewer_core::settings::Settings,
+    /// An analysis to run once, after the current panel is drawn.
+    run_now: Option<QualifiedName>,
     style_error: Option<String>,
     right_tab: RightTab,
     style_tab: StyleTab,
@@ -132,7 +136,7 @@ impl ViewerApp {
         let requests = loader.requester().expect("a new loader takes requests");
         let mut app = Self {
             watcher: Watcher::new(move |folder| {
-                let _ = requests.send(folder);
+                let _ = requests.send((folder, viewer_core::backend::Analyses::AsSet));
             }),
             loader,
             folder_input: folder
@@ -150,6 +154,8 @@ impl ViewerApp {
             reveal: Vec::new(),
             saved_names: Vec::new(),
             model_style: None,
+            settings: viewer_core::settings::Settings::default(),
+            run_now: None,
             style_error: None,
             right_tab: RightTab::Properties,
             style_tab: StyleTab::Model,
@@ -205,6 +211,8 @@ impl ViewerApp {
                             Ok(style) => (style, None),
                             Err(error) => (None, Some(error.to_string())),
                         };
+                    // A broken settings file is reported by the load itself.
+                    self.settings = viewer_core::settings::load(&loaded.folder).unwrap_or_default();
                     for diagram in &mut self.diagrams {
                         diagram.set_model_style(&shown.model, self.model_style.clone());
                     }
@@ -376,6 +384,26 @@ impl ViewerApp {
                 ui.label(format!("Loading {}…", folder.display()));
             } else if let Some(folder) = &self.folder {
                 ui.weak(folder.display().to_string());
+            }
+            if let Some(folder) = self.folder.clone() {
+                ui.separator();
+                let mut run = self.settings.run_analyses;
+                let toggle = ui
+                    .checkbox(&mut run, "Run analyses on load")
+                    .on_hover_text("Saved for this Model in diagrams/settings.json");
+                if toggle.changed() {
+                    let settings = viewer_core::settings::Settings {
+                        run_analyses: run,
+                        ..self.settings.clone()
+                    };
+                    match settings.save(&folder) {
+                        Ok(()) => {
+                            self.settings = settings;
+                            self.open(folder);
+                        }
+                        Err(error) => self.status = Some(format!("Settings not saved: {error}")),
+                    }
+                }
             }
         });
         if let Some(error) = &self.error {
@@ -637,6 +665,9 @@ impl ViewerApp {
             .element(selected)
             .is_some_and(|e| e.kind == ElementKind::ViewUsage);
         let view_drawable = is_view && view::kind(model, selected).is_ok();
+        let not_run = model
+            .element(selected)
+            .is_some_and(|e| e.kind == ElementKind::AnalysisUsage && e.analysis_result.is_none());
         let mut follow = None;
         egui::ScrollArea::vertical()
             .auto_shrink(false)
@@ -682,6 +713,15 @@ impl ViewerApp {
                             Err(error) => error,
                         });
                     }
+                    if not_run
+                        && ui
+                            .button("Run now")
+                            .on_hover_text("Runs this analysis once; analyses don't run on load for this Model")
+                            .clicked()
+                    {
+                        follow = None;
+                        self.run_now = Some(selected.clone());
+                    }
                     if general && ui.button("Open General Diagram").clicked() {
                         follow = None;
                         self.pending_open = Some(DiagramSource::Tool {
@@ -713,6 +753,12 @@ impl ViewerApp {
             });
         if let Some(target) = follow {
             self.select_and_reveal(Some(target));
+        }
+        if let (Some(analysis), Some(folder)) = (self.run_now.take(), self.folder.clone()) {
+            self.status = Some(format!("Running {}…", analysis.simple_name()));
+            self.loading = Some(folder.clone());
+            self.loader
+                .load_with(folder, viewer_core::backend::Analyses::Only(analysis));
         }
         if let Some(source) = self.pending_open.take() {
             self.open_source(source);

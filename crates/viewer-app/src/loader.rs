@@ -6,7 +6,11 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
 
+use viewer_core::backend::Analyses;
 use viewer_core::{BackendError, Model, ModelBackend};
+
+/// What to load: a Model folder, and which analyses to run.
+pub type Request = (PathBuf, Analyses);
 
 pub struct Loaded {
     pub folder: PathBuf,
@@ -14,7 +18,7 @@ pub struct Loaded {
 }
 
 pub struct Loader {
-    requests: Option<Sender<PathBuf>>,
+    requests: Option<Sender<Request>>,
     results: Receiver<Loaded>,
     worker: Option<JoinHandle<()>>,
 }
@@ -26,13 +30,13 @@ impl Loader {
         mut backend: Box<dyn ModelBackend + Send>,
         notify: impl Fn() + Send + 'static,
     ) -> Self {
-        let (requests, incoming) = mpsc::channel::<PathBuf>();
+        let (requests, incoming) = mpsc::channel::<Request>();
         let (outgoing, results) = mpsc::channel();
         let worker = std::thread::Builder::new()
             .name("model-loader".to_owned())
             .spawn(move || {
-                for folder in incoming {
-                    let result = backend.load(&folder);
+                for (folder, analyses) in incoming {
+                    let result = backend.load_with(&folder, &analyses);
                     if outgoing.send(Loaded { folder, result }).is_err() {
                         break;
                     }
@@ -47,14 +51,20 @@ impl Loader {
         }
     }
 
+    /// Loads `folder`, running analyses as its settings say.
     pub fn load(&self, folder: PathBuf) {
+        self.load_with(folder, Analyses::AsSet);
+    }
+
+    /// Loads `folder`, running the analyses `analyses` asks for.
+    pub fn load_with(&self, folder: PathBuf, analyses: Analyses) {
         if let Some(requests) = &self.requests {
-            let _ = requests.send(folder);
+            let _ = requests.send((folder, analyses));
         }
     }
 
     /// A handle other threads can use to ask for loads.
-    pub fn requester(&self) -> Option<Sender<PathBuf>> {
+    pub fn requester(&self) -> Option<Sender<Request>> {
         self.requests.clone()
     }
 

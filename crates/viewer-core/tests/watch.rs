@@ -181,3 +181,18 @@ fn editing_the_model_style_changes_the_fingerprint() {
         "but it isn't a Model file"
     );
 }
+
+#[test]
+fn editing_the_settings_changes_the_fingerprint() {
+    let folder = TempDir::new().unwrap();
+    write(folder.path(), "a.sysml", "package A;");
+    let before = fingerprint(folder.path()).unwrap();
+
+    write(
+        folder.path(),
+        "diagrams/settings.json",
+        r#"{"format_version": 1, "run_analyses": false}"#,
+    );
+
+    assert_ne!(fingerprint(folder.path()).unwrap(), before);
+}

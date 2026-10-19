@@ -7,3 +7,6 @@ edition = "2024"
 opensysml = "0.10.0"
 serde_json = "1"
 viewer-core = { version = "0.1.0", path = "../viewer-core" }
+
+[dev-dependencies]
+tempfile = "3"

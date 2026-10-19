@@ -150,7 +150,11 @@ fn fails_when_the_model_has_errors() {
 struct UnusedBackend;
 
 impl ModelBackend for UnusedBackend {
-    fn load(&mut self, _folder: &Path) -> Result<Model, viewer_core::BackendError> {
+    fn load_with(
+        &mut self,
+        _folder: &Path,
+        _analyses: &viewer_core::backend::Analyses,
+    ) -> Result<Model, viewer_core::BackendError> {
         panic!("the Model should not be loaded");
     }
 }

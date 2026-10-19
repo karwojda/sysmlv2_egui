@@ -516,3 +516,79 @@ fn loads_computed_values_and_analyses_like_the_fake_twin() {
 
     assert_same_model(&without_sources(&real), &common::analysis());
 }
+
+/// The `analysis` fixture copied into a fresh folder with `settings`.
+fn analysis_with_settings(settings: &str) -> tempfile::TempDir {
+    let folder = tempfile::TempDir::new().unwrap();
+    std::fs::copy(
+        fixture("analysis").join("analysis.sysml"),
+        folder.path().join("analysis.sysml"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(folder.path().join("diagrams")).unwrap();
+    std::fs::write(folder.path().join("diagrams/settings.json"), settings).unwrap();
+    folder
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn analyses_follow_the_setting_and_can_be_run_one_at_a_time() {
+    use viewer_core::backend::Analyses;
+    let folder = analysis_with_settings(r#"{"format_version": 1, "run_analyses": false}"#);
+    let mut backend = OpenSysmlBackend::new();
+    let result = |model: &Model| {
+        model
+            .element(&QualifiedName::new("A::carMass"))
+            .unwrap()
+            .analysis_result
+            .clone()
+    };
+
+    let off = backend.load(folder.path()).unwrap();
+    assert_eq!(result(&off), None, "switched off: not run");
+    assert_eq!(
+        off.element(&QualifiedName::new("A::car::mass"))
+            .unwrap()
+            .computed,
+        ["230.0"],
+        "computed values don't depend on the switch"
+    );
+
+    let once = backend
+        .load_with(
+            folder.path(),
+            &Analyses::Only(QualifiedName::new("A::carMass")),
+        )
+        .unwrap();
+    assert!(result(&once).is_some(), "Run now runs it");
+
+    let forced = backend.load_with(folder.path(), &Analyses::All).unwrap();
+    assert!(
+        result(&forced).is_some(),
+        "--analyses overrides the setting"
+    );
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_broken_settings_file_warns_and_runs_analyses() {
+    let folder = analysis_with_settings("{ not json");
+
+    let model = OpenSysmlBackend::new().load(folder.path()).unwrap();
+
+    assert!(
+        model
+            .diagnostics()
+            .iter()
+            .any(|d| d.message.contains("settings.json")),
+        "{:?}",
+        model.diagnostics()
+    );
+    assert!(
+        model
+            .element(&QualifiedName::new("A::carMass"))
+            .unwrap()
+            .analysis_result
+            .is_some()
+    );
+}
