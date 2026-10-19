@@ -14,6 +14,7 @@ mod layout;
 pub mod model;
 mod notation;
 pub mod properties;
+pub mod satisfaction;
 pub mod scene;
 pub mod style;
 pub mod svg;

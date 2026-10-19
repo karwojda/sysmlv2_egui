@@ -13,6 +13,7 @@
 
 mod api_json;
 mod expression;
+mod satisfaction;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -187,6 +188,15 @@ impl ModelBackend for OpenSysmlBackend {
                     "connection ends, documentation and source lines are missing for this file: {error}"
                 ),
                 location: Some(SourceLocation { file, line: 0 }),
+            });
+        }
+        if let Some(reason) = satisfaction::check(&parsed, &mut elements) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Warning,
+                message: format!(
+                    "requirements could not be checked, so their status is Undecided: {reason}"
+                ),
+                location: None,
             });
         }
         Ok(Model::new(elements.into_values(), diagnostics))

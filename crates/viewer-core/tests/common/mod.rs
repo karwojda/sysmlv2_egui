@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use viewer_core::Model;
-use viewer_core::model::{Direction, ExposeScope, ModelBuilder};
+use viewer_core::model::{ClaimResult, Direction, ExposeScope, ModelBuilder};
 
 /// A drivetrain after slide 40 of the notation reference: fuel tank,
 /// engine, transmission, driveshaft, a rear axle assembly with its own
@@ -381,6 +381,10 @@ pub fn requirements() -> Model {
         .requirement("Req::vehicleSpec")
         .subject("Req::vehicleSpec::v")
         .doc("Top-level vehicle requirements.")
+        .requirement("Req::vehicleSpec::carMassReq")
+        .short_name("5")
+        .typed_by("Req::MassLimit")
+        .attribute("Req::vehicleSpec::carMassReq::limit")
         .requirement("Req::vehicleSpec::costReq")
         .short_name("3")
         .typed_by("Req::CostCap")
@@ -397,8 +401,17 @@ pub fn requirements() -> Model {
         .part("Req::vehicleSpec::v")
         .typed_by("Req::Vehicle")
         .satisfy("Req::@8", "Req::vehicleSpec::massReq", "Req::vehicle")
+        .result(ClaimResult::Holds)
         .satisfy("Req::@9", "Req::vehicleSpec::rangeReq", "Req::vehicle")
+        .result(ClaimResult::Violated { condition: "v.range >= 500.0".to_owned() })
         .satisfy("Req::@10", "Req::vehicleSpec::costReq", "Req::vehicle")
-        .satisfy("Req::car::@1", "Req::vehicleSpec::massReq", "Req::car")
+        .result(ClaimResult::Undecided {
+            reason: "satisfaction satisfy vehicleSpec::costReq by vehicle: require condition evaluation failed: no value for feature v.cost".to_owned(),
+        })
+        .satisfy("Req::car::@1", "Req::vehicleSpec::carMassReq", "Req::car")
+        // The service leaves a `satisfy` inside a part without its subject.
+        .result(ClaimResult::Undecided {
+            reason: "satisfaction satisfy vehicleSpec::carMassReq: require condition evaluation failed: no value for feature v".to_owned(),
+        })
         .build()
 }

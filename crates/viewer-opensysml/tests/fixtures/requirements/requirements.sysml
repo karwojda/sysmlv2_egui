@@ -28,6 +28,9 @@ package Req {
         requirement <'2'> rangeReq : RangeTarget;
         requirement <'3'> costReq : CostCap;
         requirement <'4'> spareReq : RangeTarget;
+        requirement <'5'> carMassReq : MassLimit {
+            attribute :>> limit = 1600.0;
+        }
     }
     part vehicle : Vehicle {
         attribute :>> mass = 1800.0;
@@ -35,7 +38,7 @@ package Req {
     }
     part car : Vehicle {
         attribute :>> mass = 1500.0;
-        satisfy vehicleSpec.massReq;
+        satisfy vehicleSpec.carMassReq;
     }
     satisfy vehicleSpec.massReq by vehicle;
     satisfy vehicleSpec.rangeReq by vehicle;

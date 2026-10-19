@@ -116,9 +116,16 @@ pub struct NodeContent {
     title: String,
     /// A line under the title: a requirement's `subject v:Vehicle`.
     subtitle: Option<String>,
+    /// A requirement usage's Satisfaction Status mark, drawn in a badge.
+    badge: Option<&'static str>,
     usage: bool,
     compartments: Vec<(&'static str, Vec<String>)>,
 }
+
+/// The status badge: a small circle in a requirement usage's top-right
+/// corner.
+const BADGE_SIZE: f32 = 16.0;
+const BADGE_INSET: f32 = 5.0;
 
 /// The compartments a node lists, in order, with the kinds of owned
 /// feature each one holds.
@@ -170,7 +177,12 @@ pub fn node_content(
                 .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
                 // The subject is on its own line in the header.
                 .filter(|m| element.subject.as_ref() != Some(&m.qualified_name))
-                .map(feature_row)
+                .map(
+                    |m| match crate::satisfaction::status(model, &m.qualified_name) {
+                        Some(status) => format!("{} {}", feature_row(m), status.mark()),
+                        None => feature_row(m),
+                    },
+                )
                 .collect();
             (!rows.is_empty()).then_some((*title, rows))
         });
@@ -207,8 +219,13 @@ pub fn node_content(
     let claims: Vec<String> = model
         .claims()
         .filter(|c| compartments_shown && c.satisfier.as_ref() == Some(&element.qualified_name))
-        .filter_map(|c| c.satisfies.as_ref())
-        .map(|requirement| format!("satisfy {}", requirement.simple_name()))
+        .filter_map(|c| {
+            Some((
+                c.satisfies.as_ref()?,
+                crate::satisfaction::claim_status(c).mark(),
+            ))
+        })
+        .map(|(requirement, mark)| format!("satisfy {} {mark}", requirement.simple_name()))
         .collect();
     if !claims.is_empty() {
         match compartments
@@ -232,6 +249,7 @@ pub fn node_content(
             format!("{short_id}{}", element.name)
         },
         subtitle,
+        badge: crate::satisfaction::status(model, &element.qualified_name).map(|s| s.mark()),
         usage,
         compartments,
     }
@@ -377,7 +395,13 @@ pub fn node_size(content: &NodeContent) -> (f32, f32) {
             widest = widest.max(text_width(row, ROW_FONT));
         }
     }
-    let width = (widest + 2.0 * PADDING).max(MIN_NODE_WIDTH).ceil();
+    // Room for the badge on both sides keeps the title centred clear of it.
+    let badge = if content.badge.is_some() {
+        2.0 * (BADGE_SIZE + BADGE_INSET)
+    } else {
+        0.0
+    };
+    let width = (widest + 2.0 * PADDING + badge).max(MIN_NODE_WIDTH).ceil();
     let height = header_height(content)
         + content
             .compartments
@@ -432,6 +456,31 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
             text: subtitle.clone(),
             anchor: TextAnchor::Middle,
             font: ROW_FONT,
+            fill: Fill::Stroke,
+        });
+    }
+    if let Some(mark) = content.badge {
+        let badge = Rect {
+            x: rect.right() - BADGE_INSET - BADGE_SIZE,
+            y: rect.y + BADGE_INSET,
+            width: BADGE_SIZE,
+            height: BADGE_SIZE,
+        };
+        // Unfilled, so a Style's fill shows through and its text colour applies.
+        shapes.push(Shape::Rect {
+            rect: badge,
+            fill: Fill::None,
+            corner_radius: BADGE_SIZE / 2.0,
+            dashed: false,
+        });
+        shapes.push(Shape::Text {
+            position: Point::new(
+                badge.center_x(),
+                badge.y + BADGE_SIZE / 2.0 + LABEL_FONT.size / 3.0,
+            ),
+            text: mark.to_owned(),
+            anchor: TextAnchor::Middle,
+            font: LABEL_FONT,
             fill: Fill::Stroke,
         });
     }
@@ -583,7 +632,7 @@ pub fn connection(depicts: Depicts, element: &Element, path: Vec<Point>) -> Vec<
 
 /// A Satisfaction Claim: a solid line from the satisfier ending in an open
 /// arrowhead on the requirement, labelled `«satisfy»` like a connection.
-pub fn satisfy(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
+pub fn satisfy(depicts: Depicts, mark: &str, path: Vec<Point>) -> Vec<Item> {
     // Beside a steep straight edge, so the line doesn't strike through it.
     let (position, anchor) = match path.as_slice() {
         [a, b] if (b.y - a.y).abs() > 2.0 * (b.x - a.x).abs() => (
@@ -615,7 +664,7 @@ pub fn satisfy(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
             },
             Shape::Text {
                 position,
-                text: "«satisfy»".to_owned(),
+                text: format!("«satisfy» {mark}"),
                 anchor,
                 font: LABEL_FONT,
                 fill: Fill::Stroke,

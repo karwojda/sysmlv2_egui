@@ -2,7 +2,8 @@
 //! which refer to other elements and can be followed.
 
 use crate::diagram::DiagramKind;
-use crate::model::{ElementKind, Model, QualifiedName, SourceLocation};
+use crate::model::{ClaimResult, ElementKind, Model, QualifiedName, SourceLocation};
+use crate::satisfaction;
 use crate::view::ViewError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,15 +71,41 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     if let (Some(requirement), Some(satisfier)) = (&e.satisfies, &e.satisfier) {
         rows.push(link("Requirement", requirement, requirement.to_string()));
         rows.push(link("Satisfier", satisfier, satisfier.to_string()));
+        rows.push(text("Result", satisfaction::describe_claim(e)));
+    }
+    if let Some(status) = satisfaction::status(model, element) {
+        rows.push(text(
+            "Status",
+            format!("{} {}", status.mark(), status.label()),
+        ));
     }
     for claim in model.claims() {
-        if let (Some(requirement), Some(satisfier)) = (&claim.satisfies, &claim.satisfier) {
-            if requirement == element {
-                rows.push(link("Satisfied by", satisfier, satisfier.to_string()));
+        let (Some(requirement), Some(satisfier)) = (&claim.satisfies, &claim.satisfier) else {
+            continue;
+        };
+        let mark = satisfaction::claim_status(claim).mark();
+        if requirement == element {
+            rows.push(link(
+                "Satisfied by",
+                satisfier,
+                format!("{satisfier} {mark}"),
+            ));
+            match &claim.claim_result {
+                Some(ClaimResult::Violated { condition }) => {
+                    rows.push(text("Failing condition", condition.clone()))
+                }
+                Some(ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason }) => {
+                    rows.push(text("Undecided because", reason.clone()))
+                }
+                _ => {}
             }
-            if satisfier == element {
-                rows.push(link("Satisfies", requirement, requirement.to_string()));
-            }
+        }
+        if satisfier == element {
+            rows.push(link(
+                "Satisfies",
+                requirement,
+                format!("{requirement} {mark}"),
+            ));
         }
     }
     if e.is_reference {

@@ -126,10 +126,11 @@ fn nested_requirements_are_listed_with_their_ids_in_a_package_diagram() {
     assert_eq!(
         &texts[listed + 1..],
         [
-            "<3> costReq:CostCap",
-            "<1> massReq:MassLimit",
-            "<2> rangeReq:RangeTarget",
-            "<4> spareReq:RangeTarget"
+            "<5> carMassReq:MassLimit ?",
+            "<3> costReq:CostCap ?",
+            "<1> massReq:MassLimit ✓",
+            "<2> rangeReq:RangeTarget ✗",
+            "<4> spareReq:RangeTarget ○"
         ]
     );
 }
@@ -144,6 +145,7 @@ fn a_requirement_usage_opens_as_the_top_of_its_tree() {
         nodes,
         [
             "Req::vehicleSpec",
+            "Req::vehicleSpec::carMassReq",
             "Req::vehicleSpec::costReq",
             "Req::vehicleSpec::massReq",
             "Req::vehicleSpec::rangeReq",
@@ -152,7 +154,7 @@ fn a_requirement_usage_opens_as_the_top_of_its_tree() {
         "the subject is on the header, not a node"
     );
     let top = scene.element_bounds(&qn("Req::vehicleSpec")).unwrap();
-    for child in ["costReq", "massReq", "rangeReq", "spareReq"] {
+    for child in ["carMassReq", "costReq", "massReq", "rangeReq", "spareReq"] {
         let name = format!("Req::vehicleSpec::{child}");
         let composition = Depicts::Composition {
             owner: qn("Req::vehicleSpec"),
@@ -287,6 +289,7 @@ fn parts_and_requirements(layout: &viewer_core::Layout) -> Scene {
         "Req::vehicleSpec::rangeReq",
         "Req::vehicleSpec::costReq",
         "Req::vehicleSpec::spareReq",
+        "Req::vehicleSpec::carMassReq",
     ]
     .iter()
     .map(|n| qn(n))
@@ -344,7 +347,7 @@ fn a_satisfy_edge_is_labelled_and_ends_in_an_open_arrowhead() {
     assert!(
         shapes
             .iter()
-            .any(|s| matches!(s, Shape::Text { text, .. } if text == "«satisfy»"))
+            .any(|s| matches!(s, Shape::Text { text, .. } if text == "«satisfy» ✓"))
     );
     assert_eq!(
         shapes
@@ -381,11 +384,15 @@ fn a_satisfier_lists_its_claims_in_its_requirements_compartment() {
         .expect("a requirements compartment");
     assert_eq!(
         &vehicle[at + 1..],
-        ["satisfy massReq", "satisfy rangeReq", "satisfy costReq"]
+        [
+            "satisfy massReq ✓",
+            "satisfy rangeReq ✗",
+            "satisfy costReq ?"
+        ]
     );
     let car = texts_of(&scene, "Req::car");
     assert!(
-        car.ends_with(&["requirements".to_owned(), "satisfy massReq".to_owned()]),
+        car.ends_with(&["requirements".to_owned(), "satisfy carMassReq ?".to_owned()]),
         "{car:?}"
     );
 }
@@ -422,14 +429,14 @@ fn properties_link_requirements_and_satisfiers_both_ways() {
 
     assert_eq!(
         rows("Req::vehicleSpec::massReq", "Satisfied by"),
-        ["Req::vehicle", "Req::car"]
+        ["Req::vehicle ✓"]
     );
     assert_eq!(
         rows("Req::vehicle", "Satisfies"),
         [
-            "Req::vehicleSpec::massReq",
-            "Req::vehicleSpec::rangeReq",
-            "Req::vehicleSpec::costReq"
+            "Req::vehicleSpec::massReq ✓",
+            "Req::vehicleSpec::rangeReq ✗",
+            "Req::vehicleSpec::costReq ?"
         ]
     );
     assert_eq!(
@@ -446,7 +453,7 @@ fn a_claim_is_named_by_what_it_claims() {
 
     assert_eq!(
         model.element(&qn("Req::car::@1")).unwrap().display_name(),
-        "massReq by car"
+        "carMassReq by car"
     );
 }
 

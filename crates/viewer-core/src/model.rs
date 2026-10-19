@@ -172,6 +172,24 @@ impl fmt::Display for ConnectionEnd {
     }
 }
 
+/// What checking a Satisfaction Claim against the Model's values found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClaimResult {
+    Holds,
+    /// The condition, as the service wrote it, evaluated to false.
+    Violated {
+        condition: String,
+    },
+    /// The claim couldn't be evaluated, for example a value is missing.
+    Undecided {
+        reason: String,
+    },
+    /// The claim was never checked: the service couldn't check at all.
+    Unchecked {
+        reason: String,
+    },
+}
+
 /// How much of its target an `expose` shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExposeScope {
@@ -251,6 +269,9 @@ pub struct Element {
     /// For a Satisfaction Claim, the part (or other usage or definition)
     /// that satisfies it.
     pub satisfier: Option<QualifiedName>,
+    /// For a Satisfaction Claim, what checking it found; `None` until
+    /// checked.
+    pub claim_result: Option<ClaimResult>,
     pub documentation: Option<String>,
     pub source: Option<SourceLocation>,
 }
@@ -304,6 +325,7 @@ impl Element {
             require: Vec::new(),
             satisfies: None,
             satisfier: None,
+            claim_result: None,
             documentation: None,
             source: None,
         }
@@ -502,6 +524,12 @@ impl ModelBuilder {
         self = self.unnamed(name, ElementKind::SatisfyRequirement);
         self.last().satisfies = Some(QualifiedName::new(requirement));
         self.last().satisfier = Some(QualifiedName::new(satisfier));
+        self
+    }
+
+    /// Sets what checking the last Satisfaction Claim found.
+    pub fn result(mut self, result: ClaimResult) -> Self {
+        self.last().claim_result = Some(result);
         self
     }
 

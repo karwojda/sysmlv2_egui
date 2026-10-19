@@ -429,7 +429,11 @@ fn general<'a>(
             Edge::Composition { usage, .. } => notation::composition(depicts, Some(usage), path),
             Edge::Ownership { .. } => notation::composition(depicts, None, path),
             Edge::Connection { connection, .. } => notation::connection(depicts, connection, path),
-            Edge::Satisfy { .. } => notation::satisfy(depicts, path),
+            Edge::Satisfy { claim, .. } => notation::satisfy(
+                depicts,
+                crate::satisfaction::claim_status(claim).mark(),
+                path,
+            ),
         });
     }
     for ((element, content), rect) in nodes.iter().zip(&contents).zip(&rects) {
