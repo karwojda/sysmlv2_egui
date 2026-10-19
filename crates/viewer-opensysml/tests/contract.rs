@@ -432,3 +432,35 @@ fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
         );
     }
 }
+
+/// The SVGs the demo's README shows, `<variant>/mass-overview.svg`, drawn as
+/// the CLI's Export draws them. `UPDATE_GOLDEN=1` rewrites them.
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn the_mass_rollup_readme_pictures_match_the_models() {
+    use viewer_core::{DiagramFile, diagram_file, style, svg};
+    for variant in ["failing", "passing"] {
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mass-rollup")
+            .join(variant);
+        let model = mass_rollup(variant);
+        let file = DiagramFile::parse(
+            &std::fs::read_to_string(diagram_file::path_for(&folder, "mass-overview")).unwrap(),
+        )
+        .unwrap();
+        let mut scene = file.source.build_scene(&model, &file.layout).unwrap();
+        let model_style = style::load(&folder).unwrap();
+        style::apply_styles(&mut scene, &model, model_style.as_ref(), &file.style);
+        let drawn = svg::render(&scene);
+
+        let picture = folder.join("mass-overview.svg");
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::write(&picture, &drawn).unwrap();
+        }
+        let committed = std::fs::read_to_string(&picture).unwrap();
+        assert_eq!(
+            drawn, committed,
+            "{variant}: the README picture is stale; rerun with UPDATE_GOLDEN=1"
+        );
+    }
+}

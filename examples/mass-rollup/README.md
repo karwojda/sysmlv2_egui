@@ -19,6 +19,25 @@ There are two variants of the same Model, each in its own folder:
 | `<3> tankMass` | 70 kg | ○ nothing claims it | ✓ 60 kg |
 | `massSpec` (all three) | | ✗ | ✓ |
 
+### Failing
+
+The powertrain is 15 kg over its budget and nothing claims the tank's
+requirement yet, so the budget as a whole is red.
+
+![The failing variant: massSpec and powertrainMass red, tankMass grey, vehicleMass green](failing/mass-overview.svg)
+
+### Passing
+
+A 30 kg lighter engine brings the powertrain under budget, and the tank's
+requirement is claimed, so every requirement and the budget are green.
+
+![The passing variant: every requirement and massSpec green](passing/mass-overview.svg)
+
+Both pictures are the viewer's own SVG Export of the `mass-overview`
+Diagram. A test checks they match the Models; after changing a Model,
+refresh them with
+`UPDATE_GOLDEN=1 cargo test -p viewer-opensysml --test contract readme_pictures -- --ignored`.
+
 ## See it
 
 ```sh
