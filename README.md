@@ -82,6 +82,7 @@ scripts/check                                           # format, lint and test,
 scripts/check service                                   # also the contract tests against sysml-grpc
 UPDATE_GOLDEN=1 cargo test -p viewer-core               # regenerate golden SVGs after an intended change
 cargo run -p viewer-core --example svg2png -- in.svg out.png   # look at an Export as PNG
+cargo run -p viewer-opensysml --example probe -- m.sysml FeatureValue   # what the service sends for a construct
 git config core.hooksPath .githooks                     # once per clone: format and lint before each commit
 ```
 
