@@ -1,11 +1,14 @@
 # Mass roll-up demo
 
 A vehicle whose mass rolls up from its parts, with a mass budget it has to
-meet and constraints its design must keep. OpenSysML computes the totals,
-checks the requirements and checks the asserted constraints. The viewer
-shows each requirement green (✓ satisfied), red (✗ violated) or grey (○ not
-claimed), the budget as a whole takes the worst of its parts, and each
-asserted constraint is marked ✓ or ✗ on the part it applies to.
+meet, constraints its design must keep, and an analysis of its total mass.
+OpenSysML computes the totals, checks the requirements and the asserted
+constraints, and runs the analysis. The viewer shows each computed total
+after its expression (`mass = engine.mass + transmission.mass = 265.0`),
+each requirement green (✓ satisfied), red (✗ violated) or grey (○ not
+claimed), the budget as a whole takes the worst of its parts, each asserted
+constraint is marked ✓ or ✗ on the part it applies to, and the analysis
+shows its result with a ✓ or ✗ for its objective.
 
 ```
 vehicle      = powertrain + body + fuelTank + 4 × wheel
@@ -25,6 +28,15 @@ There are two variants of the same Model, each in its own folder:
 |---|---|---|---|
 | `FuelTank::fuelFits`, inherited by `vehicle.fuelTank` | fuel ≤ 45 kg | ✗ 50 kg | ✓ 40 kg |
 | `vehicle::powerToWeight : MassPerPower` | ≤ 16 kg per kW | ✓ 1363 / 90 ≈ 15.1 | ✓ 1333 / 90 ≈ 14.8 |
+
+| Analysis | Objective | `failing/` | `passing/` |
+|---|---|---|---|
+| `massAnalysis : MassAnalysis`, subject `vehicle` | `totalMass` ≤ 1400 kg | ✓ 1363 kg | ✓ 1333 kg |
+
+`massAnalysis` returns the vehicle's total mass and checks it against its
+`limit` input. It holds in both variants: the failing one is under the
+vehicle limit, just not under the powertrain's. Its node is joined to
+`vehicle` by a dashed `«subject»` edge.
 
 ### Failing
 
@@ -57,8 +69,9 @@ WAYLAND_DISPLAY= cargo run -p viewer-app -- examples/mass-rollup/passing
 ```
 
 Open **mass-overview** under Saved Diagrams. It shows the parts tree with each
-mass, the requirements with their limits, their `«satisfy»` edges and a
-Legend, coloured by the Model Style in `diagrams/style.json`.
+mass and computed total, the requirements with their limits, their
+`«satisfy»` edges, the mass analysis with its result, and a Legend, coloured
+by the Model Style in `diagrams/style.json`.
 
 ## Make it change
 
@@ -73,13 +86,19 @@ viewer reloads and re-checks.
 - With all three, `failing/` becomes `passing/`: `massSpec` and the tank turn
   green.
 - **Turn the vehicle red:** set the body's mass to `1000.0`
-  (265 + 1000 + 60 + 88 = 1413 > 1400).
+  (265 + 1000 + 60 + 88 = 1413 > 1400). `vehicleMass` and `massAnalysis`
+  both turn red, and the computed totals follow.
+
+Analyses run on every load. For a slow Model, untick **Run analyses on
+load** in the top bar (saved in `diagrams/settings.json`), then run one
+analysis with **Run now** in its Properties.
 
 ## From the command line
 
 ```sh
 cargo run -p viewer-cli -- check examples/mass-rollup/failing          # exits 1
 cargo run -p viewer-cli -- check examples/mass-rollup/passing          # exits 0
+cargo run -p viewer-cli -- check examples/mass-rollup/passing --no-analyses  # analysis not run
 cargo run -p viewer-cli -- requirements examples/mass-rollup/failing   # requirements only
 cargo run -p viewer-cli -- export examples/mass-rollup/passing --diagram mass-overview --out mass-overview.svg
 ```

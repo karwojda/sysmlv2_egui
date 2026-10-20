@@ -24,6 +24,18 @@
     {
       "constraint": "violated",
       "fill": "#f4cccc"
+    },
+    {
+      "analysis": "holds",
+      "fill": "#d9ead3"
+    },
+    {
+      "analysis": "violated",
+      "fill": "#f4cccc"
+    },
+    {
+      "analysis": "undecided",
+      "fill": "#fff2cc"
     }
   ]
 }

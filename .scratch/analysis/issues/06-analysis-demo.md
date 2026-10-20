@@ -6,8 +6,10 @@ The pictures show computed totals (`= 1363.0`) and the analysis node with its ba
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `massAnalysis` in both variants, with no Model errors, holding in both (1363, 1333)
-- [ ] Pictures show computed totals and the analysis node; the picture test passes
-- [ ] README updated; `check` lists the analysis
+- [x] `massAnalysis` in both variants, with no Model errors, holding in both (1363, 1333)
+- [x] Pictures show computed totals and the analysis node; the picture test passes
+- [x] README updated; `check` lists the analysis
+
+Note: the analysis reads only `v.mass`, which the service rolls up on `vehicle`, so `Vehicle` did not need to declare its parts.

@@ -95,6 +95,23 @@ package MassRollup {
     satisfy massSpec.vehicleMass by vehicle;
     satisfy massSpec.powertrainMass by vehicle.powertrain;
 
+    // ---- Analysis --------------------------------------------------------
+
+    // Works out a vehicle's total mass and checks it against a limit.
+    analysis def MassAnalysis {
+        subject v : Vehicle;
+        in limit : Real = 1400.0;
+        objective {
+            doc /* The total mass stays within the limit. */
+            require constraint { totalMass <= limit }
+        }
+        return totalMass : Real = v.mass;
+    }
+
+    analysis massAnalysis : MassAnalysis {
+        subject v = vehicle;
+    }
+
     // ---- Views -----------------------------------------------------------
 
     view massOverview {
@@ -112,6 +129,7 @@ package MassRollup {
         expose massSpec::vehicleMass;
         expose massSpec::powertrainMass;
         expose massSpec::tankMass;
+        expose massAnalysis;
         render asTreeDiagram;
     }
 }

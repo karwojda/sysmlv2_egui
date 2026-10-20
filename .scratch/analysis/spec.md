@@ -1,6 +1,6 @@
 # Spec: Computed values and analysis cases
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

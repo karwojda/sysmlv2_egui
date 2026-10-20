@@ -390,6 +390,33 @@ fn demo_status(model: &Model, requirement: &str) -> viewer_core::satisfaction::S
     viewer_core::satisfaction::status(model, &QualifiedName::new(name)).unwrap()
 }
 
+/// What running the demo's `massAnalysis` found: its total mass and
+/// whether the objective holds.
+fn demo_analysis(
+    model: &Model,
+) -> (
+    Vec<(String, String)>,
+    viewer_core::constraint::ConstraintStatus,
+) {
+    let analysis = model
+        .element(&QualifiedName::new("MassRollup::massAnalysis"))
+        .unwrap();
+    let outputs = analysis.analysis_result.as_ref().unwrap().outputs.clone();
+    (
+        outputs,
+        viewer_core::analysis::status(model, analysis).unwrap(),
+    )
+}
+
+/// The demo's computed vehicle mass.
+fn demo_mass(model: &Model) -> Vec<String> {
+    model
+        .element(&QualifiedName::new("MassRollup::vehicle::mass"))
+        .unwrap()
+        .computed
+        .clone()
+}
+
 /// What checking the demo's constraint `constraint` on `part` found.
 fn demo_constraint(
     model: &Model,
@@ -429,6 +456,15 @@ fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
         demo_constraint(&model, "vehicle::powerToWeight", "vehicle"),
         Some(ConstraintStatus::Holds)
     );
+    // The analysis works out the same 1363 kg, within its 1400 kg limit.
+    assert_eq!(demo_mass(&model), ["1363.0"]);
+    assert_eq!(
+        demo_analysis(&model),
+        (
+            vec![("totalMass".to_owned(), "1363.0".to_owned())],
+            ConstraintStatus::Holds
+        )
+    );
     let satisfiers: Vec<String> = model
         .claims()
         .filter_map(|c| c.satisfier.as_ref())
@@ -465,6 +501,14 @@ fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
             "{constraint}"
         );
     }
+    assert_eq!(demo_mass(&model), ["1333.0"]);
+    assert_eq!(
+        demo_analysis(&model),
+        (
+            vec![("totalMass".to_owned(), "1333.0".to_owned())],
+            ConstraintStatus::Holds
+        )
+    );
 }
 
 /// The SVGs the demo's README shows, `<variant>/mass-overview.svg`, drawn as
