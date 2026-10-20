@@ -10,4 +10,5 @@ serde_json = "1"
 thiserror = "2"
 
 [dev-dependencies]
+resvg = "0.48.1"
 tempfile = "3"

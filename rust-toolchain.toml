@@ -1,0 +1,4 @@
+# The toolchain CI and local builds share, so both lint alike.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt"]

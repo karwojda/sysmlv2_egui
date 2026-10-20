@@ -78,10 +78,14 @@ All are pretty-printed JSON, so they diff and review well. Commit them with the 
 ## Development
 
 ```sh
-cargo test --workspace                                  # fake-backend tests and golden SVGs
-cargo test -p viewer-opensysml -- --ignored             # contract tests against sysml-grpc
+scripts/check                                           # format, lint and test, as CI does; prints only failures
+scripts/check service                                   # also the contract tests against sysml-grpc
 UPDATE_GOLDEN=1 cargo test -p viewer-core               # regenerate golden SVGs after an intended change
+cargo run -p viewer-core --example svg2png -- in.svg out.png   # look at an Export as PNG
+git config core.hooksPath .githooks                     # once per clone: format and lint before each commit
 ```
+
+The toolchain is pinned in `rust-toolchain.toml`, so local builds lint like CI.
 
 The crates:
 

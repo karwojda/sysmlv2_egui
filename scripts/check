@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Runs the checks CI runs and prints only what failed.
+#
+#   scripts/check          format, lint and test
+#   scripts/check lint     format and lint only (the pre-commit hook)
+#   scripts/check service  also the contract tests against sysml-grpc
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+mode="${1:-all}"
+case "$mode" in
+  all | lint | service) ;;
+  *) echo "usage: scripts/check [lint|service]" >&2; exit 2 ;;
+esac
+
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
+failed=0
+
+# Runs one check; on failure prints the lines of its output that say why.
+step() {
+  local name="$1" pattern="$2"
+  shift 2
+  printf '%-8s ' "$name"
+  if "$@" >"$log" 2>&1; then
+    echo ok
+  else
+    echo FAILED
+    grep -E "$pattern" -A12 "$log" | head -80
+    failed=1
+  fi
+}
+
+step fmt '^Diff in' cargo fmt --all --check -- --color never
+step clippy '^(error|warning)' cargo clippy --workspace --all-targets --locked -- -D warnings
+if [ "$mode" != lint ]; then
+  step test '^error|panicked|^---- |^failures:|FAILED' \
+    cargo test --workspace --locked --no-fail-fast
+fi
+if [ "$mode" = service ]; then
+  step service '^error|panicked|^---- |^failures:|FAILED' \
+    cargo test --workspace --locked --no-fail-fast -- --ignored
+fi
+exit "$failed"

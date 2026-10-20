@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+      # The toolchain comes from rust-toolchain.toml.
+      - name: Install toolchain
+        run: rustup toolchain install
       - name: Format
         run: cargo fmt --all --check
       - uses: Swatinem/rust-cache@v2
@@ -30,15 +30,19 @@ jobs:
         run: cargo test --workspace --locked
 
   # Contract tests run against the real sysml-grpc service, which the
-  # opensysml crate downloads on first use. Run them by hand from the
-  # Actions tab.
+  # opensysml crate downloads into ~/.opensysml/bin on first use.
   contract:
     name: Contract tests (sysml-grpc)
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install toolchain
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+      - name: Cache the sysml-grpc binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.opensysml/bin
+          key: sysml-grpc-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Test against sysml-grpc
         run: cargo test --workspace --locked -- --ignored

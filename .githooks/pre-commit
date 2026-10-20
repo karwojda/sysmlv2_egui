@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Stops a commit CI would fail on format or lint. Enable once per clone:
+#   git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/scripts/check" lint
