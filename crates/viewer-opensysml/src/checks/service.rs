@@ -4,9 +4,9 @@
 use std::time::{Duration, Instant};
 
 use opensysml::{AnalysisOptions, VerifyOptions};
-use viewer_core::model::{ClaimResult, QualifiedName};
+use viewer_core::model::{AnalysisResult, ClaimResult, QualifiedName};
 
-use super::{Checker, ClaimOutcome, ConstraintOutcome, PartCheck, Run};
+use super::{Checker, ClaimOutcome, ComputedValue, ConstraintOutcome, PartCheck};
 
 /// Checks a Model the service has parsed.
 pub(crate) struct Service<'a>(pub &'a opensysml::Model);
@@ -49,12 +49,12 @@ impl Checker for Service<'_> {
         })
     }
 
-    fn run_analysis(&self, analysis: &QualifiedName) -> (Result<Run, String>, Duration) {
+    fn run_analysis(&self, analysis: &QualifiedName) -> (Result<AnalysisResult, String>, Duration) {
         let started = Instant::now();
         let run = self
             .0
             .run_analysis(analysis.as_str(), &AnalysisOptions::default())
-            .map(|result| Run {
+            .map(|result| AnalysisResult {
                 outputs: result
                     .outputs
                     .iter()
@@ -94,9 +94,9 @@ fn result_of(verdict: &opensysml::Verdict) -> ClaimResult {
     }
 }
 
-/// Every evaluated feature value of `instances`, as `(feature, text)`: the
-/// value of feature `f` on an instance of type symbol `T` belongs to `T::f`.
-fn computed_values(instances: &[opensysml::Instance]) -> Vec<(QualifiedName, String)> {
+/// Every evaluated feature value of `instances`: the value of feature `f`
+/// on an instance of type symbol `T` belongs to `T::f`.
+fn computed_values(instances: &[opensysml::Instance]) -> Vec<ComputedValue> {
     let mut values = Vec::new();
     for instance in instances {
         let mut features: Vec<(&String, &opensysml::FeatureValue)> =
@@ -106,7 +106,10 @@ fn computed_values(instances: &[opensysml::Instance]) -> Vec<(QualifiedName, Str
             let feature_name = QualifiedName::new(format!("{}::{name}", instance.type_symbol_id()));
             for value in feature.value().into_iter().chain(feature.values()) {
                 if let Some(text) = value_text(value) {
-                    values.push((feature_name.clone(), text));
+                    values.push(ComputedValue {
+                        feature: feature_name.clone(),
+                        text,
+                    });
                 }
             }
         }

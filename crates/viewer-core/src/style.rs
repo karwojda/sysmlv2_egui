@@ -28,7 +28,7 @@ const FORMAT_VERSION: u32 = 1;
 /// written by its kind, in that kind's words: `{"satisfaction":
 /// "not-claimed"}`, `{"constraint": "violated"}`, `{"analysis": "not-run"}`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "ConditionFile", into = "ConditionFile")]
+#[serde(try_from = "ConditionFile", into = "ConditionFile")]
 pub enum Condition {
     /// Elements of a kind, by its keyword (`part def`).
     Kind(String),
@@ -49,82 +49,52 @@ pub enum PartConstraints {
     Violated,
 }
 
-/// A condition as written in the Style file.
+/// A condition as written in the Style file; a Verdict condition's value
+/// is its status in its kind's words (`not-claimed`, `not-run`).
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum ConditionFile {
     Kind(String),
     Package(QualifiedName),
     Metadata(QualifiedName),
-    Satisfaction(SatisfactionWord),
-    Constraint(ConstraintWord),
+    Satisfaction(String),
+    Constraint(String),
     Constraints(PartConstraints),
-    Analysis(AnalysisWord),
+    Analysis(String),
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum SatisfactionWord {
-    Satisfied,
-    Violated,
-    Undecided,
-    NotClaimed,
+/// How `status` is written for `kind` in the Style file: its label in
+/// kebab case.
+fn word(kind: verdict::Kind, status: Status) -> String {
+    kind.label(status).to_lowercase().replace(' ', "-")
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum ConstraintWord {
-    Holds,
-    Violated,
-    Undecided,
-    NotChecked,
-}
+impl TryFrom<ConditionFile> for Condition {
+    type Error = String;
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum AnalysisWord {
-    Holds,
-    Violated,
-    Undecided,
-    NotRun,
-}
-
-impl From<ConditionFile> for Condition {
-    fn from(file: ConditionFile) -> Self {
+    fn try_from(file: ConditionFile) -> Result<Self, String> {
         use verdict::Kind as K;
-        match file {
-            ConditionFile::Kind(keyword) => Condition::Kind(keyword),
-            ConditionFile::Package(name) => Condition::Package(name),
-            ConditionFile::Metadata(name) => Condition::Metadata(name),
-            ConditionFile::Constraints(wanted) => Condition::Constraints(wanted),
-            ConditionFile::Satisfaction(word) => Condition::Verdict(
-                K::Requirement,
-                match word {
-                    SatisfactionWord::Satisfied => Status::Holds,
-                    SatisfactionWord::Violated => Status::Violated,
-                    SatisfactionWord::Undecided => Status::Undecided,
-                    SatisfactionWord::NotClaimed => Status::Absent,
-                },
-            ),
-            ConditionFile::Constraint(word) => Condition::Verdict(
-                K::Constraint,
-                match word {
-                    ConstraintWord::Holds => Status::Holds,
-                    ConstraintWord::Violated => Status::Violated,
-                    ConstraintWord::Undecided => Status::Undecided,
-                    ConstraintWord::NotChecked => Status::Absent,
-                },
-            ),
-            ConditionFile::Analysis(word) => Condition::Verdict(
-                K::Analysis,
-                match word {
-                    AnalysisWord::Holds => Status::Holds,
-                    AnalysisWord::Violated => Status::Violated,
-                    AnalysisWord::Undecided => Status::Undecided,
-                    AnalysisWord::NotRun => Status::Absent,
-                },
-            ),
-        }
+        let (kind, written) = match file {
+            ConditionFile::Kind(keyword) => return Ok(Condition::Kind(keyword)),
+            ConditionFile::Package(name) => return Ok(Condition::Package(name)),
+            ConditionFile::Metadata(name) => return Ok(Condition::Metadata(name)),
+            ConditionFile::Constraints(wanted) => return Ok(Condition::Constraints(wanted)),
+            ConditionFile::Satisfaction(written) => (K::Requirement, written),
+            ConditionFile::Constraint(written) => (K::Constraint, written),
+            ConditionFile::Analysis(written) => (K::Analysis, written),
+        };
+        Status::ALL
+            .into_iter()
+            .find(|&status| word(kind, status) == written)
+            .map(|status| Condition::Verdict(kind, status))
+            .ok_or_else(|| {
+                let expected: Vec<String> = Status::ALL.map(|s| word(kind, s)).into();
+                format!(
+                    "unknown {} `{written}`, expected one of: {}",
+                    kind.name().to_lowercase(),
+                    expected.join(", ")
+                )
+            })
     }
 }
 
@@ -136,26 +106,14 @@ impl From<Condition> for ConditionFile {
             Condition::Package(name) => ConditionFile::Package(name),
             Condition::Metadata(name) => ConditionFile::Metadata(name),
             Condition::Constraints(wanted) => ConditionFile::Constraints(wanted),
-            Condition::Verdict(K::Requirement, status) => {
-                ConditionFile::Satisfaction(match status {
-                    Status::Holds => SatisfactionWord::Satisfied,
-                    Status::Violated => SatisfactionWord::Violated,
-                    Status::Undecided => SatisfactionWord::Undecided,
-                    Status::Absent => SatisfactionWord::NotClaimed,
-                })
+            Condition::Verdict(kind, status) => {
+                let written = word(kind, status);
+                match kind {
+                    K::Requirement => ConditionFile::Satisfaction(written),
+                    K::Constraint => ConditionFile::Constraint(written),
+                    K::Analysis => ConditionFile::Analysis(written),
+                }
             }
-            Condition::Verdict(K::Constraint, status) => ConditionFile::Constraint(match status {
-                Status::Holds => ConstraintWord::Holds,
-                Status::Violated => ConstraintWord::Violated,
-                Status::Undecided => ConstraintWord::Undecided,
-                Status::Absent => ConstraintWord::NotChecked,
-            }),
-            Condition::Verdict(K::Analysis, status) => ConditionFile::Analysis(match status {
-                Status::Holds => AnalysisWord::Holds,
-                Status::Violated => AnalysisWord::Violated,
-                Status::Undecided => AnalysisWord::Undecided,
-                Status::Absent => AnalysisWord::NotRun,
-            }),
         }
     }
 }

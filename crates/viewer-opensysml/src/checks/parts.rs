@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use viewer_core::model::{ClaimResult, ConstraintCheck, Element, ElementKind, QualifiedName};
 
-use super::Checker;
+use super::{Checker, ComputedValue};
 
 /// Checks every top-level part usage (one owned by a package) in
 /// `elements` and records what was found. Returns a warning for each part
@@ -79,11 +79,8 @@ fn unchecked(elements: &mut BTreeMap<QualifiedName, Element>, root: &QualifiedNa
 /// Gives each feature in `elements` its Computed Values, distinct and in
 /// first-seen order. Values for features the Model doesn't have, and values
 /// equal to the feature's own written value, are dropped.
-fn record_values(
-    elements: &mut BTreeMap<QualifiedName, Element>,
-    values: Vec<(QualifiedName, String)>,
-) {
-    for (feature, text) in values {
+fn record_values(elements: &mut BTreeMap<QualifiedName, Element>, values: Vec<ComputedValue>) {
+    for ComputedValue { feature, text } in values {
         // A value the Model writes out already says itself.
         if let Some(element) = elements.get_mut(&feature)
             && element.value.as_deref() != Some(text.as_str())

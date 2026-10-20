@@ -53,10 +53,7 @@ pub(super) fn run(
         let (run, time) = checker.run_analysis(&analysis);
         took += time;
         let result = match run {
-            Ok(run) => AnalysisResult {
-                outputs: run.outputs,
-                objective: run.objective,
-            },
+            Ok(result) => result,
             Err(reason) => {
                 warnings.push(format!(
                     "analysis `{analysis}` could not be run, so it is Undecided: {reason}"

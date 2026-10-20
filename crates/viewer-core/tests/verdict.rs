@@ -212,3 +212,230 @@ fn style_files_name_each_kind_s_absent_value_in_its_own_words() {
         "a kind's words only: a constraint is never 'not run'"
     );
 }
+
+/// Satisfaction Status: derived from claim results, and rolled up.
+mod requirements {
+    use super::*;
+    use viewer_core::model::ModelBuilder;
+
+    /// The Satisfaction Status of `name`: its Verdict, if it has one.
+    fn status(model: &Model, name: &QualifiedName) -> Option<Status> {
+        verdict::of(model, model.element(name)?).map(|v| v.status)
+    }
+
+    fn undecided(reason: &str) -> ClaimResult {
+        ClaimResult::Undecided {
+            reason: reason.to_owned(),
+        }
+    }
+
+    /// A requirement `P::r`, two parts, and the claims `add` puts in.
+    fn model(add: impl FnOnce(ModelBuilder) -> ModelBuilder) -> Model {
+        let builder = Model::builder()
+            .package("P")
+            .requirement_def("P::R")
+            .requirement("P::r")
+            .typed_by("P::R")
+            .part("P::a")
+            .part("P::b");
+        add(builder).build()
+    }
+
+    fn status_of(model: &Model) -> Option<Status> {
+        status(model, &qn("P::r"))
+    }
+
+    #[test]
+    fn a_requirement_nothing_claims_is_not_claimed() {
+        assert_eq!(status_of(&model(|b| b)), Some(Status::Absent));
+    }
+
+    #[test]
+    fn a_requirement_whose_claims_all_hold_is_satisfied() {
+        let m = model(|b| {
+            b.satisfy("P::@1", "P::r", "P::a")
+                .result(ClaimResult::Holds)
+                .satisfy("P::@2", "P::r", "P::b")
+                .result(ClaimResult::Holds)
+        });
+
+        assert_eq!(status_of(&m), Some(Status::Holds));
+    }
+
+    #[test]
+    fn one_violated_claim_among_holding_ones_makes_it_violated() {
+        let m = model(|b| {
+            b.satisfy("P::@1", "P::r", "P::a")
+                .result(ClaimResult::Holds)
+                .satisfy("P::@2", "P::r", "P::b")
+                .result(violated("b.x <= 1"))
+        });
+
+        assert_eq!(status_of(&m), Some(Status::Violated));
+    }
+
+    #[test]
+    fn violated_wins_over_undecided_and_undecided_over_satisfied() {
+        let violated_and_undecided = model(|b| {
+            b.satisfy("P::@1", "P::r", "P::a")
+                .result(undecided("no value"))
+                .satisfy("P::@2", "P::r", "P::b")
+                .result(violated("b.x <= 1"))
+        });
+        assert_eq!(status_of(&violated_and_undecided), Some(Status::Violated));
+
+        let undecided_and_holding = model(|b| {
+            b.satisfy("P::@1", "P::r", "P::a")
+                .result(ClaimResult::Holds)
+                .satisfy("P::@2", "P::r", "P::b")
+                .result(undecided("no value"))
+        });
+        assert_eq!(status_of(&undecided_and_holding), Some(Status::Undecided));
+    }
+
+    #[test]
+    fn an_unchecked_or_not_yet_checked_claim_counts_as_undecided() {
+        let unchecked = model(|b| {
+            b.satisfy("P::@1", "P::r", "P::a")
+                .result(ClaimResult::Unchecked {
+                    reason: "service down".to_owned(),
+                })
+        });
+        assert_eq!(status_of(&unchecked), Some(Status::Undecided));
+
+        let never = model(|b| b.satisfy("P::@1", "P::r", "P::a"));
+        assert_eq!(status_of(&never), Some(Status::Undecided));
+    }
+
+    #[test]
+    fn only_requirement_usages_have_a_status() {
+        let m = model(|b| b);
+
+        assert_eq!(
+            status(&m, &qn("P::R")),
+            None,
+            "a definition can't be satisfied"
+        );
+        assert_eq!(status(&m, &qn("P::a")), None);
+    }
+
+    #[test]
+    fn the_fixture_covers_every_status() {
+        let m = common::requirements();
+        let of = |name: &str| status(&m, &qn(&format!("Req::vehicleSpec::{name}"))).unwrap();
+
+        assert_eq!(of("massReq"), Status::Holds);
+        assert_eq!(of("rangeReq"), Status::Violated);
+        assert_eq!(of("costReq"), Status::Undecided);
+        assert_eq!(of("carMassReq"), Status::Undecided);
+        assert_eq!(of("spareReq"), Status::Absent);
+    }
+
+    mod roll_up {
+        use super::*;
+
+        /// `P::spec` owning `P::spec::a` and `P::spec::b`, plus whatever `add`
+        /// puts in (claims, or a constraint on the spec).
+        fn spec(add: impl FnOnce(ModelBuilder) -> ModelBuilder) -> Model {
+            let builder = Model::builder()
+                .package("P")
+                .part("P::x")
+                .requirement("P::spec")
+                .requirement("P::spec::a")
+                .requires("x.m <= 1")
+                .requirement("P::spec::b")
+                .requires("x.m <= 2");
+            add(builder).build()
+        }
+
+        fn of(model: &Model) -> Status {
+            status(model, &qn("P::spec")).unwrap()
+        }
+
+        fn holds(builder: ModelBuilder, name: &str, requirement: &str) -> ModelBuilder {
+            builder
+                .satisfy(name, requirement, "P::x")
+                .result(ClaimResult::Holds)
+        }
+
+        #[test]
+        fn a_composite_is_satisfied_when_every_child_is() {
+            let m = spec(|b| holds(holds(b, "P::@1", "P::spec::a"), "P::@2", "P::spec::b"));
+
+            assert_eq!(of(&m), Status::Holds);
+        }
+
+        #[test]
+        fn an_unclaimed_child_leaves_the_composite_not_claimed() {
+            let m = spec(|b| holds(b, "P::@1", "P::spec::a"));
+
+            assert_eq!(of(&m), Status::Absent);
+        }
+
+        #[test]
+        fn violated_beats_undecided_beats_not_claimed_among_children() {
+            let one_undecided = spec(|b| {
+                b.satisfy("P::@1", "P::spec::a", "P::x")
+                    .result(undecided("no value"))
+            });
+            assert_eq!(
+                of(&one_undecided),
+                Status::Undecided,
+                "b is unclaimed, a undecided"
+            );
+
+            let one_violated = spec(|b| {
+                b.satisfy("P::@1", "P::spec::a", "P::x")
+                    .result(undecided("no value"))
+                    .satisfy("P::@2", "P::spec::b", "P::x")
+                    .result(violated("x.m <= 2"))
+            });
+            assert_eq!(of(&one_violated), Status::Violated);
+        }
+
+        #[test]
+        fn a_claim_on_a_composite_with_nothing_to_check_is_ignored() {
+            let m = spec(|b| {
+                let b = holds(holds(b, "P::@1", "P::spec::a"), "P::@2", "P::spec::b");
+                b.satisfy("P::@3", "P::spec", "P::x")
+                    .result(undecided("no condition to evaluate"))
+            });
+
+            assert_eq!(of(&m), Status::Holds);
+        }
+
+        #[test]
+        fn a_claim_on_a_composite_with_its_own_constraint_counts_too() {
+            let m = Model::builder()
+                .package("P")
+                .part("P::x")
+                .requirement("P::spec")
+                .requires("x.total <= 10")
+                .requirement("P::spec::a")
+                .requires("x.m <= 1")
+                .satisfy("P::@1", "P::spec::a", "P::x")
+                .result(ClaimResult::Holds)
+                .satisfy("P::@2", "P::spec", "P::x")
+                .result(violated("x.total <= 10"))
+                .build();
+
+            assert_eq!(of(&m), Status::Violated);
+        }
+
+        #[test]
+        fn composites_roll_up_through_every_level() {
+            let m = Model::builder()
+                .package("P")
+                .part("P::x")
+                .requirement("P::top")
+                .requirement("P::top::mid")
+                .requirement("P::top::mid::leaf")
+                .requires("x.m <= 1")
+                .satisfy("P::@1", "P::top::mid::leaf", "P::x")
+                .result(violated("x.m <= 1"))
+                .build();
+
+            assert_eq!(status(&m, &qn("P::top")), Some(Status::Violated));
+        }
+    }
+}

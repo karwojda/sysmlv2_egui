@@ -86,14 +86,25 @@ impl Kind {
         }
     }
 
+    /// What the kind is called: `Satisfaction`, `Constraint`, `Analysis`;
+    /// lower-cased, the key a Style file writes it under.
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Requirement => "Satisfaction",
+            Kind::Constraint => "Constraint",
+            Kind::Analysis => "Analysis",
+        }
+    }
+
     /// How a Style rule on this kind reads in a Legend: `Violated`,
     /// `Constraint violated`, `Analysis not run`.
     pub fn legend(self, status: Status) -> String {
         let label = self.label(status);
         match self {
             Kind::Requirement => label.to_owned(),
-            Kind::Constraint => format!("Constraint {}", label.to_lowercase()),
-            Kind::Analysis => format!("Analysis {}", label.to_lowercase()),
+            Kind::Constraint | Kind::Analysis => {
+                format!("{} {}", self.name(), label.to_lowercase())
+            }
         }
     }
 }
@@ -109,6 +120,8 @@ pub struct Finding {
     pub detail: Option<String>,
 }
 
+/// What an element shows because of what OpenSysML checked: where it
+/// stands, and the checks behind that.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Verdict {
     pub kind: Kind,
@@ -119,10 +132,12 @@ pub struct Verdict {
 }
 
 impl Verdict {
+    /// The mark drawn on Diagrams: ✓ ✗ ? ○.
     pub fn mark(&self) -> &'static str {
         self.status.mark()
     }
 
+    /// Where it stands, in its kind's words: `Satisfied`, `Not run`.
     pub fn label(&self) -> &'static str {
         self.kind.label(self.status)
     }

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 use viewer_core::backend::Analyses;
-use viewer_core::model::{ClaimResult, Element, ElementKind, QualifiedName};
+use viewer_core::model::{AnalysisResult, ClaimResult, Element, ElementKind, QualifiedName};
 use viewer_core::settings::{self, Settings};
 
 use super::*;
@@ -32,7 +32,7 @@ fn unchecked(reason: &str) -> ClaimResult {
 struct Answers {
     claims: Option<Result<Vec<ClaimOutcome>, String>>,
     parts: BTreeMap<QualifiedName, Result<PartCheck, String>>,
-    analyses: BTreeMap<QualifiedName, Result<Run, String>>,
+    analyses: BTreeMap<QualifiedName, Result<AnalysisResult, String>>,
     /// How long each analysis run claims to take.
     run_time: Duration,
     asked: RefCell<Vec<String>>,
@@ -52,12 +52,16 @@ impl Checker for Answers {
             .unwrap_or(Ok(PartCheck::default()))
     }
 
-    fn run_analysis(&self, analysis: &QualifiedName) -> (Result<Run, String>, Duration) {
+    fn run_analysis(&self, analysis: &QualifiedName) -> (Result<AnalysisResult, String>, Duration) {
         self.asked.borrow_mut().push(format!("analysis {analysis}"));
-        let run = self.analyses.get(analysis).cloned().unwrap_or(Ok(Run {
-            outputs: Vec::new(),
-            objective: None,
-        }));
+        let run = self
+            .analyses
+            .get(analysis)
+            .cloned()
+            .unwrap_or(Ok(AnalysisResult {
+                outputs: Vec::new(),
+                objective: None,
+            }));
         (run, self.run_time)
     }
 }
@@ -364,7 +368,10 @@ mod parts {
                 a.value = Some("22.0".to_owned())
             })
             .add("C::car::wheels::grip", ElementKind::AttributeUsage, |_| {});
-        let value = |feature: &str, text: &str| (qn(feature), text.to_owned());
+        let value = |feature: &str, text: &str| ComputedValue {
+            feature: qn(feature),
+            text: text.to_owned(),
+        };
         let answers = Answers {
             parts: [(
                 qn("C::car"),
@@ -430,7 +437,7 @@ mod analyses {
         let answers = Answers {
             analyses: [(
                 qn("A::first"),
-                Ok(Run {
+                Ok(AnalysisResult {
                     outputs: vec![("result".to_owned(), "230.0".to_owned())],
                     objective: Some(violated("result <= limit")),
                 }),

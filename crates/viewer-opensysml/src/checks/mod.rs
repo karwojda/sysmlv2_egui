@@ -17,7 +17,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use viewer_core::backend::Analyses;
-use viewer_core::model::{ClaimResult, Diagnostic, Element, QualifiedName, Severity};
+use viewer_core::model::{
+    AnalysisResult, ClaimResult, Diagnostic, Element, QualifiedName, Severity,
+};
 
 pub(crate) use service::Service;
 
@@ -29,7 +31,7 @@ pub(crate) trait Checker {
     /// Checks part usage `part` and everything beneath it.
     fn check_part(&self, part: &QualifiedName) -> Result<PartCheck, String>;
     /// Runs analysis usage `analysis`, and says how long that took.
-    fn run_analysis(&self, analysis: &QualifiedName) -> (Result<Run, String>, Duration);
+    fn run_analysis(&self, analysis: &QualifiedName) -> (Result<AnalysisResult, String>, Duration);
 }
 
 /// What verifying one claim found.
@@ -46,9 +48,9 @@ pub(crate) struct ClaimOutcome {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PartCheck {
     pub constraints: Vec<ConstraintOutcome>,
-    /// Every evaluated feature value, as `(feature, text)`, in the order
-    /// the instances were reported.
-    pub values: Vec<(QualifiedName, String)>,
+    /// Every evaluated feature value, in the order the instances were
+    /// reported.
+    pub values: Vec<ComputedValue>,
 }
 
 /// What checking one asserted constraint on one part found.
@@ -61,11 +63,12 @@ pub(crate) struct ConstraintOutcome {
     pub result: ClaimResult,
 }
 
-/// What one analysis run gave.
+/// One Computed Value: what the service evaluated feature `feature` to,
+/// written as the Model would write it (`1363.0`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Run {
-    pub outputs: Vec<(String, String)>,
-    pub objective: Option<ClaimResult>,
+pub(crate) struct ComputedValue {
+    pub feature: QualifiedName,
+    pub text: String,
 }
 
 /// Checks the Model in `elements` with `checker` and records the results:

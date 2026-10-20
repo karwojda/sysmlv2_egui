@@ -136,7 +136,7 @@ fn condition_picker(
         Condition::Kind(_) => "Kind",
         Condition::Package(_) => "Package",
         Condition::Metadata(_) => "Metadata",
-        Condition::Verdict(kind, _) => verdict_type_name(*kind),
+        Condition::Verdict(kind, _) => kind.name(),
         Condition::Constraints(_) => "Part constraints",
     };
     egui::ComboBox::from_id_salt("type")
@@ -153,23 +153,13 @@ fn condition_picker(
                 ("Kind", Condition::Kind(KINDS[0].to_owned())),
                 ("Package", Condition::Package(first(packages))),
                 ("Metadata", Condition::Metadata(first(metadata))),
-                (
-                    verdict_type_name(Kind::Requirement),
-                    Condition::Verdict(Kind::Requirement, Status::Violated),
-                ),
-                (
-                    verdict_type_name(Kind::Constraint),
-                    Condition::Verdict(Kind::Constraint, Status::Violated),
-                ),
-                (
-                    "Part constraints",
-                    Condition::Constraints(PartConstraints::Violated),
-                ),
-                (
-                    verdict_type_name(Kind::Analysis),
-                    Condition::Verdict(Kind::Analysis, Status::Violated),
-                ),
-            ];
+            ]
+            .into_iter()
+            .chain(Kind::ALL.map(|kind| (kind.name(), Condition::Verdict(kind, Status::Violated))))
+            .chain([(
+                "Part constraints",
+                Condition::Constraints(PartConstraints::Violated),
+            )]);
             for (name, fresh) in options {
                 if ui.selectable_label(type_name == name, name).clicked() && type_name != name {
                     *condition = fresh;
@@ -218,15 +208,6 @@ fn condition_picker(
         }
     }
     changed
-}
-
-/// What the type picker calls a Verdict condition of `kind`.
-fn verdict_type_name(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Requirement => "Satisfaction",
-        Kind::Constraint => "Constraint",
-        Kind::Analysis => "Analysis",
-    }
 }
 
 /// Chooses `name` among `choices`; true if it changed.
