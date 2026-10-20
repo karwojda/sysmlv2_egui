@@ -30,7 +30,7 @@ fn unchecked(reason: &str) -> ClaimResult {
 /// Answers from tables, and remembers what it was asked.
 #[derive(Default)]
 struct Answers {
-    claims: Option<Result<Vec<ClaimVerdict>, String>>,
+    claims: Option<Result<Vec<ClaimOutcome>, String>>,
     parts: BTreeMap<QualifiedName, Result<PartCheck, String>>,
     analyses: BTreeMap<QualifiedName, Result<Run, String>>,
     /// How long each analysis run claims to take.
@@ -39,7 +39,7 @@ struct Answers {
 }
 
 impl Checker for Answers {
-    fn verify_claims(&self) -> Result<Vec<ClaimVerdict>, String> {
+    fn verify_claims(&self) -> Result<Vec<ClaimOutcome>, String> {
         self.asked.borrow_mut().push("claims".to_owned());
         self.claims.clone().unwrap_or(Ok(Vec::new()))
     }
@@ -143,8 +143,8 @@ fn check(elements: Elements, answers: Answers) -> Checked {
     check_in(folder.path(), elements, answers, &Analyses::AsSet)
 }
 
-fn verdict(requirement: &str, satisfier: &str, result: ClaimResult) -> ClaimVerdict {
-    ClaimVerdict {
+fn outcome(requirement: &str, satisfier: &str, result: ClaimResult) -> ClaimOutcome {
+    ClaimOutcome {
         requirement: qn(requirement),
         satisfier: (!satisfier.is_empty()).then(|| qn(satisfier)),
         result,
@@ -162,13 +162,13 @@ mod claims {
     }
 
     #[test]
-    fn verdicts_go_to_the_claim_on_their_requirement_by_their_satisfier() {
+    fn outcomes_go_to_the_claim_on_their_requirement_by_their_satisfier() {
         let checked = check(
             two_claims(),
             Answers {
                 claims: Some(Ok(vec![
-                    verdict("P::r", "P::b", violated("b.x <= 1")),
-                    verdict("P::r", "P::a", ClaimResult::Holds),
+                    outcome("P::r", "P::b", violated("b.x <= 1")),
+                    outcome("P::r", "P::a", ClaimResult::Holds),
                 ])),
                 ..Answers::default()
             },
@@ -180,7 +180,7 @@ mod claims {
     }
 
     #[test]
-    fn a_verdict_naming_no_satisfier_takes_the_next_claim_in_declaration_order() {
+    fn an_outcome_naming_no_satisfier_takes_the_next_claim_in_declaration_order() {
         let elements = Elements::default()
             .package("P")
             .claim("P::@10", "P::r", "P::b")
@@ -190,8 +190,8 @@ mod claims {
             elements,
             Answers {
                 claims: Some(Ok(vec![
-                    verdict("P::r", "", ClaimResult::Holds),
-                    verdict("P::r", "", violated("x")),
+                    outcome("P::r", "", ClaimResult::Holds),
+                    outcome("P::r", "", violated("x")),
                 ])),
                 ..Answers::default()
             },
@@ -210,14 +210,14 @@ mod claims {
         let checked = check(
             two_claims(),
             Answers {
-                claims: Some(Ok(vec![verdict("P::r", "P::a", ClaimResult::Holds)])),
+                claims: Some(Ok(vec![outcome("P::r", "P::a", ClaimResult::Holds)])),
                 ..Answers::default()
             },
         );
 
         assert_eq!(
             checked.claim("P::@2"),
-            unchecked("the service gave no verdict for it")
+            unchecked("the service gave no result for it")
         );
     }
 
@@ -273,7 +273,7 @@ mod parts {
         Ok(PartCheck {
             constraints: constraints
                 .iter()
-                .map(|(constraint, path, result)| ConstraintVerdict {
+                .map(|(constraint, path, result)| ConstraintOutcome {
                     constraint: qn(constraint),
                     path: (*path).to_owned(),
                     result: result.clone(),

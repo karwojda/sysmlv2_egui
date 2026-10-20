@@ -1,15 +1,15 @@
-//! Satisfaction Claims: each verdict goes to the claim it is about.
+//! Satisfaction Claims: each outcome goes to the claim it is about.
 
 use std::collections::BTreeMap;
 
 use viewer_core::model::{ClaimResult, Element, ElementKind, QualifiedName};
 
-use super::{Checker, ClaimVerdict};
+use super::{Checker, ClaimOutcome};
 
 /// Verifies the claims in `elements`, if there are any, and records each
-/// result. A verdict goes to the first claim, in declaration order, on its
+/// result. An outcome goes to the first claim, in declaration order, on its
 /// requirement and by its satisfier (any satisfier when the service names
-/// none). Claims left without a verdict are Unchecked; when verifying
+/// none). Claims left without an outcome are Unchecked; when verifying
 /// failed, all of them are, and the warning says why.
 pub(super) fn check(
     checker: &dyn Checker,
@@ -24,8 +24,8 @@ pub(super) fn check(
         return None;
     }
     unmatched.sort_by_key(declaration_order);
-    let verdicts = match checker.verify_claims() {
-        Ok(verdicts) => verdicts,
+    let outcomes = match checker.verify_claims() {
+        Ok(outcomes) => outcomes,
         Err(reason) => {
             for name in &unmatched {
                 set(
@@ -41,11 +41,11 @@ pub(super) fn check(
             ));
         }
     };
-    for ClaimVerdict {
+    for ClaimOutcome {
         requirement,
         satisfier,
         result,
-    } in verdicts
+    } in outcomes
     {
         let matches = |name: &QualifiedName| {
             let claim = &elements[name];
@@ -60,7 +60,7 @@ pub(super) fn check(
         }
     }
     for name in unmatched {
-        let reason = "the service gave no verdict for it".to_owned();
+        let reason = "the service gave no result for it".to_owned();
         set(elements, &name, ClaimResult::Unchecked { reason });
     }
     None

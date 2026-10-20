@@ -6,13 +6,13 @@ use std::time::{Duration, Instant};
 use opensysml::{AnalysisOptions, VerifyOptions};
 use viewer_core::model::{ClaimResult, QualifiedName};
 
-use super::{Checker, ClaimVerdict, ConstraintVerdict, PartCheck, Run};
+use super::{Checker, ClaimOutcome, ConstraintOutcome, PartCheck, Run};
 
 /// Checks a Model the service has parsed.
 pub(crate) struct Service<'a>(pub &'a opensysml::Model);
 
 impl Checker for Service<'_> {
-    fn verify_claims(&self) -> Result<Vec<ClaimVerdict>, String> {
+    fn verify_claims(&self) -> Result<Vec<ClaimOutcome>, String> {
         let satisfaction = self
             .0
             .verify_satisfaction(None, &VerifyOptions::default())
@@ -20,7 +20,7 @@ impl Checker for Service<'_> {
         Ok(satisfaction
             .verdicts
             .iter()
-            .map(|v| ClaimVerdict {
+            .map(|v| ClaimOutcome {
                 requirement: QualifiedName::new(v.requirement_id.clone()),
                 satisfier: (!v.instance_type_id.is_empty())
                     .then(|| QualifiedName::new(v.instance_type_id.clone())),
@@ -39,7 +39,7 @@ impl Checker for Service<'_> {
                 .verdicts
                 .iter()
                 .filter(|v| v.kind == opensysml::KIND_CONSTRAINT)
-                .map(|v| ConstraintVerdict {
+                .map(|v| ConstraintOutcome {
                     constraint: QualifiedName::new(v.element_id.clone()),
                     path: v.instance_path.clone(),
                     result: result_of(v),

@@ -178,7 +178,7 @@ pub fn of(model: &Model, element: &Element) -> Option<Verdict> {
                     None => Finding {
                         about: None,
                         status: Status::Undecided,
-                        detail: Some("no verdict".to_owned()),
+                        detail: Some("the service gave no result for it".to_owned()),
                     },
                 })
                 .collect();

@@ -95,8 +95,16 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         }
         match &result.objective {
             Some(outcome) => rows.push(text("Objective", verdict::describe(Some(outcome)))),
-            None if verdict.is_some() => rows.push(text("Objective", "? no verdict".to_owned())),
-            None => {}
+            // Ran, but the service said nothing about the objective.
+            None => {
+                for finding in verdict.iter().flat_map(|v| &v.findings) {
+                    let detail = finding.detail.as_deref().unwrap_or_default();
+                    rows.push(text(
+                        "Objective",
+                        format!("{} {detail}", finding.status.mark()),
+                    ));
+                }
+            }
         }
     }
     // An asserted constraint: what checking it found on each part.

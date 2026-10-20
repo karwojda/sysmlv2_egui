@@ -30,16 +30,16 @@ pub(super) fn check(
         match checker.check_part(&root) {
             Ok(found) => {
                 record_values(elements, found.values);
-                for verdict in found.constraints {
-                    let part = if verdict.path.is_empty() {
+                for outcome in found.constraints {
+                    let part = if outcome.path.is_empty() {
                         root.clone()
                     } else {
-                        QualifiedName::new(format!("{root}::{}", verdict.path.replace('.', "::")))
+                        QualifiedName::new(format!("{root}::{}", outcome.path.replace('.', "::")))
                     };
-                    if let Some(constraint) = elements.get_mut(&verdict.constraint) {
+                    if let Some(constraint) = elements.get_mut(&outcome.constraint) {
                         constraint.checks.push(ConstraintCheck {
                             part,
-                            result: verdict.result,
+                            result: outcome.result,
                         });
                     }
                 }

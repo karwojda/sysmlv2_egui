@@ -263,6 +263,31 @@ fn an_analysis_with_its_result_matches_the_golden_file() {
 }
 
 #[test]
+fn an_analysis_run_without_an_objective_result_is_undecided_and_says_why() {
+    let model = viewer_core::Model::builder()
+        .package("P")
+        .analysis_def("P::D")
+        .objective(None, &["x <= 1"])
+        .analysis("P::a")
+        .typed_by("P::D")
+        .analysed(&[("x", "2.0")], None)
+        .build();
+
+    let verdict = viewer_core::verdict::of(&model, model.element(&qn("P::a")).unwrap()).unwrap();
+    let props = viewer_core::properties::properties(&model, &qn("P::a")).unwrap();
+
+    assert_eq!(verdict.status, viewer_core::verdict::Status::Undecided);
+    assert!(
+        props
+            .rows
+            .iter()
+            .any(|p| p.label == "Objective" && p.value == "? the service gave no result for it"),
+        "{:?}",
+        props.rows
+    );
+}
+
+#[test]
 fn an_analysis_not_run_says_so_in_properties() {
     let model = viewer_core::Model::builder()
         .package("P")

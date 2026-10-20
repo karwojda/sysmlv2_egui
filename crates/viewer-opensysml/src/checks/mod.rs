@@ -23,8 +23,9 @@ pub(crate) use service::Service;
 
 /// What the checks ask of the service.
 pub(crate) trait Checker {
-    /// A verdict for each Satisfaction Claim the service could check.
-    fn verify_claims(&self) -> Result<Vec<ClaimVerdict>, String>;
+    /// What checking each Satisfaction Claim found, for those the service
+    /// could check.
+    fn verify_claims(&self) -> Result<Vec<ClaimOutcome>, String>;
     /// Checks part usage `part` and everything beneath it.
     fn check_part(&self, part: &QualifiedName) -> Result<PartCheck, String>;
     /// Runs analysis usage `analysis`, and says how long that took.
@@ -33,7 +34,7 @@ pub(crate) trait Checker {
 
 /// What verifying one claim found.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ClaimVerdict {
+pub(crate) struct ClaimOutcome {
     /// The requirement usage the claim names.
     pub requirement: QualifiedName,
     /// The satisfier, when the service names one.
@@ -44,7 +45,7 @@ pub(crate) struct ClaimVerdict {
 /// What checking one part tree found.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PartCheck {
-    pub constraints: Vec<ConstraintVerdict>,
+    pub constraints: Vec<ConstraintOutcome>,
     /// Every evaluated feature value, as `(feature, text)`, in the order
     /// the instances were reported.
     pub values: Vec<(QualifiedName, String)>,
@@ -52,7 +53,7 @@ pub(crate) struct PartCheck {
 
 /// What checking one asserted constraint on one part found.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ConstraintVerdict {
+pub(crate) struct ConstraintOutcome {
     pub constraint: QualifiedName,
     /// Where the checked part sits under the checked tree's root (`tank`,
     /// `axle.wheel`), empty for the root itself.
