@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::constraint::{self, ConstraintStatus};
+use crate::constraint;
 use crate::diagram_file::{DiagramStyle, FOLDER};
 use crate::model::{Element, Model, QualifiedName};
 use crate::notation::{LABEL_FONT, text_width};
-use crate::satisfaction::{self, SatisfactionStatus};
 use crate::scene::{Depicts, Fill, Item, Point, Rect, Rgb, Scene, Shape, TextAnchor};
+use crate::verdict::{self, Status};
 
 /// Legend geometry.
 const LEGEND_GAP: f32 = 16.0;
@@ -24,9 +24,11 @@ const PAGE_MARGIN: f32 = 20.0;
 const FILE_NAME: &str = "style.json";
 const FORMAT_VERSION: u32 = 1;
 
-/// What a Style Rule matches.
+/// What a Style Rule matches. In the Style file a Verdict condition is
+/// written by its kind, in that kind's words: `{"satisfaction":
+/// "not-claimed"}`, `{"constraint": "violated"}`, `{"analysis": "not-run"}`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(from = "ConditionFile", into = "ConditionFile")]
 pub enum Condition {
     /// Elements of a kind, by its keyword (`part def`).
     Kind(String),
@@ -34,40 +36,10 @@ pub enum Condition {
     Package(QualifiedName),
     /// Elements annotated with a metadata def.
     Metadata(QualifiedName),
-    /// Requirement usages with a Satisfaction Status.
-    Satisfaction(Satisfaction),
-    /// Asserted constraint usages, by their worst Constraint Result.
-    Constraint(ConstraintResult),
+    /// Elements whose Verdict is of this kind and stands here.
+    Verdict(verdict::Kind, Status),
     /// Parts with a violated constraint of their own.
     Constraints(PartConstraints),
-    /// Analysis usages, by what their objective came to.
-    Analysis(ConstraintResult),
-}
-
-/// The Constraint Result a constraint rule matches, as written in the
-/// Style file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ConstraintResult {
-    Holds,
-    Violated,
-    Undecided,
-}
-
-impl ConstraintResult {
-    pub const ALL: [ConstraintResult; 3] = [
-        ConstraintResult::Holds,
-        ConstraintResult::Violated,
-        ConstraintResult::Undecided,
-    ];
-
-    pub fn status(self) -> ConstraintStatus {
-        match self {
-            ConstraintResult::Holds => ConstraintStatus::Holds,
-            ConstraintResult::Violated => ConstraintStatus::Violated,
-            ConstraintResult::Undecided => ConstraintStatus::Undecided,
-        }
-    }
 }
 
 /// What a parts rule matches: parts with a violated constraint.
@@ -77,31 +49,113 @@ pub enum PartConstraints {
     Violated,
 }
 
-/// The Satisfaction Status a satisfaction rule matches, as written in the
-/// Style file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// A condition as written in the Style file.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ConditionFile {
+    Kind(String),
+    Package(QualifiedName),
+    Metadata(QualifiedName),
+    Satisfaction(SatisfactionWord),
+    Constraint(ConstraintWord),
+    Constraints(PartConstraints),
+    Analysis(AnalysisWord),
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum Satisfaction {
+enum SatisfactionWord {
     Satisfied,
     Violated,
     Undecided,
     NotClaimed,
 }
 
-impl Satisfaction {
-    pub const ALL: [Satisfaction; 4] = [
-        Satisfaction::Satisfied,
-        Satisfaction::Violated,
-        Satisfaction::Undecided,
-        Satisfaction::NotClaimed,
-    ];
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ConstraintWord {
+    Holds,
+    Violated,
+    Undecided,
+    NotChecked,
+}
 
-    pub fn status(self) -> SatisfactionStatus {
-        match self {
-            Satisfaction::Satisfied => SatisfactionStatus::Satisfied,
-            Satisfaction::Violated => SatisfactionStatus::Violated,
-            Satisfaction::Undecided => SatisfactionStatus::Undecided,
-            Satisfaction::NotClaimed => SatisfactionStatus::NotClaimed,
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum AnalysisWord {
+    Holds,
+    Violated,
+    Undecided,
+    NotRun,
+}
+
+impl From<ConditionFile> for Condition {
+    fn from(file: ConditionFile) -> Self {
+        use verdict::Kind as K;
+        match file {
+            ConditionFile::Kind(keyword) => Condition::Kind(keyword),
+            ConditionFile::Package(name) => Condition::Package(name),
+            ConditionFile::Metadata(name) => Condition::Metadata(name),
+            ConditionFile::Constraints(wanted) => Condition::Constraints(wanted),
+            ConditionFile::Satisfaction(word) => Condition::Verdict(
+                K::Requirement,
+                match word {
+                    SatisfactionWord::Satisfied => Status::Holds,
+                    SatisfactionWord::Violated => Status::Violated,
+                    SatisfactionWord::Undecided => Status::Undecided,
+                    SatisfactionWord::NotClaimed => Status::Absent,
+                },
+            ),
+            ConditionFile::Constraint(word) => Condition::Verdict(
+                K::Constraint,
+                match word {
+                    ConstraintWord::Holds => Status::Holds,
+                    ConstraintWord::Violated => Status::Violated,
+                    ConstraintWord::Undecided => Status::Undecided,
+                    ConstraintWord::NotChecked => Status::Absent,
+                },
+            ),
+            ConditionFile::Analysis(word) => Condition::Verdict(
+                K::Analysis,
+                match word {
+                    AnalysisWord::Holds => Status::Holds,
+                    AnalysisWord::Violated => Status::Violated,
+                    AnalysisWord::Undecided => Status::Undecided,
+                    AnalysisWord::NotRun => Status::Absent,
+                },
+            ),
+        }
+    }
+}
+
+impl From<Condition> for ConditionFile {
+    fn from(condition: Condition) -> Self {
+        use verdict::Kind as K;
+        match condition {
+            Condition::Kind(keyword) => ConditionFile::Kind(keyword),
+            Condition::Package(name) => ConditionFile::Package(name),
+            Condition::Metadata(name) => ConditionFile::Metadata(name),
+            Condition::Constraints(wanted) => ConditionFile::Constraints(wanted),
+            Condition::Verdict(K::Requirement, status) => {
+                ConditionFile::Satisfaction(match status {
+                    Status::Holds => SatisfactionWord::Satisfied,
+                    Status::Violated => SatisfactionWord::Violated,
+                    Status::Undecided => SatisfactionWord::Undecided,
+                    Status::Absent => SatisfactionWord::NotClaimed,
+                })
+            }
+            Condition::Verdict(K::Constraint, status) => ConditionFile::Constraint(match status {
+                Status::Holds => ConstraintWord::Holds,
+                Status::Violated => ConstraintWord::Violated,
+                Status::Undecided => ConstraintWord::Undecided,
+                Status::Absent => ConstraintWord::NotChecked,
+            }),
+            Condition::Verdict(K::Analysis, status) => ConditionFile::Analysis(match status {
+                Status::Holds => AnalysisWord::Holds,
+                Status::Violated => AnalysisWord::Violated,
+                Status::Undecided => AnalysisWord::Undecided,
+                Status::Absent => AnalysisWord::NotRun,
+            }),
         }
     }
 }
@@ -114,25 +168,18 @@ impl Condition {
             Condition::Kind(_) => 0,
             Condition::Package(_) => 1,
             Condition::Metadata(_) => 2,
-            Condition::Satisfaction(_)
-            | Condition::Constraint(_)
-            | Condition::Constraints(_)
-            | Condition::Analysis(_) => 3,
+            Condition::Verdict(..) | Condition::Constraints(_) => 3,
         }
     }
 
     pub fn matches(&self, model: &Model, element: &Element) -> bool {
         match self {
-            Condition::Constraint(wanted) => constraint::status(element) == Some(wanted.status()),
+            Condition::Verdict(kind, status) => {
+                verdict::of(model, element).is_some_and(|v| v.kind == *kind && v.status == *status)
+            }
             Condition::Constraints(PartConstraints::Violated) => {
                 element.kind == crate::model::ElementKind::PartUsage
                     && constraint::has_violation(model, &element.qualified_name)
-            }
-            Condition::Analysis(wanted) => {
-                crate::analysis::status(model, element) == Some(wanted.status())
-            }
-            Condition::Satisfaction(wanted) => {
-                satisfaction::status(model, &element.qualified_name) == Some(wanted.status())
             }
             Condition::Kind(keyword) => element.kind.keyword() == keyword,
             Condition::Package(package) => element
@@ -151,15 +198,9 @@ impl Condition {
             Condition::Kind(keyword) => format!("«{keyword}»"),
             Condition::Package(package) => package.simple_name().to_owned(),
             Condition::Metadata(definition) => format!("@{}", definition.simple_name()),
-            Condition::Satisfaction(wanted) => wanted.status().label().to_owned(),
-            Condition::Constraint(wanted) => {
-                format!("Constraint {}", wanted.status().label().to_lowercase())
-            }
+            Condition::Verdict(kind, status) => kind.legend(*status),
             Condition::Constraints(PartConstraints::Violated) => {
                 "Part with a violated constraint".to_owned()
-            }
-            Condition::Analysis(wanted) => {
-                format!("Analysis {}", wanted.status().label().to_lowercase())
             }
         }
     }
@@ -188,10 +229,7 @@ impl Condition {
         match self {
             Condition::Kind(keyword) => KINDS.contains(&keyword.as_str()),
             Condition::Package(name) | Condition::Metadata(name) => model.element(name).is_some(),
-            Condition::Satisfaction(_)
-            | Condition::Constraint(_)
-            | Condition::Constraints(_)
-            | Condition::Analysis(_) => true,
+            Condition::Verdict(..) | Condition::Constraints(_) => true,
         }
     }
 }

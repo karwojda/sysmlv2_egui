@@ -381,30 +381,26 @@ fn mass_rollup(variant: &str) -> Model {
     model
 }
 
-fn demo_status(model: &Model, requirement: &str) -> viewer_core::satisfaction::SatisfactionStatus {
+fn demo_status(model: &Model, requirement: &str) -> viewer_core::verdict::Status {
     let name = if requirement.is_empty() {
         "MassRollup::massSpec".to_owned()
     } else {
         format!("MassRollup::massSpec::{requirement}")
     };
-    viewer_core::satisfaction::status(model, &QualifiedName::new(name)).unwrap()
+    let requirement = model.element(&QualifiedName::new(name)).unwrap();
+    viewer_core::verdict::of(model, requirement).unwrap().status
 }
 
 /// What running the demo's `massAnalysis` found: its total mass and
 /// whether the objective holds.
-fn demo_analysis(
-    model: &Model,
-) -> (
-    Vec<(String, String)>,
-    viewer_core::constraint::ConstraintStatus,
-) {
+fn demo_analysis(model: &Model) -> (Vec<(String, String)>, viewer_core::verdict::Status) {
     let analysis = model
         .element(&QualifiedName::new("MassRollup::massAnalysis"))
         .unwrap();
     let outputs = analysis.analysis_result.as_ref().unwrap().outputs.clone();
     (
         outputs,
-        viewer_core::analysis::status(model, analysis).unwrap(),
+        viewer_core::verdict::of(model, analysis).unwrap().status,
     )
 }
 
@@ -422,25 +418,24 @@ fn demo_constraint(
     model: &Model,
     constraint: &str,
     part: &str,
-) -> Option<viewer_core::constraint::ConstraintStatus> {
+) -> Option<viewer_core::verdict::Status> {
     let constraint = model.element(&QualifiedName::new(format!("MassRollup::{constraint}")))?;
     let part = QualifiedName::new(format!("MassRollup::{part}"));
     let check = constraint.checks.iter().find(|c| c.part == part)?;
-    Some(viewer_core::constraint::check_status(&check.result))
+    Some(viewer_core::verdict::Status::of(&check.result))
 }
 
 #[test]
 #[ignore = "needs the sysml-grpc service"]
 fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
-    use viewer_core::constraint::ConstraintStatus;
-    use viewer_core::satisfaction::SatisfactionStatus::*;
+    use viewer_core::verdict::Status::{self, *};
     let model = mass_rollup("failing");
 
     // 180 + 85 + 950 + 60 + 4 × 22 = 1363 kg ≤ 1400; the powertrain's
     // 180 + 85 = 265 kg > 250; nothing claims the tank.
-    assert_eq!(demo_status(&model, "vehicleMass"), Satisfied);
+    assert_eq!(demo_status(&model, "vehicleMass"), Holds);
     assert_eq!(demo_status(&model, "powertrainMass"), Violated);
-    assert_eq!(demo_status(&model, "tankMass"), NotClaimed);
+    assert_eq!(demo_status(&model, "tankMass"), Absent);
     assert_eq!(
         demo_status(&model, ""),
         Violated,
@@ -450,11 +445,11 @@ fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
     // kg per kW of at most 16.
     assert_eq!(
         demo_constraint(&model, "FuelTank::fuelFits", "vehicle::fuelTank"),
-        Some(ConstraintStatus::Violated)
+        Some(Status::Violated)
     );
     assert_eq!(
         demo_constraint(&model, "vehicle::powerToWeight", "vehicle"),
-        Some(ConstraintStatus::Holds)
+        Some(Status::Holds)
     );
     // The analysis works out the same 1363 kg, within its 1400 kg limit.
     assert_eq!(demo_mass(&model), ["1363.0"]);
@@ -462,7 +457,7 @@ fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
         demo_analysis(&model),
         (
             vec![("totalMass".to_owned(), "1363.0".to_owned())],
-            ConstraintStatus::Holds
+            Status::Holds
         )
     );
     let satisfiers: Vec<String> = model
@@ -480,16 +475,11 @@ fn the_failing_mass_rollup_demo_fails_where_its_readme_says() {
 #[test]
 #[ignore = "needs the sysml-grpc service"]
 fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
-    use viewer_core::constraint::ConstraintStatus;
-    use viewer_core::satisfaction::SatisfactionStatus::*;
+    use viewer_core::verdict::Status::{self, *};
     let model = mass_rollup("passing");
 
     for requirement in ["vehicleMass", "powertrainMass", "tankMass", ""] {
-        assert_eq!(
-            demo_status(&model, requirement),
-            Satisfied,
-            "{requirement:?}"
-        );
+        assert_eq!(demo_status(&model, requirement), Holds, "{requirement:?}");
     }
     for (constraint, part) in [
         ("FuelTank::fuelFits", "vehicle::fuelTank"),
@@ -497,7 +487,7 @@ fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
     ] {
         assert_eq!(
             demo_constraint(&model, constraint, part),
-            Some(ConstraintStatus::Holds),
+            Some(Status::Holds),
             "{constraint}"
         );
     }
@@ -506,7 +496,7 @@ fn the_passing_mass_rollup_demo_meets_its_whole_budget() {
         demo_analysis(&model),
         (
             vec![("totalMass".to_owned(), "1333.0".to_owned())],
-            ConstraintStatus::Holds
+            Status::Holds
         )
     );
 }

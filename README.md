@@ -14,9 +14,9 @@ The Model is only ever read. Layout, saved Diagrams and Styles live in their own
 - **Model-defined Diagrams:** `view` usages that render `asTreeDiagram` or `asInterconnectionDiagram` (or are typed by `GeneralView` / `InterconnectionView`) are drawn from what they `expose`.
 - **Editable layout:** move, resize, hide and collapse nodes, bend edges, and move ports. Save the result as a Diagram File.
 - **Requirements:** requirement nodes with their constraints, `«satisfy»` edges, and a status badge on each requirement (✓ satisfied, ✗ violated, ? undecided, ○ not claimed), checked by OpenSysML against the Model's values.
-- **Constraints:** constraint definitions and usages with their parameters and expressions, and `assert constraints` on parts, each marked ✓ / ✗ / ? from OpenSysML's check of the part it applies to.
+- **Constraints:** constraint definitions and usages with their parameters and expressions, and `assert constraints` on parts, each marked ✓ / ✗ / ? from OpenSysML's check of the part it applies to (○ if nothing checked it).
 - **Computed values:** a row whose value is an expression shows what OpenSysML computes it to, `mass = engine.mass + body.mass = 1363.0`.
-- **Analysis cases:** analysis definitions and usages with their subject, objective, parameters and results, a `«subject»` edge to the part analysed, and a ✓ / ✗ / ? badge from running the analysis. Analyses run on every load; for a slow Model, untick "Run analyses on load" and use "Run now" on one analysis instead.
+- **Analysis cases:** analysis definitions and usages with their subject, objective, parameters and results, a `«subject»` edge to the part analysed, and a ✓ / ✗ / ? badge from running the analysis (○ if it wasn't run). Analyses run on every load; for a slow Model, untick "Run analyses on load" and use "Run now" on one analysis instead.
 - **Styles:** colour node fills by element kind, package, metadata, or requirement, constraint and analysis results, with an optional Legend. Set them once for the Model and override them per Diagram.
 - **Live reload:** edits to the Model or its Style file show up in the open Diagrams.
 - **Export:** deterministic SVG, identical between the viewer and the CLI.

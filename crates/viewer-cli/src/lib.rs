@@ -8,13 +8,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
-use viewer_core::analysis;
 use viewer_core::backend::Analyses;
-use viewer_core::constraint::{self, ConstraintStatus};
-use viewer_core::model::{ClaimResult, ElementKind};
 use viewer_core::model::{Diagnostic, Severity};
-use viewer_core::satisfaction::{self, SatisfactionStatus};
+use viewer_core::model::{Element, ElementKind};
+use viewer_core::satisfaction;
 use viewer_core::style::{self, Style};
+use viewer_core::verdict::{self, Finding, Kind, Status, Verdict};
 use viewer_core::view::{self, ViewError};
 use viewer_core::{
     DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file, svg,
@@ -288,22 +287,53 @@ impl Counts {
     }
 }
 
+/// How many Verdicts (or their findings) hold, are violated, undecided or
+/// absent.
+#[derive(Default)]
+struct Tally {
+    holds: usize,
+    violated: usize,
+    undecided: usize,
+    absent: usize,
+}
+
+impl Tally {
+    fn add(&mut self, status: Status) {
+        match status {
+            Status::Holds => self.holds += 1,
+            Status::Violated => self.violated += 1,
+            Status::Undecided => self.undecided += 1,
+            Status::Absent => self.absent += 1,
+        }
+    }
+
+    /// The counts a report fails on: violated, and with `--strict` also
+    /// undecided and absent.
+    fn counts(
+        &self,
+        noun: (&'static str, &'static str),
+        fails: (&'static str, &'static str),
+    ) -> Counts {
+        Counts {
+            noun,
+            fails,
+            violated: self.violated,
+            unsettled: self.undecided + self.absent,
+        }
+    }
+}
+
+/// The width of the longest of `names`, for lining up a report's columns.
+fn width<'a>(names: impl Iterator<Item = &'a QualifiedName>) -> usize {
+    names.map(|n| n.as_str().chars().count()).max().unwrap_or(0)
+}
+
 /// Prints the requirements report and counts its lines.
 fn requirements_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -> Counts {
-    let mut counts = Counts {
-        noun: ("requirement", "requirements"),
-        fails: ("violated", "not satisfied"),
-        violated: 0,
-        unsettled: 0,
-    };
-    let requirements: Vec<(&QualifiedName, SatisfactionStatus)> = model
-        .elements()
-        .filter_map(|e| {
-            Some((
-                &e.qualified_name,
-                satisfaction::status(model, &e.qualified_name)?,
-            ))
-        })
+    let noun = ("requirement", "requirements");
+    let fails = ("violated", "not satisfied");
+    let requirements: Vec<(&Element, Verdict)> = verdict::all(model)
+        .filter(|(_, v)| v.kind == Kind::Requirement)
         .collect();
     if requirements.is_empty() {
         let _ = writeln!(
@@ -311,35 +341,28 @@ fn requirements_report(model: &Model, model_folder: &Path, stdout: &mut dyn Writ
             "no requirement usages in {}",
             model_folder.display()
         );
-        return counts;
+        return Tally::default().counts(noun, fails);
     }
-    let width = requirements
-        .iter()
-        .map(|(name, _)| name.as_str().chars().count())
-        .max()
-        .unwrap_or(0);
-    for (name, status) in &requirements {
-        let claims: Vec<String> = satisfaction::claims_on(model, name)
+    let width = width(requirements.iter().map(|(e, _)| &e.qualified_name));
+    let mut tally = Tally::default();
+    for (requirement, verdict) in &requirements {
+        tally.add(verdict.status);
+        let claims: Vec<String> = verdict
+            .findings
+            .iter()
             .map(|claim| {
                 let satisfier = claim
-                    .satisfier
+                    .about
                     .as_ref()
                     .map_or("?".to_owned(), ToString::to_string);
-                let mark = satisfaction::claim_status(claim).mark();
-                match &claim.claim_result {
-                    Some(ClaimResult::Violated { condition }) => {
-                        format!("by {satisfier} {mark} {condition}")
-                    }
-                    Some(ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason }) => {
-                        format!("by {satisfier} {mark} {reason}")
-                    }
-                    _ => format!("by {satisfier} {mark}"),
+                let mark = claim.status.mark();
+                match &claim.detail {
+                    Some(detail) => format!("by {satisfier} {mark} {detail}"),
+                    None => format!("by {satisfier} {mark}"),
                 }
             })
             .collect();
-        let nested = model
-            .element(name)
-            .map_or(0, |e| satisfaction::nested(model, e).count());
+        let nested = satisfaction::nested(model, requirement).count();
         let details = match (claims.is_empty(), nested) {
             (true, 0) => "nothing claims to satisfy it".to_owned(),
             (true, n) => format!("rolled up from {n} nested requirements"),
@@ -352,150 +375,119 @@ fn requirements_report(model: &Model, model_folder: &Path, stdout: &mut dyn Writ
         let _ = writeln!(
             stdout,
             "{} {:<11} {:<width$}  {details}",
-            status.mark(),
-            status.label(),
-            name.as_str()
+            verdict.mark(),
+            verdict.label(),
+            requirement.qualified_name.as_str()
         );
     }
-    let count =
-        |wanted: SatisfactionStatus| requirements.iter().filter(|(_, s)| *s == wanted).count();
-    let (satisfied, violated, undecided, unclaimed) = (
-        count(SatisfactionStatus::Satisfied),
-        count(SatisfactionStatus::Violated),
-        count(SatisfactionStatus::Undecided),
-        count(SatisfactionStatus::NotClaimed),
-    );
     let _ = writeln!(
         stdout,
-        "{} requirements: {satisfied} satisfied, {violated} violated, {undecided} undecided, {unclaimed} not claimed",
-        requirements.len()
+        "{} requirements: {} satisfied, {} violated, {} undecided, {} not claimed",
+        requirements.len(),
+        tally.holds,
+        tally.violated,
+        tally.undecided,
+        tally.absent
     );
-    counts.violated = violated;
-    counts.unsettled = undecided + unclaimed;
-    counts
+    tally.counts(noun, fails)
 }
 
 /// Prints one line per Constraint Result, by constraint and then part, and
 /// counts them.
 fn constraints_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -> Counts {
-    let mut counts = Counts {
-        noun: ("constraint", "constraints"),
-        fails: ("violated", "not holding"),
-        violated: 0,
-        unsettled: 0,
-    };
-    let mut results: Vec<(&QualifiedName, &viewer_core::model::ConstraintCheck)> = model
-        .elements()
-        .filter(|e| e.is_asserted)
-        .flat_map(|c| c.checks.iter().map(move |check| (&c.qualified_name, check)))
+    let mut results: Vec<(&QualifiedName, Finding)> = verdict::all(model)
+        .filter(|(_, v)| v.kind == Kind::Constraint)
+        .flat_map(|(c, v)| v.findings.into_iter().map(move |f| (&c.qualified_name, f)))
         .collect();
-    results.sort_by(|a, b| (a.0, &a.1.part).cmp(&(b.0, &b.1.part)));
+    results.sort_by(|a, b| (a.0, &a.1.about).cmp(&(b.0, &b.1.about)));
+    let mut tally = Tally::default();
     if results.is_empty() {
         let _ = writeln!(
             stdout,
             "no checked constraints in {}",
             model_folder.display()
         );
-        return counts;
     }
-    let width = results
-        .iter()
-        .map(|(name, _)| name.as_str().chars().count())
-        .max()
-        .unwrap_or(0);
-    let (mut holding, mut undecided) = (0, 0);
+    let width = width(results.iter().map(|(name, _)| *name));
     for (name, check) in &results {
-        let status = constraint::check_status(&check.result);
-        match status {
-            ConstraintStatus::Holds => holding += 1,
-            ConstraintStatus::Violated => counts.violated += 1,
-            ConstraintStatus::Undecided => undecided += 1,
-        }
-        let detail = match &check.result {
-            ClaimResult::Holds => String::new(),
-            ClaimResult::Violated { condition } => format!(": {condition}"),
-            ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason } => {
-                format!(": {reason}")
-            }
-        };
+        tally.add(check.status);
+        let part = check
+            .about
+            .as_ref()
+            .map_or("?".to_owned(), ToString::to_string);
+        let detail = check
+            .detail
+            .as_ref()
+            .map_or(String::new(), |d| format!(": {d}"));
         let _ = writeln!(
             stdout,
-            "{} {:<11} {:<width$}  on {}{detail}",
-            status.mark(),
-            status.label(),
+            "{} {:<11} {:<width$}  on {part}{detail}",
+            check.status.mark(),
+            Kind::Constraint.label(check.status),
             name.as_str(),
-            check.part
         );
     }
-    let _ = writeln!(
-        stdout,
-        "{} constraint results: {holding} hold, {} violated, {undecided} undecided",
-        results.len(),
-        counts.violated
-    );
-    counts.unsettled = undecided;
-    counts
+    if !results.is_empty() {
+        let _ = writeln!(
+            stdout,
+            "{} constraint results: {} hold, {} violated, {} undecided",
+            results.len(),
+            tally.holds,
+            tally.violated,
+            tally.undecided
+        );
+    }
+    tally.counts(("constraint", "constraints"), ("violated", "not holding"))
 }
 
 /// Prints one line per analysis usage, by name, and counts them. An
-/// analysis that wasn't run counts as unsettled.
+/// analysis that wasn't run counts as unsettled; one without objective
+/// has no Verdict and is listed as run.
 fn analyses_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -> Counts {
-    let mut counts = Counts {
-        noun: ("analysis", "analyses"),
-        fails: ("violated", "not holding"),
-        violated: 0,
-        unsettled: 0,
-    };
-    let usages: Vec<&viewer_core::model::Element> = model
+    let noun = ("analysis", "analyses");
+    let fails = ("violated", "not holding");
+    let usages: Vec<&Element> = model
         .elements()
         .filter(|e| e.kind == ElementKind::AnalysisUsage)
         .collect();
     if usages.is_empty() {
         let _ = writeln!(stdout, "no analysis usages in {}", model_folder.display());
-        return counts;
+        return Tally::default().counts(noun, fails);
     }
-    let width = usages
-        .iter()
-        .map(|e| e.qualified_name.as_str().chars().count())
-        .max()
-        .unwrap_or(0);
-    let (mut holding, mut undecided, mut not_run, mut ran) = (0, 0, 0, 0);
+    let width = width(usages.iter().map(|e| &e.qualified_name));
+    let (mut tally, mut ran) = (Tally::default(), 0);
     for usage in &usages {
         let name = usage.qualified_name.as_str();
-        let Some(result) = &usage.analysis_result else {
-            not_run += 1;
-            let _ = writeln!(stdout, "? {:<11} {name}", "Not run");
-            continue;
-        };
-        let outputs = result
-            .outputs
+        let outputs = usage
+            .analysis_result
             .iter()
+            .flat_map(|r| &r.outputs)
             .map(|(name, value)| format!("{name} = {value}"))
             .collect::<Vec<_>>()
             .join(", ");
-        let (mark, label, detail) = match analysis::status(model, usage) {
-            None => {
-                ran += 1;
-                ("·", "Ran", String::new())
-            }
-            Some(status) => {
-                match status {
-                    ConstraintStatus::Holds => holding += 1,
-                    ConstraintStatus::Violated => counts.violated += 1,
-                    ConstraintStatus::Undecided => undecided += 1,
+        let (status, mark, label, detail) =
+            match (verdict::of(model, usage), &usage.analysis_result) {
+                (Some(verdict), _) => (
+                    verdict.status,
+                    verdict.mark(),
+                    verdict.label(),
+                    verdict.findings.first().and_then(|f| f.detail.clone()),
+                ),
+                (None, Some(_)) => {
+                    ran += 1;
+                    let line = format!("· {:<11} {name:<width$}  {outputs}", "Ran");
+                    let _ = writeln!(stdout, "{}", line.trim_end());
+                    continue;
                 }
-                let detail = match &result.objective {
-                    Some(ClaimResult::Violated { condition }) => condition.clone(),
-                    Some(ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason }) => {
-                        reason.clone()
-                    }
-                    Some(ClaimResult::Holds) => String::new(),
-                    None => "no verdict".to_owned(),
-                };
-                (status.mark(), status.label(), detail)
-            }
-        };
-        let details: Vec<&str> = [outputs.as_str(), detail.as_str()]
+                (None, None) => (
+                    Status::Absent,
+                    Status::Absent.mark(),
+                    Kind::Analysis.label(Status::Absent),
+                    None,
+                ),
+            };
+        tally.add(status);
+        let details: Vec<&str> = [outputs.as_str(), detail.as_deref().unwrap_or("")]
             .into_iter()
             .filter(|d| !d.is_empty())
             .collect();
@@ -509,17 +501,19 @@ fn analyses_report(model: &Model, model_folder: &Path, stdout: &mut dyn Write) -
     };
     let _ = writeln!(
         stdout,
-        "{} {}: {holding} hold, {} violated, {undecided} undecided, {not_run} not run{without}",
+        "{} {}: {} hold, {} violated, {} undecided, {} not run{without}",
         usages.len(),
         if usages.len() == 1 {
             "analysis"
         } else {
             "analyses"
         },
-        counts.violated
+        tally.holds,
+        tally.violated,
+        tally.undecided,
+        tally.absent
     );
-    counts.unsettled = undecided + not_run;
-    counts
+    tally.counts(noun, fails)
 }
 
 fn export_one(

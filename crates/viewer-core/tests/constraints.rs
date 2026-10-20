@@ -226,7 +226,7 @@ fn a_part_def_s_constraints_carry_no_mark() {
 }
 
 #[test]
-fn an_asserted_constraint_never_checked_on_a_part_reads_undecided() {
+fn an_asserted_constraint_never_checked_on_a_part_reads_not_checked() {
     let model = viewer_core::Model::builder()
         .package("P")
         .part("P::p")
@@ -238,7 +238,7 @@ fn an_asserted_constraint_never_checked_on_a_part_reads_undecided() {
 
     assert_eq!(
         compartment(&texts_of(&scene, "P::p"), "assert constraints", &TITLES),
-        ["{x <= 1} ?"]
+        ["{x <= 1} ○"]
     );
 }
 
@@ -251,7 +251,7 @@ fn badge(scene: &Scene, element: &str) -> Option<String> {
         scene
             .items_depicting(&node)
             .find_map(|s| match s {
-                Shape::Text { text, .. } if ["✓", "✗", "?"].contains(&text.as_str()) => {
+                Shape::Text { text, .. } if ["✓", "✗", "?", "○"].contains(&text.as_str()) => {
                     Some(text.clone())
                 }
                 _ => None,
@@ -317,8 +317,9 @@ mod styles {
     use viewer_core::model::Model;
     use viewer_core::scene::Rgb;
     use viewer_core::style::{
-        Condition, ConstraintResult, PartConstraints, Style, StyleRule, apply_styles, rule_for,
+        Condition, PartConstraints, Style, StyleRule, apply_styles, rule_for,
     };
+    use viewer_core::verdict::{Kind, Status};
 
     const RED: Rgb = Rgb(0xf4, 0xcc, 0xcc);
     const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
@@ -335,9 +336,12 @@ mod styles {
 
     fn rules() -> Vec<StyleRule> {
         vec![
-            rule(Condition::Constraint(ConstraintResult::Holds), GREEN),
-            rule(Condition::Constraint(ConstraintResult::Violated), RED),
-            rule(Condition::Constraint(ConstraintResult::Undecided), AMBER),
+            rule(Condition::Verdict(Kind::Constraint, Status::Holds), GREEN),
+            rule(Condition::Verdict(Kind::Constraint, Status::Violated), RED),
+            rule(
+                Condition::Verdict(Kind::Constraint, Status::Undecided),
+                AMBER,
+            ),
             rule(Condition::Constraints(PartConstraints::Violated), RED),
         ]
     }

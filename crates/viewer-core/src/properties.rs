@@ -3,8 +3,9 @@
 
 use crate::constraint;
 use crate::diagram::DiagramKind;
-use crate::model::{ClaimResult, ElementKind, Model, QualifiedName, SourceLocation};
+use crate::model::{ElementKind, Model, QualifiedName, SourceLocation};
 use crate::satisfaction;
+use crate::verdict::{self, Kind, Status};
 use crate::view::ViewError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,23 +79,23 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     if e.is_asserted {
         rows.push(text("Asserted", "yes".to_owned()));
     }
+    let verdict = verdict::of(model, e);
     // An analysis usage: its outputs and what its objective came to.
     if e.kind == ElementKind::AnalysisUsage && e.analysis_result.is_none() {
-        let objective = crate::analysis::objective(model, e).is_some();
-        rows.push(text(
-            if objective { "Objective" } else { "Result" },
-            "? not run".to_owned(),
-        ));
+        let label = if verdict.is_some() {
+            "Objective"
+        } else {
+            "Result"
+        };
+        rows.push(text(label, format!("{} not run", Status::Absent.mark())));
     }
     if let Some(result) = &e.analysis_result {
         for (name, value) in &result.outputs {
             rows.push(text("Output", format!("{name} = {value}")));
         }
         match &result.objective {
-            Some(outcome) => rows.push(text("Objective", constraint::describe(outcome))),
-            None if crate::analysis::objective(model, e).is_some() => {
-                rows.push(text("Objective", "? no verdict".to_owned()))
-            }
+            Some(outcome) => rows.push(text("Objective", verdict::describe(Some(outcome)))),
+            None if verdict.is_some() => rows.push(text("Objective", "? no verdict".to_owned())),
             None => {}
         }
     }
@@ -103,26 +104,22 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         rows.push(link(
             "Result",
             &check.part,
-            format!("on {} {}", check.part, constraint::describe(&check.result)),
+            format!(
+                "on {} {}",
+                check.part,
+                verdict::describe(Some(&check.result))
+            ),
         ));
     }
     // A part: what checking each of its constraints found on it.
     for (constraint_element, check) in constraint::checks_on(model, element) {
-        let mark = constraint::check_status(&check.result).mark();
+        let status = Status::of(&check.result);
         rows.push(link(
             "Asserts",
             &constraint_element.qualified_name,
-            format!("{} {mark}", constraint_element.name),
+            format!("{} {}", constraint_element.name, status.mark()),
         ));
-        match &check.result {
-            ClaimResult::Violated { condition } => {
-                rows.push(text("Failing condition", condition.clone()))
-            }
-            ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason } => {
-                rows.push(text("Undecided because", reason.clone()))
-            }
-            ClaimResult::Holds => {}
-        }
+        rows.extend(reason(status, verdict::detail(&check.result)));
     }
     for constraint in &e.require {
         rows.push(text("Requires", format!("{{{constraint}}}")));
@@ -130,16 +127,14 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     if let (Some(requirement), Some(satisfier)) = (&e.satisfies, &e.satisfier) {
         rows.push(link("Requirement", requirement, requirement.to_string()));
         rows.push(link("Satisfier", satisfier, satisfier.to_string()));
-        rows.push(text("Result", satisfaction::describe_claim(e)));
+        rows.push(text("Result", verdict::describe(e.claim_result.as_ref())));
     }
-    if let Some(status) = satisfaction::status(model, element) {
+    if let Some(verdict) = verdict.filter(|v| v.kind == Kind::Requirement) {
         rows.push(text(
             "Status",
-            format!("{} {}", status.mark(), status.label()),
+            format!("{} {}", verdict.mark(), verdict.label()),
         ));
-        let nested = model
-            .element(element)
-            .map_or(0, |e| satisfaction::nested(model, e).count());
+        let nested = satisfaction::nested(model, e).count();
         if nested > 0 {
             rows.push(text(
                 "Rolled up from",
@@ -151,28 +146,23 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         let (Some(requirement), Some(satisfier)) = (&claim.satisfies, &claim.satisfier) else {
             continue;
         };
-        let mark = satisfaction::claim_status(claim).mark();
+        let status = satisfaction::claim_status(claim);
         if requirement == element {
             rows.push(link(
                 "Satisfied by",
                 satisfier,
-                format!("{satisfier} {mark}"),
+                format!("{satisfier} {}", status.mark()),
             ));
-            match &claim.claim_result {
-                Some(ClaimResult::Violated { condition }) => {
-                    rows.push(text("Failing condition", condition.clone()))
-                }
-                Some(ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason }) => {
-                    rows.push(text("Undecided because", reason.clone()))
-                }
-                _ => {}
-            }
+            rows.extend(reason(
+                status,
+                claim.claim_result.as_ref().and_then(verdict::detail),
+            ));
         }
         if satisfier == element {
             rows.push(link(
                 "Satisfies",
                 requirement,
-                format!("{requirement} {mark}"),
+                format!("{requirement} {}", status.mark()),
             ));
         }
     }
@@ -226,5 +216,19 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     Some(Properties {
         rows,
         source: e.source.clone(),
+    })
+}
+
+/// Why a check didn't hold: its failing condition, or why it was undecided.
+fn reason(status: Status, detail: Option<&str>) -> Option<Property> {
+    let label = match status {
+        Status::Violated => "Failing condition",
+        Status::Undecided => "Undecided because",
+        Status::Holds | Status::Absent => return None,
+    };
+    Some(Property {
+        label,
+        value: detail?.to_owned(),
+        refers_to: None,
     })
 }

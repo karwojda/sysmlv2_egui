@@ -2,6 +2,7 @@
 
 use crate::model::{Element, ElementKind, Model, QualifiedName};
 use crate::scene::{Depicts, Fill, Font, Item, Point, Rect, Shape, TextAnchor};
+use crate::verdict::Status;
 
 pub(crate) const KEYWORD_FONT: Font = Font {
     size: 12.0,
@@ -177,12 +178,10 @@ pub fn node_content(
                 .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
                 // The subject is on its own line in the header.
                 .filter(|m| element.subject.as_ref() != Some(&m.qualified_name))
-                .map(
-                    |m| match crate::satisfaction::status(model, &m.qualified_name) {
-                        Some(status) => format!("{} {}", feature_row(m), status.mark()),
-                        None => feature_row(m),
-                    },
-                )
+                .map(|m| match crate::verdict::of(model, m) {
+                    Some(verdict) => format!("{} {}", feature_row(m), verdict.mark()),
+                    None => feature_row(m),
+                })
                 .collect();
             (!rows.is_empty()).then_some((*title, rows))
         });
@@ -284,7 +283,7 @@ pub fn node_content(
                 insert_after_attributes(&mut compartments, "constraints", plain);
             }
             // On a part, each asserted row ends with what checking it on this
-            // part found (? if never checked), and inherited ones follow
+            // part found (○ if never checked), and inherited ones follow
             // with `^`. A definition has no values to check: no marks.
             let part = &element.qualified_name;
             let checked = !element.kind.is_definition();
@@ -292,9 +291,8 @@ pub fn node_content(
                 c.checks
                     .iter()
                     .find(|check| &check.part == part)
-                    .map_or("?", |check| {
-                        crate::constraint::check_status(&check.result).mark()
-                    })
+                    .map_or(Status::Absent, |check| Status::of(&check.result))
+                    .mark()
             };
             let mut asserted: Vec<String> = owned()
                 .filter(|c| c.is_asserted)
@@ -311,11 +309,7 @@ pub fn node_content(
                     crate::constraint::checks_on(model, part)
                         .filter(|(c, _)| c.owner.as_ref() != Some(part))
                         .map(|(c, check)| {
-                            format!(
-                                "^{} {}",
-                                row(c),
-                                crate::constraint::check_status(&check.result).mark()
-                            )
+                            format!("^{} {}", row(c), Status::of(&check.result).mark())
                         }),
                 );
             }
@@ -362,10 +356,7 @@ pub fn node_content(
             format!("{short_id}{}", element.name)
         },
         subtitle,
-        badge: crate::satisfaction::status(model, &element.qualified_name)
-            .map(|s| s.mark())
-            .or_else(|| crate::constraint::status(element).map(|s| s.mark()))
-            .or_else(|| crate::analysis::status(model, element).map(|s| s.mark())),
+        badge: crate::verdict::of(model, element).map(|v| v.mark()),
         usage,
         compartments,
     }

@@ -166,7 +166,7 @@ fn badge(scene: &Scene, element: &str) -> Option<String> {
         scene
             .items_depicting(&node)
             .find_map(|s| match s {
-                Shape::Text { text, .. } if ["✓", "✗", "?"].contains(&text.as_str()) => {
+                Shape::Text { text, .. } if ["✓", "✗", "?", "○"].contains(&text.as_str()) => {
                     Some(text.clone())
                 }
                 _ => None,
@@ -212,7 +212,7 @@ fn an_analysis_wears_its_objective_s_outcome() {
     );
     assert_eq!(
         badge(&one(true, None), "P::a").as_deref(),
-        Some("?"),
+        Some("○"),
         "not run yet"
     );
     assert_eq!(
@@ -278,7 +278,7 @@ fn an_analysis_not_run_says_so_in_properties() {
         props
             .rows
             .iter()
-            .any(|p| p.label == "Objective" && p.value == "? not run")
+            .any(|p| p.label == "Objective" && p.value == "○ not run")
     );
 }
 
@@ -287,13 +287,13 @@ mod styles {
     use viewer_core::DiagramStyle;
     use viewer_core::model::{ClaimResult, Model};
     use viewer_core::scene::Rgb;
-    use viewer_core::style::{
-        Condition, ConstraintResult, Style, StyleRule, apply_styles, rule_for,
-    };
+    use viewer_core::style::{Condition, Style, StyleRule, apply_styles, rule_for};
+    use viewer_core::verdict::{Kind, Status};
 
     const RED: Rgb = Rgb(0xf4, 0xcc, 0xcc);
     const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
     const AMBER: Rgb = Rgb(0xff, 0xe5, 0x99);
+    const GREY: Rgb = Rgb(0xee, 0xee, 0xee);
     const NAVY: Rgb = Rgb(0x1f, 0x2a, 0x44);
 
     fn rule(condition: Condition, fill: Rgb) -> StyleRule {
@@ -306,9 +306,10 @@ mod styles {
 
     fn rules() -> Vec<StyleRule> {
         vec![
-            rule(Condition::Analysis(ConstraintResult::Holds), GREEN),
-            rule(Condition::Analysis(ConstraintResult::Violated), RED),
-            rule(Condition::Analysis(ConstraintResult::Undecided), AMBER),
+            rule(Condition::Verdict(Kind::Analysis, Status::Holds), GREEN),
+            rule(Condition::Verdict(Kind::Analysis, Status::Violated), RED),
+            rule(Condition::Verdict(Kind::Analysis, Status::Undecided), AMBER),
+            rule(Condition::Verdict(Kind::Analysis, Status::Absent), GREY),
         ]
     }
 
@@ -350,8 +351,8 @@ mod styles {
         assert_eq!(fill_of(&outcomes(), "P::broken", &rules()), Some(RED));
         assert_eq!(
             fill_of(&outcomes(), "P::idle", &rules()),
-            Some(AMBER),
-            "not run reads undecided"
+            Some(GREY),
+            "not run is its own outcome, not undecided"
         );
         assert_eq!(
             fill_of(&outcomes(), "P::free", &rules()),
@@ -379,7 +380,7 @@ mod styles {
             .build();
         let rules = [
             rule(Condition::Metadata(qn("P::Safety")), NAVY),
-            rule(Condition::Analysis(ConstraintResult::Violated), RED),
+            rule(Condition::Verdict(Kind::Analysis, Status::Violated), RED),
         ];
 
         assert_eq!(fill_of(&m, "P::a", &rules), Some(RED));
@@ -392,6 +393,7 @@ mod styles {
         let text = style.to_text();
 
         assert!(text.contains(r#""analysis": "violated""#), "{text}");
+        assert!(text.contains(r#""analysis": "not-run""#), "{text}");
         let folder = tempfile::TempDir::new().unwrap();
         std::fs::create_dir_all(folder.path().join("diagrams")).unwrap();
         std::fs::write(viewer_core::style::path_for(folder.path()), text).unwrap();

@@ -3,9 +3,8 @@
 
 use eframe::egui;
 use viewer_core::scene::Rgb;
-use viewer_core::style::{
-    self, Condition, ConstraintResult, KINDS, PartConstraints, Satisfaction, StyleRule,
-};
+use viewer_core::style::{self, Condition, KINDS, PartConstraints, StyleRule};
+use viewer_core::verdict::{Kind, Status};
 use viewer_core::{ElementKind, Model, QualifiedName};
 
 /// What an edit of the rule list did: `changed` the rules at all, and
@@ -137,10 +136,8 @@ fn condition_picker(
         Condition::Kind(_) => "Kind",
         Condition::Package(_) => "Package",
         Condition::Metadata(_) => "Metadata",
-        Condition::Satisfaction(_) => "Satisfaction",
-        Condition::Constraint(_) => "Constraint",
+        Condition::Verdict(kind, _) => verdict_type_name(*kind),
         Condition::Constraints(_) => "Part constraints",
-        Condition::Analysis(_) => "Analysis",
     };
     egui::ComboBox::from_id_salt("type")
         .selected_text(type_name)
@@ -157,18 +154,21 @@ fn condition_picker(
                 ("Package", Condition::Package(first(packages))),
                 ("Metadata", Condition::Metadata(first(metadata))),
                 (
-                    "Satisfaction",
-                    Condition::Satisfaction(Satisfaction::Violated),
+                    verdict_type_name(Kind::Requirement),
+                    Condition::Verdict(Kind::Requirement, Status::Violated),
                 ),
                 (
-                    "Constraint",
-                    Condition::Constraint(ConstraintResult::Violated),
+                    verdict_type_name(Kind::Constraint),
+                    Condition::Verdict(Kind::Constraint, Status::Violated),
                 ),
                 (
                     "Part constraints",
                     Condition::Constraints(PartConstraints::Violated),
                 ),
-                ("Analysis", Condition::Analysis(ConstraintResult::Violated)),
+                (
+                    verdict_type_name(Kind::Analysis),
+                    Condition::Verdict(Kind::Analysis, Status::Violated),
+                ),
             ];
             for (name, fresh) in options {
                 if ui.selectable_label(type_name == name, name).clicked() && type_name != name {
@@ -196,38 +196,15 @@ fn condition_picker(
         }
         Condition::Package(name) => changed |= name_picker(ui, name, packages),
         Condition::Metadata(name) => changed |= name_picker(ui, name, metadata),
-        Condition::Satisfaction(wanted) => {
-            egui::ComboBox::from_id_salt("satisfaction")
-                .selected_text(format!(
-                    "{} {}",
-                    wanted.status().mark(),
-                    wanted.status().label()
-                ))
+        Condition::Verdict(kind, wanted) => {
+            let text = |status: Status| format!("{} {}", status.mark(), kind.label(status));
+            egui::ComboBox::from_id_salt("verdict")
+                .selected_text(text(*wanted))
                 .show_ui(ui, |ui| {
-                    for option in Satisfaction::ALL {
-                        let text =
-                            format!("{} {}", option.status().mark(), option.status().label());
-                        if ui.selectable_label(*wanted == option, text).clicked()
-                            && *wanted != option
-                        {
-                            *wanted = option;
-                            changed = true;
-                        }
-                    }
-                });
-        }
-        Condition::Constraint(wanted) | Condition::Analysis(wanted) => {
-            egui::ComboBox::from_id_salt("constraint")
-                .selected_text(format!(
-                    "{} {}",
-                    wanted.status().mark(),
-                    wanted.status().label()
-                ))
-                .show_ui(ui, |ui| {
-                    for option in ConstraintResult::ALL {
-                        let text =
-                            format!("{} {}", option.status().mark(), option.status().label());
-                        if ui.selectable_label(*wanted == option, text).clicked()
+                    for option in Status::ALL {
+                        if ui
+                            .selectable_label(*wanted == option, text(option))
+                            .clicked()
                             && *wanted != option
                         {
                             *wanted = option;
@@ -241,6 +218,15 @@ fn condition_picker(
         }
     }
     changed
+}
+
+/// What the type picker calls a Verdict condition of `kind`.
+fn verdict_type_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Requirement => "Satisfaction",
+        Kind::Constraint => "Constraint",
+        Kind::Analysis => "Analysis",
+    }
 }
 
 /// Chooses `name` among `choices`; true if it changed.

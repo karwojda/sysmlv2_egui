@@ -231,7 +231,7 @@ fn lists_every_analysis_usage_with_its_outputs_and_objective() {
         [
             "✗ Violated    P::bad   x = 2.0: x <= 1",
             "✓ Holds       P::good  x = 1.0",
-            "? Not run     P::idle",
+            "○ Not run     P::idle",
             "? Undecided   P::odd   x has no value",
             "4 analyses: 1 hold, 1 violated, 1 undecided, 1 not run",
         ],
@@ -277,7 +277,7 @@ fn no_analyses_leaves_every_analysis_not_run() {
     let outcome = check_with(common::analysis(), &["--no-analyses"]);
 
     assert!(
-        outcome.stdout.contains("? Not run     A::carMass"),
+        outcome.stdout.contains("○ Not run     A::carMass"),
         "{}",
         outcome.stdout
     );

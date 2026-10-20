@@ -5,12 +5,17 @@ mod common;
 
 use viewer_core::model::{ClaimResult, Model, ModelBuilder};
 use viewer_core::properties::properties;
-use viewer_core::satisfaction::{SatisfactionStatus, status};
 use viewer_core::scene::{Depicts, Shape};
+use viewer_core::verdict::{self, Status};
 use viewer_core::{DiagramKind, QualifiedName, Scene, build_scene};
 
 fn qn(s: &str) -> QualifiedName {
     QualifiedName::new(s)
+}
+
+/// The Satisfaction Status of `name`: its Verdict, if it has one.
+fn status(model: &Model, name: &QualifiedName) -> Option<Status> {
+    verdict::of(model, model.element(name)?).map(|v| v.status)
 }
 
 fn violated(condition: &str) -> ClaimResult {
@@ -37,16 +42,13 @@ fn model(add: impl FnOnce(ModelBuilder) -> ModelBuilder) -> Model {
     add(builder).build()
 }
 
-fn status_of(model: &Model) -> Option<SatisfactionStatus> {
+fn status_of(model: &Model) -> Option<Status> {
     status(model, &qn("P::r"))
 }
 
 #[test]
 fn a_requirement_nothing_claims_is_not_claimed() {
-    assert_eq!(
-        status_of(&model(|b| b)),
-        Some(SatisfactionStatus::NotClaimed)
-    );
+    assert_eq!(status_of(&model(|b| b)), Some(Status::Absent));
 }
 
 #[test]
@@ -58,7 +60,7 @@ fn a_requirement_whose_claims_all_hold_is_satisfied() {
             .result(ClaimResult::Holds)
     });
 
-    assert_eq!(status_of(&m), Some(SatisfactionStatus::Satisfied));
+    assert_eq!(status_of(&m), Some(Status::Holds));
 }
 
 #[test]
@@ -70,7 +72,7 @@ fn one_violated_claim_among_holding_ones_makes_it_violated() {
             .result(violated("b.x <= 1"))
     });
 
-    assert_eq!(status_of(&m), Some(SatisfactionStatus::Violated));
+    assert_eq!(status_of(&m), Some(Status::Violated));
 }
 
 #[test]
@@ -81,10 +83,7 @@ fn violated_wins_over_undecided_and_undecided_over_satisfied() {
             .satisfy("P::@2", "P::r", "P::b")
             .result(violated("b.x <= 1"))
     });
-    assert_eq!(
-        status_of(&violated_and_undecided),
-        Some(SatisfactionStatus::Violated)
-    );
+    assert_eq!(status_of(&violated_and_undecided), Some(Status::Violated));
 
     let undecided_and_holding = model(|b| {
         b.satisfy("P::@1", "P::r", "P::a")
@@ -92,10 +91,7 @@ fn violated_wins_over_undecided_and_undecided_over_satisfied() {
             .satisfy("P::@2", "P::r", "P::b")
             .result(undecided("no value"))
     });
-    assert_eq!(
-        status_of(&undecided_and_holding),
-        Some(SatisfactionStatus::Undecided)
-    );
+    assert_eq!(status_of(&undecided_and_holding), Some(Status::Undecided));
 }
 
 #[test]
@@ -106,10 +102,10 @@ fn an_unchecked_or_not_yet_checked_claim_counts_as_undecided() {
                 reason: "service down".to_owned(),
             })
     });
-    assert_eq!(status_of(&unchecked), Some(SatisfactionStatus::Undecided));
+    assert_eq!(status_of(&unchecked), Some(Status::Undecided));
 
     let never = model(|b| b.satisfy("P::@1", "P::r", "P::a"));
-    assert_eq!(status_of(&never), Some(SatisfactionStatus::Undecided));
+    assert_eq!(status_of(&never), Some(Status::Undecided));
 }
 
 #[test]
@@ -129,11 +125,11 @@ fn the_fixture_covers_every_status() {
     let m = common::requirements();
     let of = |name: &str| status(&m, &qn(&format!("Req::vehicleSpec::{name}"))).unwrap();
 
-    assert_eq!(of("massReq"), SatisfactionStatus::Satisfied);
-    assert_eq!(of("rangeReq"), SatisfactionStatus::Violated);
-    assert_eq!(of("costReq"), SatisfactionStatus::Undecided);
-    assert_eq!(of("carMassReq"), SatisfactionStatus::Undecided);
-    assert_eq!(of("spareReq"), SatisfactionStatus::NotClaimed);
+    assert_eq!(of("massReq"), Status::Holds);
+    assert_eq!(of("rangeReq"), Status::Violated);
+    assert_eq!(of("costReq"), Status::Undecided);
+    assert_eq!(of("carMassReq"), Status::Undecided);
+    assert_eq!(of("spareReq"), Status::Absent);
 }
 
 fn badge_of(scene: &Scene, element: &str) -> Option<String> {
@@ -248,7 +244,8 @@ mod styles {
     use super::*;
     use viewer_core::DiagramStyle;
     use viewer_core::scene::{Fill, Rgb};
-    use viewer_core::style::{Condition, Satisfaction, Style, StyleRule, apply_styles, rule_for};
+    use viewer_core::style::{Condition, Style, StyleRule, apply_styles, rule_for};
+    use viewer_core::verdict::{Kind, Status};
 
     const RED: Rgb = Rgb(0xf4, 0xcc, 0xcc);
     const GREEN: Rgb = Rgb(0xd9, 0xea, 0xd3);
@@ -256,9 +253,9 @@ mod styles {
     const GREY: Rgb = Rgb(0xee, 0xee, 0xee);
     const NAVY: Rgb = Rgb(0x1f, 0x2a, 0x44);
 
-    fn on(status: Satisfaction, fill: Rgb) -> StyleRule {
+    fn on(status: Status, fill: Rgb) -> StyleRule {
         StyleRule {
-            condition: Condition::Satisfaction(status),
+            condition: Condition::Verdict(Kind::Requirement, status),
             fill,
             label: None,
         }
@@ -266,10 +263,10 @@ mod styles {
 
     fn traffic_lights() -> Vec<StyleRule> {
         vec![
-            on(Satisfaction::Satisfied, GREEN),
-            on(Satisfaction::Violated, RED),
-            on(Satisfaction::Undecided, AMBER),
-            on(Satisfaction::NotClaimed, GREY),
+            on(Status::Holds, GREEN),
+            on(Status::Violated, RED),
+            on(Status::Undecided, AMBER),
+            on(Status::Absent, GREY),
         ]
     }
 
@@ -311,7 +308,7 @@ mod styles {
                 fill: NAVY,
                 label: None,
             },
-            on(Satisfaction::Violated, RED),
+            on(Status::Violated, RED),
         ];
 
         assert_eq!(fill_of(&m, "P::r", &rules), Some(RED));
@@ -319,7 +316,7 @@ mod styles {
 
     #[test]
     fn a_satisfaction_rule_is_written_by_status_name_in_the_style_file() {
-        let style = Style::new(vec![on(Satisfaction::NotClaimed, GREY)]);
+        let style = Style::new(vec![on(Status::Absent, GREY)]);
 
         let text = style.to_text();
 
@@ -335,7 +332,9 @@ mod styles {
 
     #[test]
     fn satisfaction_rules_are_never_marked_missing() {
-        assert!(Condition::Satisfaction(Satisfaction::Violated).exists_in(&Model::default()));
+        assert!(
+            Condition::Verdict(Kind::Requirement, Status::Violated).exists_in(&Model::default())
+        );
     }
 
     fn styled_tree(rules: Vec<StyleRule>) -> Scene {
@@ -369,7 +368,7 @@ mod styles {
 
     #[test]
     fn the_badge_keeps_its_mark_readable_on_a_dark_fill() {
-        let scene = styled_tree(vec![on(Satisfaction::Violated, NAVY)]);
+        let scene = styled_tree(vec![on(Status::Violated, NAVY)]);
         let node = Depicts::Element(qn("Req::vehicleSpec::rangeReq"));
 
         let mark = scene.items_depicting(&node).find_map(|s| match s {
@@ -423,7 +422,7 @@ mod roll_up {
         add(builder).build()
     }
 
-    fn of(model: &Model) -> SatisfactionStatus {
+    fn of(model: &Model) -> Status {
         status(model, &qn("P::spec")).unwrap()
     }
 
@@ -437,14 +436,14 @@ mod roll_up {
     fn a_composite_is_satisfied_when_every_child_is() {
         let m = spec(|b| holds(holds(b, "P::@1", "P::spec::a"), "P::@2", "P::spec::b"));
 
-        assert_eq!(of(&m), SatisfactionStatus::Satisfied);
+        assert_eq!(of(&m), Status::Holds);
     }
 
     #[test]
     fn an_unclaimed_child_leaves_the_composite_not_claimed() {
         let m = spec(|b| holds(b, "P::@1", "P::spec::a"));
 
-        assert_eq!(of(&m), SatisfactionStatus::NotClaimed);
+        assert_eq!(of(&m), Status::Absent);
     }
 
     #[test]
@@ -455,7 +454,7 @@ mod roll_up {
         });
         assert_eq!(
             of(&one_undecided),
-            SatisfactionStatus::Undecided,
+            Status::Undecided,
             "b is unclaimed, a undecided"
         );
 
@@ -465,7 +464,7 @@ mod roll_up {
                 .satisfy("P::@2", "P::spec::b", "P::x")
                 .result(violated("x.m <= 2"))
         });
-        assert_eq!(of(&one_violated), SatisfactionStatus::Violated);
+        assert_eq!(of(&one_violated), Status::Violated);
     }
 
     #[test]
@@ -476,7 +475,7 @@ mod roll_up {
                 .result(undecided("no condition to evaluate"))
         });
 
-        assert_eq!(of(&m), SatisfactionStatus::Satisfied);
+        assert_eq!(of(&m), Status::Holds);
     }
 
     #[test]
@@ -494,7 +493,7 @@ mod roll_up {
             .result(violated("x.total <= 10"))
             .build();
 
-        assert_eq!(of(&m), SatisfactionStatus::Violated);
+        assert_eq!(of(&m), Status::Violated);
     }
 
     #[test]
@@ -510,10 +509,7 @@ mod roll_up {
             .result(violated("x.m <= 1"))
             .build();
 
-        assert_eq!(
-            status(&m, &qn("P::top")),
-            Some(SatisfactionStatus::Violated)
-        );
+        assert_eq!(status(&m, &qn("P::top")), Some(Status::Violated));
     }
 }
 

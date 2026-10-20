@@ -1,8 +1,7 @@
-//! Analysis Results: what running analysis usages found, and how an
-//! analysis reads because of it.
+//! Analysis Results: what running analysis usages found. An analysis's
+//! Verdict, from its objective, is in `verdict`.
 
-use crate::constraint::{ConstraintStatus, check_status};
-use crate::model::{Element, ElementKind, Model, Objective};
+use crate::model::{Element, Model, Objective};
 
 /// An analysis's objective: its own, or its definition's.
 pub fn objective<'a>(model: &'a Model, analysis: &'a Element) -> Option<&'a Objective> {
@@ -13,22 +12,6 @@ pub fn objective<'a>(model: &'a Model, analysis: &'a Element) -> Option<&'a Obje
             .and_then(|d| model.element(d))
             .and_then(|d| d.objective.as_ref())
     })
-}
-
-/// An analysis usage's status: what its objective came to, Undecided if it
-/// wasn't run. `None` for anything else, or an analysis without objective.
-pub fn status(model: &Model, element: &Element) -> Option<ConstraintStatus> {
-    if element.kind != ElementKind::AnalysisUsage {
-        return None;
-    }
-    objective(model, element)?;
-    Some(
-        element
-            .analysis_result
-            .as_ref()
-            .and_then(|r| r.objective.as_ref())
-            .map_or(ConstraintStatus::Undecided, check_status),
-    )
 }
 
 /// The rows of an analysis usage's `results` compartment: each output with
