@@ -11,11 +11,9 @@
 //! which the service marks experimental, adds what the symbol tree lacks:
 //! connection ends, documentation, port conjugation and source lines.
 
-mod analyses;
 mod api_json;
-mod constraints;
+mod checks;
 mod expression;
-mod satisfaction;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -193,45 +191,12 @@ impl ModelBackend for OpenSysmlBackend {
                 location: Some(SourceLocation { file, line: 0 }),
             });
         }
-        if let Some(reason) = satisfaction::check(&parsed, &mut elements) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                message: format!(
-                    "requirements could not be checked, so their status is Undecided: {reason}"
-                ),
-                location: None,
-            });
-        }
-        // The Model's settings decide unless the caller does.
-        let which = match analyses {
-            Analyses::AsSet => match viewer_core::settings::load(folder) {
-                Ok(settings) if settings.run_analyses => Analyses::All,
-                Ok(_) => Analyses::None,
-                Err(error) => {
-                    diagnostics.push(Diagnostic {
-                        severity: Severity::Warning,
-                        message: format!("{error}; using the default settings"),
-                        location: None,
-                    });
-                    Analyses::All
-                }
-            },
-            other => other.clone(),
-        };
-        for warning in analyses::run(&parsed, &mut elements, &which) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                message: warning,
-                location: None,
-            });
-        }
-        for warning in constraints::check(&parsed, &mut elements) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                message: warning,
-                location: None,
-            });
-        }
+        diagnostics.extend(checks::run(
+            &checks::Service(&parsed),
+            &mut elements,
+            folder,
+            analyses,
+        ));
         Ok(Model::new(elements.into_values(), diagnostics))
     }
 }
