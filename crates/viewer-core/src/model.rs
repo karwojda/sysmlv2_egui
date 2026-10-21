@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
 
+use crate::engineering_tools::{DesignValue, DesignValueOutcome, DesignValueSource, ToolLink};
+
 /// A `::`-separated element path such as `Vehicles::Car`.
 #[derive(
     Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
@@ -415,6 +417,8 @@ pub struct Diagnostic {
 pub struct Model {
     elements: BTreeMap<QualifiedName, Element>,
     diagnostics: Vec<Diagnostic>,
+    tool_links: Vec<ToolLink>,
+    design_values: Vec<DesignValueOutcome>,
 }
 
 impl Model {
@@ -425,7 +429,42 @@ impl Model {
                 .map(|e| (e.qualified_name.clone(), e))
                 .collect(),
             diagnostics,
+            tool_links: Vec::new(),
+            design_values: Vec::new(),
         }
+    }
+
+    /// The Model with its Tool Links and the Design Value outcome of each
+    /// linked feature, as a load found them.
+    pub fn with_design_values(
+        mut self,
+        tool_links: Vec<ToolLink>,
+        design_values: Vec<DesignValueOutcome>,
+    ) -> Self {
+        self.tool_links = tool_links;
+        self.design_values = design_values;
+        self
+    }
+
+    /// Every Tool Link, in the order the load read them.
+    pub fn tool_links(&self) -> &[ToolLink] {
+        &self.tool_links
+    }
+
+    /// The Tool Link on `element`, if it has one.
+    pub fn tool_link(&self, element: &QualifiedName) -> Option<&ToolLink> {
+        self.tool_links.iter().find(|l| &l.element == element)
+    }
+
+    /// The Design Value outcome of every linked feature, in the order the
+    /// load read them.
+    pub fn design_values(&self) -> &[DesignValueOutcome] {
+        &self.design_values
+    }
+
+    /// The Design Value outcome of `feature`, if it is linked.
+    pub fn design_value(&self, feature: &QualifiedName) -> Option<&DesignValueOutcome> {
+        self.design_values.iter().find(|d| &d.feature == feature)
     }
 
     pub fn builder() -> ModelBuilder {
@@ -491,6 +530,8 @@ impl Model {
 pub struct ModelBuilder {
     elements: Vec<Element>,
     diagnostics: Vec<Diagnostic>,
+    tool_links: Vec<ToolLink>,
+    design_values: Vec<DesignValueOutcome>,
 }
 
 impl ModelBuilder {
@@ -781,8 +822,47 @@ impl ModelBuilder {
         self
     }
 
+    /// Links the last element: it is designed as `object` in `file`,
+    /// owned by `tool`.
+    pub fn tool_link(mut self, tool: &str, file: &str, object: &str) -> Self {
+        let element = self.last().qualified_name.clone();
+        self.tool_links.push(ToolLink {
+            element,
+            tool: tool.to_owned(),
+            file: file.to_owned(),
+            object: object.to_owned(),
+        });
+        self
+    }
+
+    /// Gives the last feature a Design Value outcome from `property` of its
+    /// owner's Tool Link (added before it); its Model Value is the value
+    /// set so far.
+    pub fn design_value(mut self, property: &str, design_value: DesignValue) -> Self {
+        let feature = self.last().clone();
+        let link = self
+            .tool_links
+            .iter()
+            .find(|l| Some(&l.element) == feature.owner.as_ref())
+            .expect("link the feature's owner before giving it a Design Value");
+        let source = DesignValueSource {
+            tool: link.tool.clone(),
+            file: link.file.clone(),
+            object: link.object.clone(),
+            property: property.to_owned(),
+        };
+        self.design_values.push(DesignValueOutcome {
+            feature: feature.qualified_name,
+            source,
+            design_value,
+            model_value: feature.value,
+        });
+        self
+    }
+
     pub fn build(self) -> Model {
         Model::new(self.elements, self.diagnostics)
+            .with_design_values(self.tool_links, self.design_values)
     }
 
     fn last(&mut self) -> &mut Element {

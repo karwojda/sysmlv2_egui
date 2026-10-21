@@ -63,6 +63,11 @@ impl ModelBackend for FakeBackend {
             }
             e
         });
-        Ok(Model::new(elements, self.model.diagnostics().to_vec()))
+        Ok(
+            Model::new(elements, self.model.diagnostics().to_vec()).with_design_values(
+                self.model.tool_links().to_vec(),
+                self.model.design_values().to_vec(),
+            ),
+        )
     }
 }

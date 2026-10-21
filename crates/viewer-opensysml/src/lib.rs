@@ -13,6 +13,7 @@
 
 mod api_json;
 mod checks;
+mod design_values;
 mod expression;
 
 use std::collections::BTreeMap;
@@ -20,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
 use viewer_core::backend::Analyses;
+use viewer_core::engineering_tools::EngineeringTool;
 use viewer_core::model::{
     Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity,
     SourceLocation,
@@ -106,6 +108,8 @@ fn explain_start_failure(error: &opensysml::Error) -> String {
 pub struct OpenSysmlBackend {
     config: ServiceConfig,
     connection: Option<Connection>,
+    /// The Engineering Tools Tool Links can name, by name (`FreeCAD`).
+    tools: BTreeMap<String, Box<dyn EngineeringTool>>,
 }
 
 impl Default for OpenSysmlBackend {
@@ -124,7 +128,19 @@ impl OpenSysmlBackend {
         Self {
             config,
             connection: None,
+            tools: BTreeMap::new(),
         }
+    }
+
+    /// Lets Tool Links naming `name` (`FreeCAD`) read their Design Values
+    /// from `tool`.
+    pub fn with_tool(
+        mut self,
+        name: impl Into<String>,
+        tool: impl EngineeringTool + 'static,
+    ) -> Self {
+        self.tools.insert(name.into(), Box::new(tool));
+        self
     }
 
     fn connection(&mut self) -> Result<&Connection, BackendError> {
@@ -174,7 +190,8 @@ impl ModelBackend for OpenSysmlBackend {
         }
         let mut diagnostics: Vec<Diagnostic> =
             parsed.diagnostics().iter().map(diagnostic).collect();
-        for (document, error) in api_json::enrich(&connection, &parsed, &mut elements) {
+        let (failures, tool_links) = api_json::enrich(&connection, &parsed, &mut elements);
+        for (document, error) in failures {
             // A file with its own errors already says why; don't repeat it.
             let file = PathBuf::from(&document);
             let has_errors = diagnostics.iter().any(|d| {
@@ -191,14 +208,81 @@ impl ModelBackend for OpenSysmlBackend {
                 location: Some(SourceLocation { file, line: 0 }),
             });
         }
+        if tool_links.is_empty() {
+            diagnostics.extend(checks::run(
+                &checks::Service(&parsed),
+                &mut elements,
+                folder,
+                analyses,
+            ));
+            return Ok(Model::new(elements.into_values(), diagnostics));
+        }
+
+        // The checks run on the Model with its Design Values; the elements
+        // keep what the Model writes, Model Values included.
+        let plan = design_values::plan(&tool_links, &mut self.tools, &elements);
+        let designed = match with_design_values(&connection, &parsed, &documents, &plan.edits) {
+            Ok(designed) => designed,
+            Err(error) => {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    message: format!("Design Values could not be written into the Model: {error}"),
+                    location: None,
+                });
+                None
+            }
+        };
         diagnostics.extend(checks::run(
-            &checks::Service(&parsed),
+            &checks::Service(designed.as_ref().unwrap_or(&parsed)),
             &mut elements,
             folder,
             analyses,
         ));
-        Ok(Model::new(elements.into_values(), diagnostics))
+        Ok(Model::new(elements.into_values(), diagnostics)
+            .with_design_values(plan.tool_links, plan.outcomes))
     }
+}
+
+/// `parsed` with `edits` made in memory, one editor per document, and
+/// parsed again: the edited documents inline, the rest from `documents`.
+/// `None` when there is nothing to edit. The files are never written.
+fn with_design_values(
+    connection: &Connection,
+    parsed: &opensysml::Model,
+    documents: &[SourceDocument],
+    edits: &[design_values::Edit],
+) -> Result<Option<opensysml::Model>, opensysml::Error> {
+    let mut per_document: BTreeMap<&str, Vec<&design_values::Edit>> = BTreeMap::new();
+    for edit in edits {
+        per_document.entry(&edit.document).or_default().push(edit);
+    }
+    if per_document.is_empty() {
+        return Ok(None);
+    }
+    let mut edited: BTreeMap<String, String> = BTreeMap::new();
+    for (document, edits) in per_document {
+        let mut editor = parsed.edit();
+        editor.in_document(document);
+        for edit in edits {
+            editor.set_value(edit.feature.as_str(), &edit.value);
+        }
+        for result in editor.apply()?.documents {
+            edited.insert(result.name, result.content);
+        }
+    }
+    let sources: Vec<SourceDocument> = documents
+        .iter()
+        .map(|d| {
+            let name = d.document_name();
+            match edited.remove(&name) {
+                Some(content) => SourceDocument::inline(name, content),
+                None => d.clone(),
+            }
+        })
+        .collect();
+    connection
+        .parse_sources(&sources, &SourcesOptions::default())
+        .map(Some)
 }
 
 /// Converts `symbol` and its descendants. Each document's root namespace has

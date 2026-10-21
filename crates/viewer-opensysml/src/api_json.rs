@@ -6,7 +6,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use opensysml::{Connection, ConvertOptions, ConvertSource};
+
+use crate::design_values::{HeldLink, LinkedProperty, ToolLinks};
 use serde_json::Value;
+use viewer_core::engineering_tools::ToolLink;
 use viewer_core::model::{
     ConnectionEnd, Element, ElementKind, Expose, ExposeScope, Objective, QualifiedName,
     SourceLocation,
@@ -14,13 +17,14 @@ use viewer_core::model::{
 
 /// Adds source locations, documentation, conjugation and connection ends
 /// to `elements`, converting one document at a time so each element's file
-/// is known. A document that cannot be converted is skipped, and its
-/// failure returned, so one broken file does not cost the others.
+/// is known, and reads the Model's Tool Links. A document that cannot be
+/// converted is skipped, and its failure returned, so one broken file does
+/// not cost the others.
 pub fn enrich(
     connection: &Connection,
     parsed: &opensysml::Model,
     elements: &mut BTreeMap<QualifiedName, Element>,
-) -> Vec<(String, opensysml::Error)> {
+) -> (Vec<(String, opensysml::Error)>, ToolLinks) {
     // Element JSON by id, and the file each came from, across all documents,
     // since references cross documents.
     let mut items: HashMap<String, (Value, PathBuf)> = HashMap::new();
@@ -334,7 +338,81 @@ pub fn enrich(
             parameter.is_return = true;
         }
     }
-    failures
+    (failures, tool_links(&items, &children))
+}
+
+/// The `@ToolLink` and `@ToolProperty` annotations, by the qualified names
+/// of their library defs. Each field's literal is the item
+/// `<metadata id>__<field>_pvalue`; a link or property missing a field is
+/// read with it empty.
+fn tool_links(
+    items: &HashMap<String, (Value, PathBuf)>,
+    children: &HashMap<&str, Vec<&Value>>,
+) -> ToolLinks {
+    let field = |metadata: &str, name: &str| -> String {
+        items
+            .get(&format!("{metadata}__{name}_pvalue"))
+            .and_then(|(item, _)| item.get("value")?.as_str())
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let mut read = ToolLinks::default();
+    let mut annotations: Vec<&Value> = items
+        .values()
+        .map(|(item, _)| item)
+        .filter(|item| item.get("@type").and_then(Value::as_str) == Some("MetadataUsage"))
+        .collect();
+    annotations.sort_by_key(|a| a.get("@id").and_then(Value::as_str));
+    for annotation in annotations {
+        let def = first_reference(annotation, "type")
+            .and_then(|id| items.get(id))
+            .and_then(|(def, _)| def.get("qualifiedName")?.as_str());
+        let id = annotation
+            .get("@id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(owner) = reference(annotation, "owner") else {
+            continue;
+        };
+        let Some((owner_item, document)) = items.get(owner) else {
+            continue;
+        };
+        let Some(annotated) = valued_element(items, children, owner) else {
+            continue;
+        };
+        let document = document.to_string_lossy().into_owned();
+        match def {
+            Some("EngineeringTools::ToolLink") => read.links.push(HeldLink {
+                link: ToolLink {
+                    element: annotated,
+                    tool: field(id, "tool"),
+                    file: field(id, "file"),
+                    object: field(id, "object"),
+                },
+                document,
+            }),
+            Some("EngineeringTools::ToolProperty") => {
+                let Some(linked) =
+                    reference(owner_item, "owner").and_then(|o| valued_element(items, children, o))
+                else {
+                    continue;
+                };
+                let has_value = children.get(owner).into_iter().flatten().any(|c| {
+                    c.get("@type").and_then(Value::as_str) == Some("FeatureValue")
+                        && reference(c, "featureWithValue") == Some(owner)
+                });
+                read.properties.push(LinkedProperty {
+                    feature: annotated,
+                    owner: linked,
+                    property: field(id, "name"),
+                    has_value,
+                    document,
+                });
+            }
+            _ => {}
+        }
+    }
+    read
 }
 
 /// The id of what an `expose` shows, and how much of it. A membership

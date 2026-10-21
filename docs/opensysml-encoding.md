@@ -41,6 +41,7 @@ It prints the symbol tree (`TREE` lines) and the JSON items whose `@type` contai
 | A `return` parameter | a `ReturnParameterMembership` owned by the analysis |
 | Connector ends | `connectorEnd`; each end's `ReferenceSubsetting` names the feature or chain, and a flow end's owned `ReferenceUsage` `redefines` the port it reaches |
 | Metadata | owned `MetadataUsage` items, by `type` |
+| A metadata field's value (`@ToolLink { tool = "FreeCAD"; … }`) | the literal item `<metadata id>__<field>_pvalue` (`value`); a `@ToolProperty`'s `owner` is the feature, whose own `FeatureValue` says it has a value |
 | `expose` | `MembershipExpose` (`importedMembership`) or `NamespaceExpose` (`importedNamespace`), with `isRecursive` |
 
 ## Check answers
