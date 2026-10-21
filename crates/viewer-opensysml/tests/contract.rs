@@ -626,3 +626,25 @@ fn a_broken_settings_file_warns_and_runs_analyses() {
             .is_some()
     );
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_model_with_the_engineering_tools_library_resolves_its_tool_links() {
+    let model = OpenSysmlBackend::new()
+        .load(&fixture("tool_links"))
+        .unwrap();
+
+    assert_eq!(model.diagnostics(), &[]);
+    assert!(
+        model
+            .element(&QualifiedName::from("Drive::drive::engine"))
+            .is_some()
+    );
+}
+
+#[test]
+fn the_tool_links_fixture_holds_the_library_the_tool_prints() {
+    let copy = std::fs::read_to_string(fixture("tool_links").join("EngineeringTools.sysml"));
+
+    assert_eq!(copy.unwrap(), viewer_core::engineering_tools::LIBRARY);
+}

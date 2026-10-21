@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::backend::Analyses;
+use viewer_core::engineering_tools;
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::model::{Element, ElementKind};
 use viewer_core::satisfaction;
@@ -114,6 +115,9 @@ enum Command {
         #[arg(long)]
         no_analyses: bool,
     },
+    /// Print the EngineeringTools library, to copy into a Model so
+    /// @ToolLink and @ToolProperty resolve.
+    Library,
 }
 
 /// Runs the tool with `args` (program name first), loading Models through
@@ -186,6 +190,7 @@ pub fn run_with_output(
             };
             check(&model_folder, strict, &analyses, backend, stdout, stderr)
         }
+        Command::Library => library(stdout),
     };
     match result {
         Ok(()) => EXIT_OK,
@@ -194,6 +199,14 @@ pub fn run_with_output(
             EXIT_FAILURE
         }
     }
+}
+
+/// Prints the `EngineeringTools` library to `stdout`; the user copies it
+/// into their Model.
+fn library(stdout: &mut dyn Write) -> Result<(), Failure> {
+    stdout
+        .write_all(engineering_tools::LIBRARY.as_bytes())
+        .map_err(|e| Failure(format!("cannot print the library: {e}")))
 }
 
 /// Prints one line per requirement usage, in qualified-name order: its
