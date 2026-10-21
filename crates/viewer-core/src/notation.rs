@@ -182,6 +182,13 @@ pub fn node_content(
                     Some(verdict) => format!("{} {}", feature_row(m), verdict.mark()),
                     None => feature_row(m),
                 })
+                .zip(
+                    model
+                        .owned_members(&element.qualified_name)
+                        .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
+                        .filter(|m| element.subject.as_ref() != Some(&m.qualified_name)),
+                )
+                .map(|(row, m)| prototype_row(m, row))
                 .collect();
             (!rows.is_empty()).then_some((*title, rows))
         });
@@ -199,6 +206,24 @@ pub fn node_content(
         });
     let mut compartments: Vec<(&'static str, Vec<String>)> =
         doc.into_iter().chain(features).collect();
+    // PROTOTYPE variant B: a "design values" compartment for the linked parts this node owns.
+    if compartments_shown && crate::prototype_design_values::variant() == 1 {
+        let rows: Vec<String> = model
+            .owned_members(&element.qualified_name)
+            .flat_map(|m| crate::prototype_design_values::values_of(&m.qualified_name))
+            .map(|v| {
+                let name = v.feature.rsplit("::").take(2).collect::<Vec<_>>();
+                let name = format!("{}.{}", name[1], name[0]);
+                match v.value {
+                    Ok(value) => format!("{name} = {value}   (Model: {})", v.model_value),
+                    Err(_) => format!("{name}: no Design Value ⚠"),
+                }
+            })
+            .collect();
+        if !rows.is_empty() {
+            compartments.push(("design values", rows));
+        }
+    }
     // A requirement's constraints follow its attributes, as in the notation.
     if compartments_shown && !element.require.is_empty() {
         let rows = element
@@ -464,6 +489,39 @@ pub(crate) fn usage_label(element: &Element) -> String {
         label.push_str(&format!(" {multiplicity}"));
     }
     label
+}
+
+/// PROTOTYPE: how a compartment row changes per variant.
+fn prototype_row(m: &Element, row: String) -> String {
+    use crate::prototype_design_values as p;
+    let link = p::link(&m.qualified_name);
+    let value = p::value(&m.qualified_name);
+    match p::variant() {
+        0 => {
+            let mut row = row;
+            if let Some(v) = value {
+                row = match v.value {
+                    Ok(design) => format!("{} = {design} ⚙  (Model: {})", m.name, v.model_value),
+                    Err(_) => format!("{} = ⚠ no Design Value  (Model: {})", m.name, v.model_value),
+                };
+            }
+            if let Some(l) = link {
+                let broken = p::values_of(&m.qualified_name).any(|v| v.value.is_err());
+                row.push_str(&format!(
+                    "  ⚙ {} {}{}",
+                    l.tool,
+                    l.object,
+                    if broken { " ⚠" } else { "" }
+                ));
+            }
+            row
+        }
+        1 => row,
+        _ => match (link, value) {
+            (Some(_), _) | (_, Some(_)) => format!("{row} ⚙"),
+            _ => row,
+        },
+    }
 }
 
 /// A compartment row: ports lead with their direction, connections trail

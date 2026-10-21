@@ -67,8 +67,37 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             .unwrap_or_else(|| subject.to_string());
         rows.push(link("Subject", subject, label));
     }
-    if let Some(value) = &e.value {
+    // PROTOTYPE variant A: the Design Value takes the Value row, the Model Value follows.
+    let proto = crate::prototype_design_values::variant() == 0;
+    let design = crate::prototype_design_values::value(&e.qualified_name).filter(|_| proto);
+    if let Some(l) = crate::prototype_design_values::link(&e.qualified_name).filter(|_| proto) {
+        rows.push(text(
+            "Tool Link",
+            format!("⚙ {} · {} · {}", l.tool, l.file, l.object),
+        ));
+    }
+    if let Some(d) = design {
+        let link = crate::prototype_design_values::LINKS
+            .iter()
+            .find(|l| d.feature.starts_with(l.element))
+            .unwrap();
+        match d.value {
+            Ok(v) => rows.push(text(
+                "Design Value",
+                format!("{v}   ⚙ {} {}.{}", link.tool, link.object, d.property),
+            )),
+            Err(why) => rows.push(text("Design Value", format!("⚠ none: {} {why}", link.tool))),
+        }
+        rows.push(text("Model Value", d.model_value.to_owned()));
+    } else if let Some(value) = &e.value {
         rows.push(text("Value", value.clone()));
+    }
+    if proto
+        && let Some((_, with)) = crate::prototype_design_values::RESTING
+            .iter()
+            .find(|(q, _)| *q == e.qualified_name.to_string())
+    {
+        rows.push(text("With Design Values", (*with).to_owned()));
     }
     if !e.computed.is_empty() {
         rows.push(text("Computed", e.computed.join(", ")));

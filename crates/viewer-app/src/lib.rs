@@ -102,6 +102,8 @@ enum ContextTarget {
 enum RightTab {
     Properties,
     Style,
+    /// PROTOTYPE variant C.
+    DesignValues,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -558,9 +560,21 @@ impl ViewerApp {
                 egui::RichText::new("Style").heading(),
             );
         });
+        if viewer_core::prototype_design_values::variant() == 2 {
+            ui.horizontal(|ui| {
+                ui.selectable_value(
+                    &mut self.right_tab,
+                    RightTab::DesignValues,
+                    egui::RichText::new("Design Values").heading(),
+                );
+            });
+        } else if self.right_tab == RightTab::DesignValues {
+            self.right_tab = RightTab::Properties;
+        }
         match self.right_tab {
             RightTab::Properties => self.properties_panel(ui),
             RightTab::Style => self.style_panel(ui),
+            RightTab::DesignValues => self.prototype_design_values_table(ui),
         }
     }
 
@@ -692,6 +706,12 @@ impl ViewerApp {
                             ui.end_row();
                         }
                     });
+                if viewer_core::prototype_design_values::variant() == 1 {
+                    prototype_section(ui, selected);
+                }
+                if viewer_core::prototype_design_values::variant() == 2 {
+                    prototype_pointer(ui, selected);
+                }
                 ui.add_space(8.0);
                 ui.horizontal_wrapped(|ui| {
                     let source = properties.source.clone();
@@ -1592,6 +1612,201 @@ impl eframe::App for ViewerApp {
             .default_size(280.0)
             .show(ui, |ui| self.right_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.diagram_area(ui));
+        self.prototype_switcher(&ctx);
+    }
+}
+
+// ---- PROTOTYPE, throwaway: "How do Design Values appear in the viewer?" ----
+
+use viewer_core::prototype_design_values as proto;
+
+impl ViewerApp {
+    fn prototype_switcher(&mut self, ctx: &egui::Context) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+        static PRESELECTED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if self.model.is_some()
+            && !self.diagrams.is_empty()
+            && !PRESELECTED.swap(true, std::sync::atomic::Ordering::Relaxed)
+            && let Ok(select) = std::env::var("PROTOTYPE_SELECT")
+        {
+            self.selected = Some(QualifiedName::new(select));
+            if std::env::var_os("PROTOTYPE_TABLE").is_some() {
+                self.right_tab = RightTab::DesignValues;
+            }
+        }
+        let current = proto::variant();
+        let mut next = current;
+        let typing = ctx.memory(|m| m.focused().is_some());
+        if !typing {
+            ctx.input(|i| {
+                if i.key_pressed(egui::Key::ArrowLeft) {
+                    next = (current + proto::VARIANTS.len() - 1) % proto::VARIANTS.len();
+                }
+                if i.key_pressed(egui::Key::ArrowRight) {
+                    next = (current + 1) % proto::VARIANTS.len();
+                }
+            });
+        }
+        egui::Area::new(egui::Id::unique("prototype-switcher"))
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -12.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(255, 200, 0))
+                    .corner_radius(16.0)
+                    .inner_margin(egui::Margin::symmetric(12, 6))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let dark = egui::Color32::BLACK;
+                            if ui.button(egui::RichText::new("◀").color(dark)).clicked() {
+                                next =
+                                    (current + proto::VARIANTS.len() - 1) % proto::VARIANTS.len();
+                            }
+                            let (key, name) = proto::VARIANTS[current];
+                            ui.label(
+                                egui::RichText::new(format!("PROTOTYPE  {key} ({name})"))
+                                    .color(dark)
+                                    .strong(),
+                            );
+                            if ui.button(egui::RichText::new("▶").color(dark)).clicked() {
+                                next = (current + 1) % proto::VARIANTS.len();
+                            }
+                        });
+                    });
+            });
+        if next != current {
+            proto::set_variant(next);
+            if let Some(model) = &self.model {
+                for diagram in &mut self.diagrams {
+                    diagram.refresh(model);
+                }
+            }
+        }
+    }
+
+    fn prototype_design_values_table(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label("Every linked feature, as the last load read it.");
+        let mut follow = None;
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                egui::Grid::new("design-values")
+                    .num_columns(1)
+                    .striped(true)
+                    .spacing([8.0, 8.0])
+                    .show(ui, |ui| {
+                        for v in &proto::VALUES {
+                            let link = proto::LINKS
+                                .iter()
+                                .find(|l| v.feature.starts_with(l.element))
+                                .unwrap();
+                            ui.vertical(|ui| {
+                                if ui
+                                    .link(egui::RichText::new(proto::short(v.feature)).strong())
+                                    .clicked()
+                                {
+                                    follow = Some(QualifiedName::new(v.feature));
+                                }
+                                match v.value {
+                                    Ok(value) => {
+                                        ui.label(format!("Design   {value}"));
+                                        ui.weak(format!("Model    {}", v.model_value));
+                                        ui.weak("Δ  +100000.0 [mm³]  (+11.1 %)");
+                                    }
+                                    Err(why) => {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(230, 160, 40),
+                                            format!("⚠ no Design Value: {why}"),
+                                        );
+                                        ui.weak(format!("Model    {}  (not used)", v.model_value));
+                                    }
+                                }
+                                ui.weak(format!(
+                                    "{} · {} · {}.{}",
+                                    link.tool, link.file, link.object, v.property
+                                ));
+                            });
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(12.0);
+                ui.label(egui::RichText::new("Verdicts resting on Design Values").strong());
+                for (q, with) in &proto::RESTING {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.link(proto::short(q)).clicked() {
+                            follow = Some(QualifiedName::new(*q));
+                        }
+                        ui.label(*with);
+                    });
+                }
+            });
+        if let Some(target) = follow {
+            self.selected = Some(target);
+        }
+    }
+}
+
+/// PROTOTYPE variant B: an "Engineering Tool" section under the properties.
+fn prototype_section(ui: &mut egui::Ui, selected: &QualifiedName) {
+    let link = proto::link(selected);
+    let own = proto::value(selected);
+    let values: Vec<_> = proto::values_of(selected).collect();
+    let resting = proto::RESTING
+        .iter()
+        .find(|(q, _)| *q == selected.to_string());
+    if link.is_none() && own.is_none() && values.is_empty() && resting.is_none() {
+        return;
+    }
+    ui.add_space(8.0);
+    egui::CollapsingHeader::new(egui::RichText::new("⚙ Engineering Tool").strong())
+        .default_open(true)
+        .show(ui, |ui| {
+            if let Some(l) = link {
+                ui.label(format!("{} · {} · {}", l.tool, l.file, l.object));
+            }
+            for v in own.into_iter().chain(values) {
+                ui.group(|ui| {
+                    ui.label(egui::RichText::new(v.feature.rsplit("::").next().unwrap()).strong());
+                    egui::Grid::new(v.feature).num_columns(2).show(ui, |ui| {
+                        ui.label("Design");
+                        match v.value {
+                            Ok(value) => ui.label(value),
+                            Err(why) => ui.colored_label(
+                                egui::Color32::from_rgb(230, 160, 40),
+                                format!("⚠ none: {why}"),
+                            ),
+                        };
+                        ui.end_row();
+                        ui.label("Model");
+                        ui.weak(v.model_value);
+                        ui.end_row();
+                        ui.label("From");
+                        ui.weak(format!("property {}", v.property));
+                        ui.end_row();
+                    });
+                });
+            }
+            if let Some((_, with)) = resting {
+                ui.label(format!("With Design Values: {with}"));
+            }
+        });
+}
+
+/// PROTOTYPE variant C: Properties only points at the table.
+fn prototype_pointer(ui: &mut egui::Ui, selected: &QualifiedName) {
+    let linked = proto::link(selected).is_some()
+        || proto::value(selected).is_some()
+        || proto::values_of(selected).next().is_some()
+        || proto::RESTING
+            .iter()
+            .any(|(q, _)| *q == selected.to_string());
+    if linked {
+        ui.add_space(8.0);
+        ui.weak("⚙ Has Design Values: see the Design Values tab");
     }
 }
 

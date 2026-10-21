@@ -16,6 +16,7 @@ mod layout;
 pub mod model;
 mod notation;
 pub mod properties;
+pub mod prototype_design_values;
 pub mod satisfaction;
 pub mod scene;
 pub mod settings;
