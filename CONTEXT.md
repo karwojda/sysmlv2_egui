@@ -91,6 +91,24 @@ One condition (the element's kind, a package it is inside, or metadata it is ann
 **Legend**:
 A key drawn on a Diagram, and in its Export, pairing each fill color used with the Style Rule that gave it. Shown only when the Diagram asks for it.
 
+### Engineering Tools
+
+**Engineering Tool**:
+An external program that owns part of the design in its own files, such as FreeCAD for mechanical geometry or KiCad for circuit boards. The Model states intent; an Engineering Tool holds a design that should meet it.
+_Avoid_: domain tool, external tool, CAD (too narrow), domain (means something else here)
+
+**Tool Link**:
+A statement in the Model that one of its elements is designed in a specific place inside an Engineering Tool, for example that `part engine` is the body `Engine` in `engine.FCStd`. It is written as metadata on the element.
+_Avoid_: binding (a SysML binding connects features), mapping, trace
+
+**Design Value**:
+The value an Engineering Tool reports, through a Tool Link, for a feature of the linked element (the mass FreeCAD reports for body `Engine`). Checks use it in place of the Model Value; a difference between the two is shown, not judged.
+_Avoid_: pulled value, actual value, measured value
+
+**Model Value**:
+The value the Model itself writes for a feature. Once a Tool Link gives that feature a Design Value, the Model Value is kept and shown beside it, typically as the estimate or budget from before the design existed.
+_Avoid_: estimate (it isn't always one), nominal value
+
 ### Output
 
 **Export**:
