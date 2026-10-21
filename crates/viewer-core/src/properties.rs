@@ -67,6 +67,12 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             .unwrap_or_else(|| subject.to_string());
         rows.push(link("Subject", subject, label));
     }
+    if let Some(l) = model.tool_link(element) {
+        rows.push(text(
+            "Tool Link",
+            format!("⚙ {} · {} · {}", l.tool, l.file, l.object),
+        ));
+    }
     if let Some(value) = &e.value {
         rows.push(text("Value", value.clone()));
     }

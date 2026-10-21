@@ -4,6 +4,7 @@ mod common;
 
 use std::path::Path;
 
+use viewer_core::engineering_tools::DesignValue;
 use viewer_core::model::Direction;
 use viewer_core::properties::{Property, properties};
 use viewer_core::{FakeBackend, Model, ModelBackend, QualifiedName};
@@ -195,5 +196,44 @@ fn metadata_annotations_are_listed_and_lead_to_their_defs() {
             ("Metadata", "@Safety".to_owned(), Some(qn("M::Safety"))),
             ("Metadata", "@Supplier".to_owned(), Some(qn("M::Supplier"))),
         ]
+    );
+}
+
+/// A drive whose engine is designed in FreeCAD, as a load with the tool
+/// would give it.
+fn linked_drive() -> Model {
+    let model = Model::builder()
+        .package("Drive")
+        .part("Drive::drive")
+        .part("Drive::drive::engine")
+        .tool_link("FreeCAD", "cad/engine.FCStd", "Engine")
+        .attribute("Drive::drive::engine::volume")
+        .value("900000.0 [millimetre ** 3]")
+        .design_value(
+            "Volume",
+            DesignValue::Read {
+                value: "1000000.0 [mm^3]".to_owned(),
+            },
+        )
+        .build();
+    FakeBackend::new(model).load(Path::new("drive")).unwrap()
+}
+
+fn rows_of(model: &Model, element: &str) -> Vec<(&'static str, String)> {
+    properties(model, &qn(element))
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|p| (p.label, p.value))
+        .collect()
+}
+
+#[test]
+fn a_linked_element_shows_its_tool_link() {
+    assert!(
+        rows_of(&linked_drive(), "Drive::drive::engine").contains(&(
+            "Tool Link",
+            "⚙ FreeCAD · cad/engine.FCStd · Engine".to_owned()
+        ))
     );
 }
