@@ -23,8 +23,8 @@ use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
 use viewer_core::backend::Analyses;
 use viewer_core::engineering_tools::EngineeringTool;
 use viewer_core::model::{
-    Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity,
-    SourceLocation,
+    ClaimResult, Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName,
+    Severity, SourceLocation,
 };
 use viewer_core::{BackendError, ModelBackend};
 
@@ -220,7 +220,8 @@ impl ModelBackend for OpenSysmlBackend {
 
         // The checks run on the Model with its Design Values; the elements
         // keep what the Model writes, Model Values included.
-        let plan = design_values::plan(&tool_links, &mut self.tools, &elements);
+        let mut plan = design_values::plan(&tool_links, &mut self.tools, &elements);
+        diagnostics.append(&mut plan.diagnostics);
         let designed = match with_design_values(&connection, &parsed, &documents, &plan.edits) {
             Ok(designed) => designed,
             Err(error) => {
@@ -238,9 +239,31 @@ impl ModelBackend for OpenSysmlBackend {
             folder,
             analyses,
         ));
+        for result in elements.values_mut().flat_map(check_results) {
+            if let ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason } = result
+                && let Some(words) = plan.translate(reason)
+            {
+                *reason = words;
+            }
+        }
         Ok(Model::new(elements.into_values(), diagnostics)
             .with_design_values(plan.tool_links, plan.outcomes))
     }
+}
+
+/// Every check result recorded on `element`: its claim's, its constraint
+/// checks', its analysis objective's.
+fn check_results(element: &mut Element) -> impl Iterator<Item = &mut ClaimResult> {
+    element
+        .claim_result
+        .iter_mut()
+        .chain(element.checks.iter_mut().map(|c| &mut c.result))
+        .chain(
+            element
+                .analysis_result
+                .iter_mut()
+                .flat_map(|a| a.objective.as_mut()),
+        )
 }
 
 /// `parsed` with `edits` made in memory, one editor per document, and
