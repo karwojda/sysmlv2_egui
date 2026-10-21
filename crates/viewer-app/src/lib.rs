@@ -62,6 +62,8 @@ pub struct ViewerApp {
     /// A Diagram to open once the Model has loaded: its root, and whether
     /// an Interconnection Diagram was asked for.
     pending_root: Option<(QualifiedName, bool)>,
+    /// An element to select once the Model has loaded.
+    pending_select: Option<QualifiedName>,
     /// A Diagram to open after the current panel is drawn.
     pending_open: Option<DiagramSource>,
     export_path: String,
@@ -171,6 +173,7 @@ impl ViewerApp {
             diagrams: Vec::new(),
             active: None,
             pending_root: root.map(|root| (root, false)),
+            pending_select: None,
             pending_open: None,
             export_path: String::new(),
             save_name: String::new(),
@@ -230,6 +233,9 @@ impl ViewerApp {
                     self.model = Some(shown.model);
                     self.diagnostics = shown.diagnostics;
                     self.stale = shown.stale;
+                    if let Some(element) = self.pending_select.take() {
+                        self.selected = Some(element);
+                    }
                     if let Some((root, interconnection)) = self.pending_root.take() {
                         let is_view = self
                             .model
@@ -303,7 +309,7 @@ impl ViewerApp {
 
     /// Starts with `element` selected, so Properties shows it once loaded.
     pub fn select(mut self, element: QualifiedName) -> Self {
-        self.selected = Some(element);
+        self.pending_select = Some(element);
         self
     }
 
