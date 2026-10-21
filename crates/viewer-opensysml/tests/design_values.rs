@@ -240,3 +240,111 @@ fn a_model_without_tool_links_never_asks_the_tool() {
     assert_eq!(with_tool, without);
     assert!(with_tool.tool_links().is_empty());
 }
+
+/// `fixtures/design_value_shapes`: the engine's volume has a body and no
+/// value, and the gearbox's only redefines Gearbox's `default`.
+fn load_shapes() -> (Model, Calls) {
+    let (tool, calls) = designed();
+    let model = OpenSysmlBackend::new()
+        .with_tool("FreeCAD", tool)
+        .load(&fixture("design_value_shapes"))
+        .unwrap();
+    assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
+    (model, calls)
+}
+
+/// What checking `constraint` (`Engine::engineMass`) on `part` found.
+fn check_on(model: &Model, constraint: &str, part: &str) -> Status {
+    let part = QualifiedName::new(format!("Drive::drive::{part}"));
+    let check = element(model, constraint)
+        .checks
+        .iter()
+        .find(|c| c.part == part)
+        .unwrap_or_else(|| panic!("{constraint} not checked on {part}"));
+    Status::of(&check.result)
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_feature_with_a_body_and_no_value_takes_the_design_value() {
+    let (model, _) = load_shapes();
+
+    // The Model gives the engine no volume; the design's 1.0e6 mm³ makes
+    // it 7.85 kg, over its 7.5 kg.
+    assert_eq!(
+        element(&model, "drive::engine::volume").computed,
+        ["1000000.0 [mm³]"]
+    );
+    assert_eq!(
+        check_on(&model, "Engine::engineMass", "engine"),
+        Status::Violated
+    );
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_redefinition_of_an_inherited_default_takes_the_design_value_and_the_def_keeps_it() {
+    let (model, _) = load_shapes();
+
+    // Gearbox's default is 0.2e6 mm³, 0.54 kg; the design's 0.3e6 mm³
+    // makes the linked gearbox 0.81 kg, over its 0.6 kg. The spare keeps
+    // the default. The drive is 7.85 kg + 0.81 kg.
+    assert_eq!(
+        element(&model, "drive::gearbox::volume").computed,
+        ["300000.0 [mm³]"]
+    );
+    assert_eq!(
+        check_on(&model, "Gearbox::gearboxMass", "gearbox"),
+        Status::Violated
+    );
+    assert_eq!(
+        check_on(&model, "Gearbox::gearboxMass", "spare"),
+        Status::Holds
+    );
+    assert_eq!(
+        element(&model, "Gearbox::volume").value.as_deref(),
+        Some("default 200000.0 [millimetre ** 3]")
+    );
+    assert_eq!(element(&model, "drive::mass").computed, ["8.66 [kg]"]);
+    assert_eq!(requirement_status(&model), Status::Violated);
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn valueless_features_are_recorded_by_their_resolved_names_with_the_model_value_they_inherit() {
+    let (model, _) = load_shapes();
+    let outcome =
+        |feature: &str, object: &str, value: &str, model_value: Option<&str>| DesignValueOutcome {
+            feature: QualifiedName::new(feature),
+            source: DesignValueSource {
+                tool: "FreeCAD".to_owned(),
+                file: "cad/drive.FCStd".to_owned(),
+                object: object.to_owned(),
+                property: "Volume".to_owned(),
+            },
+            design_value: DesignValue::Read {
+                value: value.to_owned(),
+            },
+            model_value: model_value.map(str::to_owned),
+        };
+
+    // The engine's volume has no Model Value anywhere; the gearbox's is
+    // Gearbox's default.
+    assert_eq!(
+        model.design_values(),
+        [
+            outcome(
+                "Drive::drive::engine::volume",
+                "Engine",
+                "1000000.0 [mm^3]",
+                None
+            ),
+            outcome(
+                "Drive::drive::gearbox::volume",
+                "Assembly.Link.",
+                "300000.0 [mm^3]",
+                Some("default 200000.0 [millimetre ** 3]")
+            ),
+        ]
+    );
+}

@@ -31,6 +31,10 @@ pub(crate) struct LinkedProperty {
     pub property: String,
     /// Whether the feature writes a value of its own.
     pub has_value: bool,
+    /// What the feature redefines, nearest first (`Drive::Gearbox::volume`,
+    /// `Drive::Component::volume`): where its Model Value comes from when
+    /// it writes none.
+    pub redefines: Vec<QualifiedName>,
     /// The document declaring the feature, as the parse named it.
     pub document: String,
 }
@@ -55,6 +59,21 @@ pub(crate) struct Edit {
     pub document: String,
     pub feature: QualifiedName,
     pub value: String,
+    pub how: How,
+}
+
+/// How a Design Value gets into the Model.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum How {
+    /// The feature writes a value of its own, which `value` replaces.
+    SetValue,
+    /// The feature has a body and no value, which the service won't give
+    /// one: it is replaced by `attribute :>> <redefines> = <value>;` in
+    /// `owner`.
+    Redefine {
+        owner: QualifiedName,
+        redefines: String,
+    },
 }
 
 /// What the tools answered: the edits to make, and what the Model records.
@@ -66,8 +85,7 @@ pub(crate) struct Plan {
 }
 
 /// Asks `tools` for every linked property, one call per tool and file, and
-/// plans the edits. Model Values come from `elements`. Features without a
-/// value of their own aren't linked yet.
+/// plans the edits. Model Values come from `elements`.
 pub(crate) fn plan(
     read: &ToolLinks,
     tools: &mut BTreeMap<String, Box<dyn EngineeringTool>>,
@@ -76,7 +94,6 @@ pub(crate) fn plan(
     let linked: Vec<(&LinkedProperty, &HeldLink, PathBuf)> = read
         .properties
         .iter()
-        .filter(|p| p.has_value)
         .filter_map(|p| {
             let held = read.links.iter().find(|h| h.link.element == p.owner)?;
             Some((p, held, resolve(&held.document, &held.link.file)))
@@ -124,6 +141,7 @@ pub(crate) fn plan(
                     document: property.document.clone(),
                     feature: property.feature.clone(),
                     value: value.clone(),
+                    how: how(property),
                 });
                 DesignValue::Read { value }
             }
@@ -138,12 +156,24 @@ pub(crate) fn plan(
                 property: property.property.clone(),
             },
             design_value,
-            model_value: elements
-                .get(&property.feature)
-                .and_then(|e| e.value.clone()),
+            model_value: std::iter::once(&property.feature)
+                .chain(&property.redefines)
+                .find_map(|feature| elements.get(feature)?.value.clone()),
         });
     }
     plan
+}
+
+/// How `property`'s feature takes its Design Value.
+fn how(property: &LinkedProperty) -> How {
+    if property.has_value {
+        return How::SetValue;
+    }
+    let name = property.feature.as_str();
+    How::Redefine {
+        owner: property.owner.clone(),
+        redefines: name.rsplit("::").next().unwrap_or(name).to_owned(),
+    }
 }
 
 /// `file` as a Tool Link writes it, relative to the folder of `document`,

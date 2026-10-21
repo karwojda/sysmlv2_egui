@@ -264,7 +264,24 @@ fn with_design_values(
         let mut editor = parsed.edit();
         editor.in_document(document);
         for edit in edits {
-            editor.set_value(edit.feature.as_str(), &edit.value);
+            match &edit.how {
+                design_values::How::SetValue => {
+                    editor.set_value(edit.feature.as_str(), &edit.value);
+                }
+                design_values::How::Redefine { owner, redefines } => {
+                    editor.delete(edit.feature.as_str(), false);
+                    editor.add_member(
+                        owner.as_str(),
+                        "attribute",
+                        "",
+                        opensysml::MemberOptions {
+                            value: Some(edit.value.clone()),
+                            redefines: vec![redefines.clone()],
+                            ..opensysml::MemberOptions::new()
+                        },
+                    );
+                }
+            }
         }
         for result in editor.apply()?.documents {
             edited.insert(result.name, result.content);

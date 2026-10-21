@@ -80,6 +80,8 @@ pub struct DesignValueOutcome {
     pub source: DesignValueSource,
     pub design_value: DesignValue,
     /// The value the Model writes for the feature, as written
-    /// (`0.9e6 [mm^3]`), if it writes one.
+    /// (`0.9e6 [mm^3]`), if it writes one. A feature that writes none has
+    /// the one it inherits through what it redefines, if any
+    /// (`default 0.2e6 [mm^3]` from its def).
     pub model_value: Option<String>,
 }
