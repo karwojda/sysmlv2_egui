@@ -652,3 +652,25 @@ fn computed_quantities_read_as_numbers_in_readable_units() {
     assert_eq!(engine_value(&model, "sum"), ["2000000.0 [mm³]"]);
     assert_eq!(engine_value(&model, "huge"), ["30000000000000000000000"]);
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_model_with_the_engineering_tools_library_resolves_its_tool_links() {
+    let model = OpenSysmlBackend::new()
+        .load(&fixture("tool_links"))
+        .unwrap();
+
+    assert_eq!(model.diagnostics(), &[]);
+    assert!(
+        model
+            .element(&QualifiedName::from("Drive::drive::engine"))
+            .is_some()
+    );
+}
+
+#[test]
+fn the_tool_links_fixture_holds_the_library_the_tool_prints() {
+    let copy = std::fs::read_to_string(fixture("tool_links").join("EngineeringTools.sysml"));
+
+    assert_eq!(copy.unwrap(), viewer_core::engineering_tools::LIBRARY);
+}

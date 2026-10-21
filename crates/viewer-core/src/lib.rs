@@ -11,6 +11,7 @@ pub mod constraint;
 pub mod diagram;
 pub mod diagram_file;
 pub mod editing;
+pub mod engineering_tools;
 mod interconnection;
 mod layout;
 pub mod model;
