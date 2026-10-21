@@ -406,6 +406,7 @@ fn tool_links(
                     owner: linked,
                     property: field(id, "name"),
                     has_value,
+                    redefines: redefinitions(items, children, owner),
                     document,
                 });
             }
@@ -519,19 +520,56 @@ fn valued_element(
     {
         return Some(QualifiedName::new(qualified));
     }
-    let name = match feature.get("declaredName").and_then(Value::as_str) {
-        Some(name) => name,
-        None => children
-            .get(id)?
-            .iter()
-            .find(|c| c.get("@type").and_then(Value::as_str) == Some("Redefinition"))
-            .and_then(|r| reference(r, "redefinedFeature"))
-            .and_then(|r| items.get(r))
-            .and_then(|(r, _)| r.get("declaredName")?.as_str())?,
-    };
+    let name = declared_name(items, children, id)?;
     // The owner may be an unnamed redefinition too (`part :>> tank { … }`).
     let owner = valued_element(items, children, reference(feature, "owner")?)?;
     Some(QualifiedName::new(format!("{owner}::{name}")))
+}
+
+/// The name of feature `id`, or of the feature it redefines when it has
+/// none, recursively: `:>> volume` in a usage may redefine a def's own
+/// unnamed `:>> volume default = …`.
+fn declared_name<'a>(
+    items: &'a HashMap<String, (Value, PathBuf)>,
+    children: &HashMap<&str, Vec<&Value>>,
+    id: &str,
+) -> Option<&'a str> {
+    let (feature, _) = items.get(id)?;
+    if let Some(name) = feature.get("declaredName").and_then(Value::as_str) {
+        return Some(name);
+    }
+    declared_name(items, children, redefined(children, id)?)
+}
+
+/// The id of the feature that feature `id` redefines.
+fn redefined<'a>(children: &HashMap<&str, Vec<&'a Value>>, id: &str) -> Option<&'a str> {
+    children
+        .get(id)?
+        .iter()
+        .find(|c| c.get("@type").and_then(Value::as_str) == Some("Redefinition"))
+        .and_then(|r| reference(r, "redefinedFeature"))
+}
+
+/// Our elements for what feature `id` redefines, nearest first: for the
+/// gearbox's `:>> volume`, `Gearbox::volume` then `Component::volume`.
+fn redefinitions(
+    items: &HashMap<String, (Value, PathBuf)>,
+    children: &HashMap<&str, Vec<&Value>>,
+    id: &str,
+) -> Vec<QualifiedName> {
+    let mut chain = Vec::new();
+    let mut next = redefined(children, id);
+    while let Some(id) = next {
+        let Some(name) = valued_element(items, children, id) else {
+            break;
+        };
+        if chain.contains(&name) {
+            break;
+        }
+        chain.push(name);
+        next = redefined(children, id);
+    }
+    chain
 }
 
 /// The feature a claim's subject is bound to by value: `by vehicle.powertrain`

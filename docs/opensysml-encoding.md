@@ -22,7 +22,8 @@ It prints the symbol tree (`TREE` lines) and the JSON items whose `@type` contai
 
 - A JSON `@id` is the qualified name with `::` written `__` and `@` written `_40`: `A::MassCheck::@2` is `A__MassCheck___402`. A membership's id is its member's id plus `_om`. Use `qualifiedName` to get our names; only `expose` falls back on the `_om` rule.
 - Unnamed elements get generated names, numbered within their owner: `P::@1`, `Req::@10`. Sort them by that number, not as text, to keep declaration order.
-- A redefinition without a name of its own (`attribute :>> mass = 180.0`) is unnamed in the element form (`engine::@0`) but appears in the symbol tree under the name of the feature it redefines (`engine::mass`). Its owner may be an unnamed redefinition too (`part :>> tank { … }`), so resolve names recursively (`valued_element`).
+- A redefinition without a name of its own (`attribute :>> mass = 180.0`) is unnamed in the element form (`engine::@0`) but appears in the symbol tree under the name of the feature it redefines (`engine::mass`). Its owner may be an unnamed redefinition too (`part :>> tank { … }`), so resolve names recursively (`valued_element`). The feature it redefines may be unnamed as well (a usage's `:>> volume` redefines its def's own `:>> volume default = …`), so follow `Redefinition` → `redefinedFeature` until one has a `declaredName` (`declared_name`).
+- An unnamed redefinition with a body and no value (`attribute :>> volume { @ToolProperty … }`) refuses `set_value`; to give it one, `delete` it and `add_member(owner, "attribute", "", redefines = ["volume"], value)`.
 
 ## Where each fact lives
 
