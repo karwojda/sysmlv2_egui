@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use viewer_core::engineering_tools::{
     DesignValue, DesignValueOutcome, DesignValueSource, EngineeringTool, ToolLink, Wanted,
 };
-use viewer_core::model::{Diagnostic, Element, QualifiedName, Severity};
+use viewer_core::model::{Diagnostic, Element, QualifiedName, Severity, SourceLocation};
 
 /// A Tool Link and the document holding it, whose folder its `file` is
 /// relative to.
@@ -37,6 +37,9 @@ pub(crate) struct LinkedProperty {
     pub redefines: Vec<QualifiedName>,
     /// The document declaring the feature, as the parse named it.
     pub document: String,
+    /// Where the feature is declared: an unnamed redefinition is no
+    /// element of ours, so has no location of its own.
+    pub source: Option<SourceLocation>,
 }
 
 /// What the Model's Tool Links say, as the backend read them.
@@ -177,7 +180,7 @@ pub(crate) fn plan(
                     "@ToolProperty on {}, but {} has no Tool Link: it takes no Design Value",
                     property.feature, property.owner
                 ),
-                location: at(&property.feature),
+                location: property.source.clone(),
             }),
         }
     }
