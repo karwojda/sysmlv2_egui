@@ -22,6 +22,7 @@ pub mod scene;
 pub mod settings;
 pub mod style;
 pub mod svg;
+pub mod units;
 pub mod verdict;
 pub mod view;
 pub mod watch;
