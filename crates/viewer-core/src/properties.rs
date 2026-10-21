@@ -3,6 +3,7 @@
 
 use crate::constraint;
 use crate::diagram::DiagramKind;
+use crate::engineering_tools::DesignValue;
 use crate::model::{ElementKind, Model, QualifiedName, SourceLocation};
 use crate::satisfaction;
 use crate::verdict::{self, Kind, Status};
@@ -67,7 +68,36 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             .unwrap_or_else(|| subject.to_string());
         rows.push(link("Subject", subject, label));
     }
-    if let Some(value) = &e.value {
+    if let Some(l) = model.tool_link(element) {
+        rows.push(text(
+            "Tool Link",
+            format!("⚙ {} · {} · {}", l.tool, l.file, l.object),
+        ));
+    }
+    // A linked feature: the value the checks used, then the Model's own.
+    if let Some(outcome) = model.design_value(element) {
+        let source = &outcome.source;
+        rows.push(text(
+            "Design Value",
+            match &outcome.design_value {
+                DesignValue::Read { value } => format!(
+                    "{}  ⚙ {} {}.{}",
+                    readable(value),
+                    source.tool,
+                    source.object,
+                    source.property
+                ),
+                DesignValue::Missing { reason } => format!("⚠ none: {reason}"),
+            },
+        ));
+        rows.push(text(
+            "Model Value",
+            outcome
+                .model_value
+                .as_deref()
+                .map_or_else(|| "none".to_owned(), readable),
+        ));
+    } else if let Some(value) = &e.value {
         rows.push(text("Value", value.clone()));
     }
     if !e.computed.is_empty() {
@@ -224,6 +254,61 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
     Some(Properties {
         rows,
         source: e.source.clone(),
+    })
+}
+
+/// A Design Value or Model Value with its unit as the Model writes it, not
+/// as the tool or the service spells it: `1000000.0 [mm^3]` and
+/// `default 900000.0 [millimetre ** 3]` read `1000000.0 [mm³]` and
+/// `default 900000.0 [mm³]`.
+fn readable(value: &str) -> String {
+    let Some((number, rest)) = value.split_once('[') else {
+        return value.to_owned();
+    };
+    let Some((unit, after)) = rest.split_once(']') else {
+        return value.to_owned();
+    };
+    let mut plain = String::new();
+    let mut chars = unit.chars().filter(|c| *c != ' ').peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' if chars.peek() == Some(&'*') => {
+                chars.next();
+                superscript(&mut chars, &mut plain);
+            }
+            '^' => superscript(&mut chars, &mut plain),
+            c => plain.push(c),
+        }
+    }
+    format!("{number}[{}]{after}", symbols(&plain))
+}
+
+/// Writes the power that follows in `chars` (`3`, `-1`) as superscripts.
+fn superscript(chars: &mut std::iter::Peekable<impl Iterator<Item = char>>, out: &mut String) {
+    const DIGITS: [char; 10] = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+    if chars.peek() == Some(&'-') {
+        chars.next();
+        out.push('⁻');
+    }
+    while let Some(d) = chars.peek().and_then(|c| c.to_digit(10)) {
+        chars.next();
+        out.push(DIGITS[d as usize]);
+    }
+}
+
+/// Unit names the service spells out (`millimetre`) as their symbols (`mm`).
+fn symbols(unit: &str) -> String {
+    const NAMES: [(&str, &str); 7] = [
+        ("millimetre", "mm"),
+        ("centimetre", "cm"),
+        ("kilometre", "km"),
+        ("metre", "m"),
+        ("kilogram", "kg"),
+        ("gram", "g"),
+        ("second", "s"),
+    ];
+    NAMES.iter().fold(unit.to_owned(), |unit, (name, symbol)| {
+        unit.replace(name, symbol)
     })
 }
 

@@ -23,6 +23,7 @@ use viewer_core::{
 use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
 use loader::Loader;
 use viewer_core::watch::{Shown, accept};
+use viewer_opensysml::{OpenSysmlBackend, ServiceConfig};
 use watcher::Watcher;
 
 pub struct ViewerApp {
@@ -61,6 +62,8 @@ pub struct ViewerApp {
     /// A Diagram to open once the Model has loaded: its root, and whether
     /// an Interconnection Diagram was asked for.
     pending_root: Option<(QualifiedName, bool)>,
+    /// An element to select once the Model has loaded.
+    pending_select: Option<QualifiedName>,
     /// A Diagram to open after the current panel is drawn.
     pending_open: Option<DiagramSource>,
     export_path: String,
@@ -122,6 +125,14 @@ enum BrowserAction {
     OpenView(QualifiedName),
 }
 
+/// The backend the app loads with: the OpenSysML service, with the
+/// Engineering Tools that give Design Values (FreeCAD). The loader owns it
+/// on its worker thread, so tools run there too and a load arrives with its
+/// Design Values in one piece.
+pub fn backend(config: ServiceConfig) -> OpenSysmlBackend {
+    OpenSysmlBackend::with_config(config).with_tool("FreeCAD", viewer_tools::FreeCad::new())
+}
+
 impl ViewerApp {
     /// Creates the app; with `folder`, starts loading it straight away, and
     /// with `root` too, opens a General Diagram of it once loaded.
@@ -162,6 +173,7 @@ impl ViewerApp {
             diagrams: Vec::new(),
             active: None,
             pending_root: root.map(|root| (root, false)),
+            pending_select: None,
             pending_open: None,
             export_path: String::new(),
             save_name: String::new(),
@@ -221,6 +233,9 @@ impl ViewerApp {
                     self.model = Some(shown.model);
                     self.diagnostics = shown.diagnostics;
                     self.stale = shown.stale;
+                    if let Some(element) = self.pending_select.take() {
+                        self.selected = Some(element);
+                    }
                     if let Some((root, interconnection)) = self.pending_root.take() {
                         let is_view = self
                             .model
@@ -289,6 +304,12 @@ impl ViewerApp {
     /// Starts with the Style panel showing instead of Properties.
     pub fn show_style_panel(mut self) -> Self {
         self.right_tab = RightTab::Style;
+        self
+    }
+
+    /// Starts with `element` selected, so Properties shows it once loaded.
+    pub fn select(mut self, element: QualifiedName) -> Self {
+        self.pending_select = Some(element);
         self
     }
 
