@@ -23,6 +23,7 @@ use viewer_core::{
 use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
 use loader::Loader;
 use viewer_core::watch::{Shown, accept};
+use viewer_opensysml::{OpenSysmlBackend, ServiceConfig};
 use watcher::Watcher;
 
 pub struct ViewerApp {
@@ -120,6 +121,14 @@ enum BrowserAction {
     Select(QualifiedName),
     Open(DiagramKind, QualifiedName),
     OpenView(QualifiedName),
+}
+
+/// The backend the app loads with: the OpenSysML service, with the
+/// Engineering Tools that give Design Values (FreeCAD). The loader owns it
+/// on its worker thread, so tools run there too and a load arrives with its
+/// Design Values in one piece.
+pub fn backend(config: ServiceConfig) -> OpenSysmlBackend {
+    OpenSysmlBackend::with_config(config).with_tool("FreeCAD", viewer_tools::FreeCad::new())
 }
 
 impl ViewerApp {
@@ -289,6 +298,12 @@ impl ViewerApp {
     /// Starts with the Style panel showing instead of Properties.
     pub fn show_style_panel(mut self) -> Self {
         self.right_tab = RightTab::Style;
+        self
+    }
+
+    /// Starts with `element` selected, so Properties shows it once loaded.
+    pub fn select(mut self, element: QualifiedName) -> Self {
+        self.selected = Some(element);
         self
     }
 

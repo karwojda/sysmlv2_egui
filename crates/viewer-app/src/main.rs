@@ -4,7 +4,7 @@ use clap::Parser;
 use eframe::egui;
 use viewer_app::ViewerApp;
 use viewer_core::QualifiedName;
-use viewer_opensysml::{BINARY_VARIABLE, OpenSysmlBackend, ServiceConfig};
+use viewer_opensysml::{BINARY_VARIABLE, ServiceConfig};
 
 /// View SysML v2 Models as Diagrams.
 #[derive(Parser)]
@@ -70,7 +70,7 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             let app = ViewerApp::new(
                 &cc.egui_ctx,
-                Box::new(OpenSysmlBackend::with_config(config)),
+                Box::new(viewer_app::backend(config)),
                 folder,
                 root,
             );

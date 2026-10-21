@@ -215,6 +215,27 @@ fn linked_drive() -> Model {
                 value: "1000000.0 [mm^3]".to_owned(),
             },
         )
+        .part("Drive::drive::gearbox")
+        .tool_link("FreeCAD", "cad/engine.FCStd", "Assembly.Link.")
+        .attribute("Drive::drive::gearbox::volume")
+        .value("default 200000.0 [millimetre ** 3]")
+        .design_value(
+            "Volume",
+            DesignValue::Missing {
+                reason: "FreeCAD not available".to_owned(),
+            },
+        )
+        .attribute("Drive::drive::gearbox::area")
+        .design_value(
+            "Area",
+            DesignValue::Missing {
+                reason: "FreeCAD has no property Area (it reads Volume)".to_owned(),
+            },
+        )
+        // A sibling of the same kind, with no link.
+        .part("Drive::drive::spare")
+        .attribute("Drive::drive::spare::volume")
+        .value("900000.0 [millimetre ** 3]")
         .build();
     FakeBackend::new(model).load(Path::new("drive")).unwrap()
 }
@@ -230,10 +251,64 @@ fn rows_of(model: &Model, element: &str) -> Vec<(&'static str, String)> {
 
 #[test]
 fn a_linked_element_shows_its_tool_link() {
+    assert!(rows_of(&linked_drive(), "Drive::drive::engine").contains(&(
+        "Tool Link",
+        "⚙ FreeCAD · cad/engine.FCStd · Engine".to_owned()
+    )));
+}
+
+#[test]
+fn a_linked_feature_shows_its_design_value_then_its_model_value_in_place_of_value() {
+    assert_eq!(
+        rows_of(&linked_drive(), "Drive::drive::engine::volume"),
+        [
+            ("Kind", "«attribute»".to_owned()),
+            ("Name", "volume".to_owned()),
+            ("Qualified name", "Drive::drive::engine::volume".to_owned()),
+            ("Owner", "Drive::drive::engine".to_owned()),
+            (
+                "Design Value",
+                "1000000.0 [mm³]  ⚙ FreeCAD Engine.Volume".to_owned()
+            ),
+            ("Model Value", "900000.0 [mm³]".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn a_feature_without_a_design_value_says_why_beside_the_model_value_it_inherits() {
+    let model = linked_drive();
+    let rows = rows_of(&model, "Drive::drive::gearbox::volume");
+    assert_eq!(
+        rows[4..],
+        [
+            ("Design Value", "⚠ none: FreeCAD not available".to_owned()),
+            ("Model Value", "default 200000.0 [mm³]".to_owned()),
+        ]
+    );
+    assert_eq!(
+        rows_of(&model, "Drive::drive::gearbox::area")[4..],
+        [
+            (
+                "Design Value",
+                "⚠ none: FreeCAD has no property Area (it reads Volume)".to_owned()
+            ),
+            ("Model Value", "none".to_owned()),
+        ],
+        "a feature that writes no value has no Model Value"
+    );
+}
+
+#[test]
+fn unlinked_elements_show_their_plain_value_and_no_tool_link() {
+    let model = linked_drive();
+    assert_eq!(
+        rows_of(&model, "Drive::drive::spare::volume")[4..],
+        [("Value", "900000.0 [millimetre ** 3]".to_owned())]
+    );
     assert!(
-        rows_of(&linked_drive(), "Drive::drive::engine").contains(&(
-            "Tool Link",
-            "⚙ FreeCAD · cad/engine.FCStd · Engine".to_owned()
-        ))
+        !rows_of(&model, "Drive::drive::spare")
+            .iter()
+            .any(|(label, _)| *label == "Tool Link")
     );
 }
