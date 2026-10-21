@@ -1,0 +1,12 @@
+# PROTOTYPE: throwaway spike for "Does a live FreeCAD query work from this tool?". Not part of the workspace.
+[package]
+name = "live-freecad-prototype"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+opensysml = "=0.10.0"
+serde_json = "1"
+
+[workspace]
