@@ -64,6 +64,18 @@ fn several_instances_show_their_distinct_values() {
 }
 
 #[test]
+fn a_computed_quantity_follows_its_expression_with_its_unit() {
+    assert!(
+        one("volume * density", &["7.85 [kg]"])
+            .contains(&"a = volume * density = 7.85 [kg]".to_owned())
+    );
+    assert!(
+        one("1.0e6 [mm^3]", &["0.001 [m³]"]).contains(&"a = 1.0e6 [mm^3]".to_owned()),
+        "a quantity literal says itself"
+    );
+}
+
+#[test]
 fn an_expression_without_a_computed_value_keeps_just_its_expression() {
     assert!(one("x * 2", &[]).contains(&"a = x * 2".to_owned()));
 }

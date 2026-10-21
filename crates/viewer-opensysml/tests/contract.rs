@@ -626,3 +626,29 @@ fn a_broken_settings_file_warns_and_runs_analyses() {
             .is_some()
     );
 }
+
+/// The Computed Values of `Q::engine::<feature>` in `fixtures/quantities`.
+fn engine_value(model: &Model, feature: &str) -> Vec<String> {
+    model
+        .element(&QualifiedName::new(format!("Q::engine::{feature}")))
+        .unwrap()
+        .computed
+        .clone()
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn computed_quantities_read_as_numbers_in_readable_units() {
+    let model = OpenSysmlBackend::new()
+        .load(&fixture("quantities"))
+        .unwrap();
+    assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
+
+    // The service answers `157/20 [SI::kg]`, `0.002 [SI::'m³']`,
+    // `7850.0 [SI::'kg⋅m⁻³']`, `2000000.0 [mm**3]` and a BigInteger.
+    assert_eq!(engine_value(&model, "mass"), ["7.85 [kg]"]);
+    assert_eq!(engine_value(&model, "doubled"), ["0.002 [m³]"]);
+    assert_eq!(engine_value(&model, "perVolume"), ["7850.0 [kg/m³]"]);
+    assert_eq!(engine_value(&model, "sum"), ["2000000.0 [mm³]"]);
+    assert_eq!(engine_value(&model, "huge"), ["30000000000000000000000"]);
+}

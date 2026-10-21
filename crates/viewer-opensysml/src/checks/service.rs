@@ -130,19 +130,89 @@ fn value_text(value: &opensysml::Value) -> Option<String> {
     };
     match value {
         Value::Integer(i) => Some(i.to_string()),
+        Value::BigInteger(i) => Some(i.as_str().to_owned()),
+        // An exact fraction (`157/20`) as the decimal number it comes to.
+        Value::Rational(q) => Some(real(q.to_f64())),
         Value::Real(r) => Some(real(*r)),
         Value::Boolean(b) => Some(b.to_string()),
         Value::Text(t) => Some(format!("\"{t}\"")),
         Value::Quantity(q) => {
             let magnitude = match &q.magnitude {
                 Magnitude::Integer(i) => i.to_string(),
+                Magnitude::BigInteger(i) => i.as_str().to_owned(),
+                Magnitude::Rational(q) => real(q.to_f64()),
                 Magnitude::Real(r) => real(*r),
-                _ => return None,
             };
-            Some(format!("{magnitude} [{}]", q.unit))
+            Some(format!("{magnitude} [{}]", readable_unit(&q.unit)))
         }
         _ => None,
     }
+}
+
+/// A unit as the Model would write it, not as the service spells it:
+/// without package prefixes and quotes (`SI::'m³'` → `m³`), with powers as
+/// superscripts (`mm**3` → `mm³`), and a product with negative powers as a
+/// quotient (`kg⋅m⁻³` → `kg/m³`).
+fn readable_unit(unit: &str) -> String {
+    let mut plain = String::new();
+    let mut chars = unit.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => {}
+            ':' if chars.peek() == Some(&':') => {
+                chars.next();
+                // Drops the package name just written.
+                while plain.ends_with(|p: char| p.is_alphanumeric() || p == '_') {
+                    plain.pop();
+                }
+            }
+            '*' if chars.peek() == Some(&'*') => {
+                chars.next();
+                superscript(&mut chars, &mut plain);
+            }
+            '^' => superscript(&mut chars, &mut plain),
+            c => plain.push(c),
+        }
+    }
+    as_quotient(&plain).unwrap_or(plain)
+}
+
+/// Writes the power that follows in `chars` (`-1`, `3`) as superscripts.
+fn superscript(chars: &mut std::iter::Peekable<std::str::Chars>, out: &mut String) {
+    const DIGITS: [char; 10] = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+    if chars.peek() == Some(&'-') {
+        chars.next();
+        out.push('⁻');
+    }
+    while let Some(d) = chars.peek().and_then(|c| c.to_digit(10)) {
+        chars.next();
+        out.push(DIGITS[d as usize]);
+    }
+}
+
+/// `kg⋅m⁻¹⋅s⁻²` as `kg/(m⋅s²)`; `None` when the unit is no such product,
+/// or has no factor above the line (`s⁻¹` stays).
+fn as_quotient(unit: &str) -> Option<String> {
+    if unit.contains('/') {
+        return None;
+    }
+    let (over, under): (Vec<&str>, Vec<&str>) = unit.split('⋅').partition(|f| !f.contains('⁻'));
+    if over.is_empty() || under.is_empty() {
+        return None;
+    }
+    let under: Vec<String> = under
+        .iter()
+        .map(|f| match f.split_once('⁻') {
+            Some((base, "¹")) => base.to_owned(),
+            Some((base, power)) => format!("{base}{power}"),
+            None => f.to_string(),
+        })
+        .collect();
+    let under = match under.as_slice() {
+        [one] => one.clone(),
+        many => format!("({})", many.join("⋅")),
+    };
+    Some(format!("{}/{under}", over.join("⋅")))
 }
 
 #[cfg(test)]
@@ -161,5 +231,67 @@ mod tests {
             Some("\"x\"")
         );
         assert_eq!(value_text(&Value::InstanceRef(3)), None);
+    }
+
+    fn quantity(magnitude: opensysml::Magnitude, unit: &str) -> opensysml::Value {
+        opensysml::Value::Quantity(opensysml::Quantity {
+            magnitude,
+            unit: unit.to_owned(),
+            unit_term: None,
+        })
+    }
+
+    fn rational(numerator: &str, denominator: &str) -> opensysml::Rational {
+        opensysml::Rational::parse(numerator, denominator).unwrap()
+    }
+
+    #[test]
+    fn exact_fractions_are_written_as_decimal_numbers() {
+        use opensysml::{Magnitude, Value};
+        assert_eq!(
+            value_text(&quantity(Magnitude::Rational(rational("157", "20")), "kg")).as_deref(),
+            Some("7.85 [kg]")
+        );
+        assert_eq!(
+            value_text(&Value::Rational(rational("-1", "3"))).as_deref(),
+            Some("-0.3333333333333333")
+        );
+    }
+
+    #[test]
+    fn integers_beyond_i64_are_written_as_their_digits() {
+        use opensysml::{BigInteger, Magnitude, Value};
+        let big = || BigInteger::parse("30000000000000000000000").unwrap();
+        assert_eq!(
+            value_text(&Value::BigInteger(big())).as_deref(),
+            Some("30000000000000000000000")
+        );
+        assert_eq!(
+            value_text(&quantity(Magnitude::BigInteger(big()), "kg")).as_deref(),
+            Some("30000000000000000000000 [kg]")
+        );
+    }
+
+    #[test]
+    fn units_read_like_the_model_writes_them() {
+        let unit = |service: &str| {
+            value_text(&quantity(opensysml::Magnitude::Integer(1), service)).unwrap()
+        };
+        for (service, shown) in [
+            ("kg", "1 [kg]"),
+            ("SI::kg", "1 [kg]"),
+            ("SI::'m³'", "1 [m³]"),
+            ("mm**3", "1 [mm³]"),
+            ("m**-1", "1 [m⁻¹]"),
+            ("mm^2", "1 [mm²]"),
+            ("SI::'kg⋅m⁻³'", "1 [kg/m³]"),
+            ("SI::'kg⋅m⋅s⁻²'", "1 [kg⋅m/s²]"),
+            ("SI::'kg⋅m⁻¹⋅s⁻²'", "1 [kg/(m⋅s²)]"),
+            ("SI::'s⁻¹'", "1 [s⁻¹]"),
+            ("SI::'m⋅s⁻¹¹'", "1 [m/s¹¹]"),
+            ("kg/m^3", "1 [kg/m³]"),
+        ] {
+            assert_eq!(unit(service), shown, "{service}");
+        }
     }
 }

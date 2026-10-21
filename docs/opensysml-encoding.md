@@ -47,6 +47,7 @@ It prints the symbol tree (`TREE` lines) and the JSON items whose `@type` contai
 
 - A verdict's `status` is `holds` or `violated`, with the failing `condition`; a non-empty `error` means it couldn't be evaluated. An analysis objective's verdict has no status text, only the `holds` flag.
 - `validate_instance` of a top-level part returns verdicts with an `instance_path` relative to that part (`tank`, `axle.wheel`), and every instance's feature values: the value of feature `f` on an instance of type symbol `T` belongs to `T::f`.
+- A computed magnitude an `f64` doesn't hold exactly is a `Rational` (`1.0e6 [mm^3] * 7850 [kg/m^3]` is `157/20`), and one beyond `i64` a `BigInteger`. Units come back in the service's spelling: `SI::kg`, `SI::'m³'` and `SI::'kg⋅m⁻³'` from products and quotients, `mm**3` from sums. `value_text` writes them as decimals in readable units (`7.85 [kg]`, `kg/m³`, `mm³`).
 
 ## Quirks
 
