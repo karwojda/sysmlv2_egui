@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
+use viewer_core::engineering_tools::{Answer, EngineeringTool, ReadValue, Wanted};
 
 use crate::process;
 
@@ -255,7 +255,7 @@ impl EngineeringTool for FreeCad {
                     .map(|property| {
                         let value = match found["error"].as_str() {
                             Some(reason) => Err(format!("{reason} in {}", file.display())),
-                            None => value_text(&found[property]),
+                            None => value_text(&found[property]).map(ReadValue::new),
                         };
                         (property.clone(), value)
                     })

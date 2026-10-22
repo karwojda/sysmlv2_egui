@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use viewer_core::engineering_tools::{
-    DesignValue, DesignValueOutcome, DesignValueSource, EngineeringTool, ToolLink, Wanted,
+    DesignValue, DesignValueOutcome, DesignValueSource, EngineeringTool, ReadValue, ToolLink,
+    Wanted,
 };
 use viewer_core::model::{Diagnostic, Element, QualifiedName, Severity, SourceLocation};
 
@@ -256,7 +257,7 @@ pub(crate) fn plan(
         // a string can't be a quantity, so exactly the checks that depend
         // on it are Undecided, with the marker in the service's reason.
         let (written, design_value) = match value {
-            Ok(value) => {
+            Ok(ReadValue { value, parts }) => {
                 plan.written.values.push(WrittenValue {
                     feature: property.feature.clone(),
                     value: value.clone(),
@@ -265,7 +266,7 @@ pub(crate) fn plan(
                         property.feature, link.tool, link.object, property.property
                     ),
                 });
-                (value.clone(), DesignValue::Read { value })
+                (value.clone(), DesignValue::Read { value, parts })
             }
             Err(reason) => {
                 let marker = format!("{MARKER}{}#", plan.written.markers.len());

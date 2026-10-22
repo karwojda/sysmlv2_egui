@@ -12,11 +12,11 @@ See `.scratch/kicad-tracer/spec.md` (stories 18, 19, 31, 32, 35, 36), ADRs 0003 
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A read value in the trait's answer and in `DesignValue::Read` can carry counted and uncounted parts; FreeCAD answers carry none and its tests pass unchanged
-- [ ] Fixture Model loaded through the real backend with a fake tool: a summed `Power` flips a power requirement to violated, and the outcome records its counted and uncounted parts
-- [ ] A reason for one summed property leaves only its dependent checks Undecided
-- [ ] CLI: the summed line, the ten-ref cut with "and J more", natural order, and the form with nothing uncounted (tests with `FakeBackend`)
-- [ ] CLI output for a Model whose Design Values have no parts is unchanged
-- [ ] Properties: the summed Design Value row with every uncounted ref beneath; rows for a value without parts unchanged
+- [x] A read value in the trait's answer and in `DesignValue::Read` can carry counted and uncounted parts; FreeCAD answers carry none and its tests pass unchanged
+- [x] Fixture Model loaded through the real backend with a fake tool: a summed `Power` flips a power requirement to violated, and the outcome records its counted and uncounted parts
+- [x] A reason for one summed property leaves only its dependent checks Undecided
+- [x] CLI: the summed line, the ten-ref cut with "and J more", natural order, and the form with nothing uncounted (tests with `FakeBackend`)
+- [x] CLI output for a Model whose Design Values have no parts is unchanged
+- [x] Properties: the summed Design Value row with every uncounted ref beneath; rows for a value without parts unchanged

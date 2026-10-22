@@ -75,7 +75,10 @@ fn wanted(object: &str, properties: &[&str]) -> Wanted {
 }
 
 fn answer(answer: &Answer, object: &str, property: &str) -> Result<String, String> {
-    answer[object][property].clone()
+    answer[object][property].clone().map(|read| {
+        assert_eq!(read.parts, None, "a board dimension sums no parts");
+        read.value
+    })
 }
 
 #[test]

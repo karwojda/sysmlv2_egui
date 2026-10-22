@@ -18,10 +18,114 @@ pub const LIBRARY: &str = include_str!("../library/EngineeringTools.sysml");
 /// wanted (`{"Engine": {"Volume"}}`).
 pub type Wanted = BTreeMap<String, BTreeSet<String>>;
 
-/// What a tool said about one file: per object and property, a value with
-/// its unit as SysML writes it (`1000000.0 [mm^3]`) or the reason there is
-/// none (`no property Area`).
-pub type Answer = BTreeMap<String, BTreeMap<String, Result<String, String>>>;
+/// What a tool said about one file: per object and property, the value it
+/// read or the reason there is none (`no property Area`).
+pub type Answer = BTreeMap<String, BTreeMap<String, Result<ReadValue, String>>>;
+
+/// A value a tool read: its text with its unit as SysML writes it
+/// (`1000000.0 [mm^3]`), and, for a Summed Design Value, the parts it was
+/// added up over.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReadValue {
+    /// The value, `0.412 [W]`.
+    pub value: String,
+    /// The parts counted and left uncounted, when the value is a sum
+    /// (ADR-0006); `None` for a single value such as FreeCAD's volume.
+    pub parts: Option<Parts>,
+}
+
+impl ReadValue {
+    /// A single value, not added up over parts: `1000000.0 [mm^3]`.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            parts: None,
+        }
+    }
+
+    /// A Summed Design Value: `value` added up over `parts`.
+    pub fn summed(value: impl Into<String>, parts: Parts) -> Self {
+        Self {
+            value: value.into(),
+            parts: Some(parts),
+        }
+    }
+}
+
+/// The parts a Summed Design Value was added up over, by reference
+/// designator: those counted, and those left out because they state no
+/// value (ADR-0006). Each list is kept in natural order, `C2` before `C10`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Parts {
+    counted: Vec<String>,
+    uncounted: Vec<String>,
+}
+
+impl Parts {
+    /// The parts `counted` and `uncounted`, in any order.
+    pub fn new(
+        counted: impl IntoIterator<Item = impl Into<String>>,
+        uncounted: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        let sorted = |mut refs: Vec<String>| {
+            refs.sort_by(|a, b| natural_order(a, b));
+            refs
+        };
+        Self {
+            counted: sorted(counted.into_iter().map(Into::into).collect()),
+            uncounted: sorted(uncounted.into_iter().map(Into::into).collect()),
+        }
+    }
+
+    /// The parts counted, in natural order: `D1`, `U1`, `U2`.
+    pub fn counted(&self) -> &[String] {
+        &self.counted
+    }
+
+    /// The parts left uncounted, in natural order: `C2`, `C10`, `R1`.
+    pub fn uncounted(&self) -> &[String] {
+        &self.uncounted
+    }
+
+    /// How many were counted of all the parts: `summed 9 of 71 parts`.
+    pub fn summary(&self) -> String {
+        format!(
+            "summed {} of {} parts",
+            self.counted.len(),
+            self.counted.len() + self.uncounted.len()
+        )
+    }
+}
+
+/// `a` before `b` with runs of digits compared as numbers: `C2` before
+/// `C10`, `R1` after both.
+fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+    /// Splits off the leading run of digits or of other characters.
+    fn chunk(s: &str) -> (&str, &str) {
+        let digits = s.starts_with(|c: char| c.is_ascii_digit());
+        let end = s
+            .find(|c: char| c.is_ascii_digit() != digits)
+            .unwrap_or(s.len());
+        s.split_at(end)
+    }
+    let (mut a, mut b) = (a, b);
+    while !a.is_empty() && !b.is_empty() {
+        let ((x, rest_a), (y, rest_b)) = (chunk(a), chunk(b));
+        let numbers = x.starts_with(|c: char| c.is_ascii_digit())
+            && y.starts_with(|c: char| c.is_ascii_digit());
+        let order = if numbers {
+            let (x, y) = (x.trim_start_matches('0'), y.trim_start_matches('0'));
+            x.len().cmp(&y.len()).then_with(|| x.cmp(y))
+        } else {
+            x.cmp(y)
+        };
+        if order.is_ne() {
+            return order;
+        }
+        (a, b) = (rest_a, rest_b);
+    }
+    a.len().cmp(&b.len())
+}
 
 /// An Engineering Tool as a backend reaches it: an adapter that knows
 /// nothing of SysML (ADR-0005).
@@ -108,6 +212,9 @@ pub enum DesignValue {
     Read {
         /// The value, `1000000.0 [mm^3]`.
         value: String,
+        /// For a Summed Design Value, the parts counted and uncounted;
+        /// `None` for a single value.
+        parts: Option<Parts>,
     },
     /// There is no Design Value, and why: `FreeCAD not available`.
     Missing {

@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use viewer_core::engineering_tools::{EngineeringTool, Wanted};
+use viewer_core::engineering_tools::{EngineeringTool, ReadValue, Wanted};
 use viewer_tools::kicad::{KiCad, Machine};
 
 fn feather() -> PathBuf {
@@ -41,8 +41,9 @@ fn the_feather_board_gives_its_dimensions() {
     let read = kicad.read(&feather(), &wanted).unwrap();
 
     let board = &read["board"];
-    assert_eq!(board["Width"], Ok("58.42 [mm]".into()));
-    assert_eq!(board["Height"], Ok("22.86 [mm]".into()));
-    assert_eq!(board["Thickness"], Ok("1.6 [mm]".into()));
-    assert_eq!(board["Area"], Ok("1329.932 [mm^2]".into()));
+    let read = |property: &str| board[property].clone();
+    assert_eq!(read("Width"), Ok(ReadValue::new("58.42 [mm]")));
+    assert_eq!(read("Height"), Ok(ReadValue::new("22.86 [mm]")));
+    assert_eq!(read("Thickness"), Ok(ReadValue::new("1.6 [mm]")));
+    assert_eq!(read("Area"), Ok(ReadValue::new("1329.932 [mm^2]")));
 }

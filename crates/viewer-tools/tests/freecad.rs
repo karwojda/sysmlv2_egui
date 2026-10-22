@@ -38,7 +38,10 @@ fn wanted(objects: &[(&str, &[&str])]) -> Wanted {
 }
 
 fn answer(answer: &Answer, object: &str, property: &str) -> Result<String, String> {
-    answer[object][property].clone()
+    answer[object][property].clone().map(|read| {
+        assert_eq!(read.parts, None, "FreeCAD sums no parts");
+        read.value
+    })
 }
 
 #[test]

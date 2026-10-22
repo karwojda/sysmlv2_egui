@@ -16,7 +16,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde_json::Value;
-use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
+use viewer_core::engineering_tools::{Answer, EngineeringTool, ReadValue, Wanted};
 
 use crate::process;
 
@@ -359,7 +359,7 @@ fn dimension_key(property: &str) -> Option<&'static str> {
 
 /// `board.<key>` of the statistics, `"58.4200 mm"`, as SysML writes it:
 /// `58.42 [mm]`.
-fn dimension(statistics: &Value, key: &str) -> Result<String, String> {
+fn dimension(statistics: &Value, key: &str) -> Result<ReadValue, String> {
     let Some(text) = statistics["board"][key].as_str() else {
         return Err(format!("KiCad's board statistics have no board.{key}"));
     };
@@ -371,7 +371,7 @@ fn dimension(statistics: &Value, key: &str) -> Result<String, String> {
         "mm²" => "mm^2",
         _ => return Err(unreadable()),
     };
-    Ok(format!("{number:?} [{unit}]"))
+    Ok(ReadValue::new(format!("{number:?} [{unit}]")))
 }
 
 /// A run's temporary folder, holding the config folder KiCad is pointed
