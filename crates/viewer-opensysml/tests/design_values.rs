@@ -170,9 +170,12 @@ fn the_model_records_its_tool_links_and_each_feature_s_design_value_with_its_mod
         |feature: &str, object: &str, value: &str, model_value: &str| DesignValueOutcome {
             feature: QualifiedName::new(feature),
             source: DesignValueSource {
-                tool: "FreeCAD".to_owned(),
-                file: "cad/drive.FCStd".to_owned(),
-                object: object.to_owned(),
+                link: ToolLink {
+                    element: QualifiedName::new(feature.rsplit_once("::").unwrap().0),
+                    tool: "FreeCAD".to_owned(),
+                    file: "cad/drive.FCStd".to_owned(),
+                    object: object.to_owned(),
+                },
                 property: "Volume".to_owned(),
             },
             design_value: DesignValue::Read {
@@ -330,9 +333,12 @@ fn valueless_features_are_recorded_by_their_resolved_names_with_the_model_value_
         |feature: &str, object: &str, value: &str, model_value: Option<&str>| DesignValueOutcome {
             feature: QualifiedName::new(feature),
             source: DesignValueSource {
-                tool: "FreeCAD".to_owned(),
-                file: "cad/drive.FCStd".to_owned(),
-                object: object.to_owned(),
+                link: ToolLink {
+                    element: QualifiedName::new(feature.rsplit_once("::").unwrap().0),
+                    tool: "FreeCAD".to_owned(),
+                    file: "cad/drive.FCStd".to_owned(),
+                    object: object.to_owned(),
+                },
                 property: "Volume".to_owned(),
             },
             design_value: DesignValue::Read {
@@ -482,6 +488,33 @@ fn a_design_value_of_the_wrong_dimension_is_undecided() {
             "Design Value for Drive::drive::pump::mass (FreeCAD: Pump.Volume) does not fit it: \
              cannot write 1500000.0 [mm**3] (dimension L^3) to a feature typed by MassValue \
              (dimension M)"
+        )
+    );
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_design_value_of_the_wrong_dimension_names_its_own_feature_among_same_named_ones() {
+    let tool = FakeTool {
+        volumes: vec![("Front", "7.0 [kg]"), ("Rear", "1500000.0 [mm^3]")],
+        unreadable: Vec::new(),
+        calls: Calls::default(),
+    };
+    let model = OpenSysmlBackend::new()
+        .with_tool("FreeCAD", tool)
+        .load(&fixture("same_named_links"))
+        .unwrap();
+
+    assert_eq!(
+        check_result(&model, "Engine::engineMass", "front::engine"),
+        (Status::Holds, None)
+    );
+    assert_eq!(
+        check_result(&model, "Engine::engineMass", "rear::engine"),
+        undecided(
+            "Design Value for Drive::drive::rear::engine::mass (FreeCAD: Rear.Volume) does not \
+             fit it: cannot write 1500000.0 [mm**3] (dimension L^3) to a feature typed by \
+             MassValue (dimension M)"
         )
     );
 }

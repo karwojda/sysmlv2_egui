@@ -276,9 +276,7 @@ pub(crate) fn plan(
         plan.outcomes.push(DesignValueOutcome {
             feature: property.feature.clone(),
             source: DesignValueSource {
-                tool: link.tool.clone(),
-                file: link.file.clone(),
-                object: link.object.clone(),
+                link: link.clone(),
                 property: property.property.clone(),
             },
             design_value,

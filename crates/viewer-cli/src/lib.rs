@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::backend::Analyses;
-use viewer_core::engineering_tools::{self, DesignValue};
+use viewer_core::engineering_tools::{self, DesignValue, DesignValueSource, ToolLink};
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::model::{Element, ElementKind};
 use viewer_core::satisfaction;
@@ -263,31 +263,24 @@ fn design_values_report(model: &Model, stdout: &mut dyn Write) -> usize {
         return 0;
     }
     let width = width(outcomes.iter().map(|o| &o.feature));
-    let mut unread_links: Vec<(&str, &str, &str)> = Vec::new();
+    let mut unread_links: Vec<&ToolLink> = Vec::new();
     for outcome in outcomes {
-        let source = &outcome.source;
+        let DesignValueSource { link, property } = &outcome.source;
         let from = format!(
-            "{}: {} of {} in {}",
-            source.tool, source.property, source.object, source.file
+            "{}: {property} of {} in {}",
+            link.tool, link.object, link.file
         );
-        let (mark, label, text) = match &outcome.design_value {
-            DesignValue::Read { value } => (
-                "⚙",
-                "Read",
-                format!("{} from {from}", readable_value(value)),
-            ),
+        let design_value = &outcome.design_value;
+        let text = match design_value {
+            DesignValue::Read { value } => format!("{} from {from}", readable_value(value)),
             DesignValue::Missing { reason } => {
-                let link = (
-                    source.tool.as_str(),
-                    source.file.as_str(),
-                    source.object.as_str(),
-                );
                 if !unread_links.contains(&link) {
                     unread_links.push(link);
                 }
-                ("⚠", "Not read", format!("{reason}, for {from}"))
+                format!("{reason}, for {from}")
             }
         };
+        let (mark, label) = (design_value.mark(), design_value.label());
         let model_says = outcome.model_value.as_ref().map_or(String::new(), |v| {
             format!(" (Model says {})", readable_value(v))
         });

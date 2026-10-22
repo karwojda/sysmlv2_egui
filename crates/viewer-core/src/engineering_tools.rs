@@ -49,16 +49,46 @@ pub struct ToolLink {
     pub object: String,
 }
 
-/// Where a feature's Design Value comes from: `property` of `object` in
-/// `file`, read by `tool` (`FreeCAD`, `cad/engine.FCStd`, `Engine`,
-/// `Volume`).
+/// Where a feature's Design Value comes from: `property` of the object
+/// its owner's Tool Link names (`Volume` of `Engine` in
+/// `cad/engine.FCStd`, read by `FreeCAD`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DesignValueSource {
-    pub tool: String,
-    /// As the Tool Link writes it.
-    pub file: String,
-    pub object: String,
+    /// The Tool Link on the feature's owner: tool, file and object.
+    pub link: ToolLink,
+    /// The tool's property the value is, `Volume`.
     pub property: String,
+}
+
+/// The mark of a Tool Link and of a Design Value read through one: `⚙`.
+pub const TOOL_MARK: &str = "⚙";
+
+impl ToolLink {
+    /// The link as one line: `⚙ FreeCAD · cad/engine.FCStd · Engine`.
+    pub fn summary(&self) -> String {
+        format!(
+            "{TOOL_MARK} {} · {} · {}",
+            self.tool, self.file, self.object
+        )
+    }
+}
+
+impl DesignValue {
+    /// The mark it is shown with: `⚙` read, `⚠` missing.
+    pub fn mark(&self) -> &'static str {
+        match self {
+            DesignValue::Read { .. } => TOOL_MARK,
+            DesignValue::Missing { .. } => "⚠",
+        }
+    }
+
+    /// What became of it, in a word or two: `Read`, `Not read`.
+    pub fn label(&self) -> &'static str {
+        match self {
+            DesignValue::Read { .. } => "Read",
+            DesignValue::Missing { .. } => "Not read",
+        }
+    }
 }
 
 /// What a linked feature's Design Value came to.
@@ -66,9 +96,15 @@ pub struct DesignValueSource {
 pub enum DesignValue {
     /// The tool's value with its unit, as SysML writes it:
     /// `1000000.0 [mm^3]`. The checks used it in place of the Model Value.
-    Read { value: String },
+    Read {
+        /// The value, `1000000.0 [mm^3]`.
+        value: String,
+    },
     /// There is no Design Value, and why: `FreeCAD not available`.
-    Missing { reason: String },
+    Missing {
+        /// Why, `FreeCAD not available`.
+        reason: String,
+    },
 }
 
 /// One feature with a `@ToolProperty`: its Design Value, where that comes
@@ -77,7 +113,9 @@ pub enum DesignValue {
 pub struct DesignValueOutcome {
     /// The feature, `Drive::drive::engine::volume`.
     pub feature: QualifiedName,
+    /// Where its Design Value comes from.
     pub source: DesignValueSource,
+    /// The Design Value, or why there is none.
     pub design_value: DesignValue,
     /// The value the Model writes for the feature, as written
     /// (`0.9e6 [mm^3]`), if it writes one. A feature that writes none has

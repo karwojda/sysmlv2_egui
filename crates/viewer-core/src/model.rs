@@ -846,9 +846,7 @@ impl ModelBuilder {
             .find(|l| Some(&l.element) == feature.owner.as_ref())
             .expect("link the feature's owner before giving it a Design Value");
         let source = DesignValueSource {
-            tool: link.tool.clone(),
-            file: link.file.clone(),
-            object: link.object.clone(),
+            link: link.clone(),
             property: property.to_owned(),
         };
         self.design_values.push(DesignValueOutcome {

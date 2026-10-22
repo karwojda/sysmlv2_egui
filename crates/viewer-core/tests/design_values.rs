@@ -39,24 +39,20 @@ fn the_fake_backend_serves_tool_links_and_design_values() {
         .unwrap();
 
     let engine = QualifiedName::new("Drive::drive::engine");
-    assert_eq!(
-        model.tool_link(&engine),
-        Some(&ToolLink {
-            element: engine,
-            tool: "FreeCAD".to_owned(),
-            file: "cad/engine.FCStd".to_owned(),
-            object: "Engine".to_owned(),
-        })
-    );
+    let link = ToolLink {
+        element: engine.clone(),
+        tool: "FreeCAD".to_owned(),
+        file: "cad/engine.FCStd".to_owned(),
+        object: "Engine".to_owned(),
+    };
+    assert_eq!(model.tool_link(&engine), Some(&link));
     let volume = model
         .design_value(&QualifiedName::new("Drive::drive::engine::volume"))
         .unwrap();
     assert_eq!(
         volume.source,
         DesignValueSource {
-            tool: "FreeCAD".to_owned(),
-            file: "cad/engine.FCStd".to_owned(),
-            object: "Engine".to_owned(),
+            link,
             property: "Volume".to_owned(),
         }
     );

@@ -70,25 +70,26 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         rows.push(link("Subject", subject, label));
     }
     if let Some(l) = model.tool_link(element) {
-        rows.push(text(
-            "Tool Link",
-            format!("⚙ {} · {} · {}", l.tool, l.file, l.object),
-        ));
+        rows.push(text("Tool Link", l.summary()));
     }
     // A linked feature: the value the checks used, then the Model's own.
     if let Some(outcome) = model.design_value(element) {
         let source = &outcome.source;
+        let design_value = &outcome.design_value;
         rows.push(text(
             "Design Value",
-            match &outcome.design_value {
+            match design_value {
                 DesignValue::Read { value } => format!(
-                    "{}  ⚙ {} {}.{}",
+                    "{}  {} {} {}.{}",
                     readable_value(value),
-                    source.tool,
-                    source.object,
+                    design_value.mark(),
+                    source.link.tool,
+                    source.link.object,
                     source.property
                 ),
-                DesignValue::Missing { reason } => format!("⚠ none: {reason}"),
+                DesignValue::Missing { reason } => {
+                    format!("{} none: {reason}", design_value.mark())
+                }
             },
         ));
         rows.push(text(
