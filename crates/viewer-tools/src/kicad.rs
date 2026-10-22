@@ -2,7 +2,10 @@
 //! links ask for. A link names the project's `.kicad_pro`; the adapter
 //! reads the `.kicad_sch` and `.kicad_pcb` of the same name beside it.
 //! The one object is `board`, whose `Width`, `Height`, `Thickness` and
-//! `Area` come from `pcb export stats`.
+//! `Area` come from `pcb export stats`. Its `ComponentCount` and any other
+//! property, a symbol field (`Power`, `Price`) added up over the placed
+//! parts, come from `sch export netlist`. Only the exports the wanted
+//! properties need are run, side by side.
 //!
 //! Every run gets its own temporary `KICAD_CONFIG_HOME` whose
 //! `kicad_common.json` sets the language to English: a KiCad set to
@@ -10,13 +13,16 @@
 //! (`58,4200 mm`), and locale variables don't change that. The user's own
 //! KiCad settings are never read or written.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde_json::Value;
-use viewer_core::engineering_tools::{Answer, EngineeringTool, ReadValue, Wanted};
+use viewer_core::engineering_tools::{
+    Answer, EngineeringTool, Parts, ReadValue, Wanted, natural_order,
+};
 
 use crate::process;
 
@@ -38,6 +44,10 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The one object a KiCad link can name for now: `object = "board"`.
 pub const BOARD: &str = "board";
+
+/// The board property giving the number of placed parts:
+/// `@ToolProperty { name = "ComponentCount"; }`.
+pub const COMPONENT_COUNT: &str = "ComponentCount";
 
 /// The oldest KiCad whose `kicad-cli` has `pcb export stats`.
 const OLDEST_VERSION: u64 = 10;
@@ -237,6 +247,49 @@ impl KiCad {
             .map_err(|e| format!("KiCad's board statistics can't be read: {e}"))
     }
 
+    /// The placed parts of the schematic `sch`, every sheet of it, from
+    /// `sch export netlist`.
+    fn placed_parts(&self, executable: &Path, sch: &Path) -> Result<Vec<Part>, String> {
+        let workspace = Workspace::new()?;
+        let report = workspace.dir.path().join("netlist.xml");
+        let args = [
+            "sch".into(),
+            "export".into(),
+            "netlist".into(),
+            "--format".into(),
+            "kicadxml".into(),
+            "-o".into(),
+            process::path_for(executable, &report, NAME)?,
+            process::path_for(executable, sch, NAME)?,
+        ];
+        let output = self.run(executable, &workspace, &args)?;
+        let text = std::fs::read_to_string(&report).map_err(|_| {
+            format!(
+                "KiCad gave no netlist for {}: {}",
+                sch.display(),
+                output.last_said().unwrap_or("it said nothing")
+            )
+        })?;
+        placed_in(&text).map_err(|e| format!("KiCad's netlist can't be read: {e}"))
+    }
+
+    /// The exports the wanted properties need, run side by side: the
+    /// board statistics of `pcb` and the placed parts of `sch`, each
+    /// `None` when no property needs it.
+    fn export(
+        &self,
+        executable: &Path,
+        pcb: Option<&Path>,
+        sch: Option<PathBuf>,
+    ) -> (Exported<Value>, Exported<Vec<Part>>) {
+        std::thread::scope(|scope| {
+            let statistics =
+                pcb.map(|pcb| scope.spawn(move || self.board_statistics(executable, pcb)));
+            let placed = sch.map(|sch| scope.spawn(move || self.placed_parts(executable, &sch)));
+            (statistics.map(finished), placed.map(finished))
+        })
+    }
+
     /// Runs `kicad-cli` with `args` in `workspace`, its config folder.
     fn run(
         &self,
@@ -280,16 +333,19 @@ impl EngineeringTool for KiCad {
             }
         }
         self.check_version(&executable)?;
-        let wants_dimensions = wanted.get(BOARD).is_some_and(|properties| {
-            properties
-                .iter()
-                .any(|property| dimension_key(property).is_some())
-        });
-        let statistics = if wants_dimensions {
-            Some(self.board_statistics(&executable, &pcb)?)
-        } else {
-            None
+        let board = wanted.get(BOARD);
+        let wants = |dimensions: bool| {
+            board.is_some_and(|properties| {
+                properties
+                    .iter()
+                    .any(|property| dimension_key(property).is_some() == dimensions)
+            })
         };
+        let (statistics, placed) = self.export(
+            &executable,
+            wants(true).then_some(pcb.as_path()),
+            wants(false).then(|| file.with_extension("kicad_sch")),
+        );
         Ok(wanted
             .iter()
             .map(|(object, properties)| {
@@ -300,14 +356,10 @@ impl EngineeringTool for KiCad {
                             Err(format!(
                                 "only {BOARD} can be linked in KiCad for now, not '{object}'"
                             ))
+                        } else if let Some(key) = dimension_key(property) {
+                            exported(&statistics).and_then(|statistics| dimension(statistics, key))
                         } else {
-                            match (dimension_key(property), &statistics) {
-                                (Some(key), Some(statistics)) => dimension(statistics, key),
-                                _ => Err(format!(
-                                    "KiCad has no {BOARD} property {property} \
-                                     (it reads Width, Height, Thickness and Area)"
-                                )),
-                            }
+                            exported(&placed).and_then(|placed| from_parts(placed, property))
                         };
                         (property.clone(), value)
                     })
@@ -346,6 +398,187 @@ fn design_files_in(folder: &Path, files: &mut Vec<PathBuf>) {
             files.push(path);
         }
     }
+}
+
+/// What an export gave, or why it gave nothing; `None` when no wanted
+/// property needed it.
+type Exported<T> = Option<Result<T, String>>;
+
+/// The export's result once its run is over.
+fn finished<T>(run: std::thread::ScopedJoinHandle<'_, Result<T, String>>) -> Result<T, String> {
+    run.join()
+        .unwrap_or_else(|_| Err("reading KiCad's export failed".into()))
+}
+
+/// What an export gave a property that needed it.
+fn exported<T>(export: &Exported<T>) -> Result<&T, String> {
+    match export {
+        Some(Ok(value)) => Ok(value),
+        Some(Err(reason)) => Err(reason.clone()),
+        None => Err("KiCad was not asked for this property's export".into()),
+    }
+}
+
+/// A placed part of the board: neither do-not-populate nor excluded from
+/// the BOM.
+struct Part {
+    /// Its reference designator, `U1`.
+    reference: String,
+    /// Its symbol fields by name, `Power` = `45mW`; an empty field is
+    /// left out.
+    fields: BTreeMap<String, String>,
+}
+
+/// The placed parts in a netlist written by `sch export netlist --format
+/// kicadxml`, which lists every component on every sheet.
+fn placed_in(netlist: &str) -> Result<Vec<Part>, String> {
+    let document = roxmltree::Document::parse(netlist).map_err(|e| e.to_string())?;
+    let named = |node: &roxmltree::Node, tag: &str| node.has_tag_name(tag);
+    Ok(document
+        .descendants()
+        .filter(|node| named(node, "comp"))
+        .filter(|comp| {
+            !comp.children().any(|child| {
+                named(&child, "property")
+                    && matches!(child.attribute("name"), Some("dnp" | "exclude_from_bom"))
+            })
+        })
+        .map(|comp| Part {
+            reference: comp.attribute("ref").unwrap_or_default().to_string(),
+            fields: comp
+                .children()
+                .filter(|child| named(child, "fields"))
+                .flat_map(|fields| fields.children())
+                .filter(|field| named(field, "field"))
+                .filter_map(|field| {
+                    let value = field.text().unwrap_or_default().trim();
+                    (!value.is_empty())
+                        .then(|| Some((field.attribute("name")?.to_string(), value.to_string())))?
+                })
+                .collect(),
+        })
+        .collect())
+}
+
+/// A board property read from the placed parts: `ComponentCount`, their
+/// number, or any other name, that field added up over them (ADR-0006).
+fn from_parts(placed: &[Part], property: &str) -> Result<ReadValue, String> {
+    if property == COMPONENT_COUNT {
+        return Ok(ReadValue::new(placed.len().to_string()));
+    }
+    let mut uncounted = Vec::new();
+    let mut unreadable = Vec::new();
+    // The counted parts by unit, `None` for bare numbers.
+    let mut by_unit: BTreeMap<Option<String>, Vec<(&str, f64)>> = BTreeMap::new();
+    for part in placed {
+        let reference = part.reference.as_str();
+        match part.fields.get(property) {
+            None => uncounted.push(reference),
+            Some(text) => match quantity(text) {
+                Some((value, unit)) => by_unit.entry(unit).or_default().push((reference, value)),
+                None => unreadable.push((reference, text.as_str())),
+            },
+        }
+    }
+    if !unreadable.is_empty() {
+        unreadable.sort_by(|a, b| natural_order(a.0, b.0));
+        let named: Vec<String> = unreadable
+            .iter()
+            .map(|(reference, text)| format!("{reference} ('{text}')"))
+            .collect();
+        return Err(format!(
+            "the {property} field can't be read as a number with a unit on {}",
+            named.join(", ")
+        ));
+    }
+    let references = |parts: &[(&str, f64)]| {
+        let mut references: Vec<&str> = parts.iter().map(|(reference, _)| *reference).collect();
+        references.sort_by(|a, b| natural_order(a, b));
+        references.join(", ")
+    };
+    if let Some(bare) = by_unit.get(&None).filter(|_| by_unit.len() > 1) {
+        let with_units: Vec<(&str, f64)> = by_unit
+            .iter()
+            .filter(|(unit, _)| unit.is_some())
+            .flat_map(|(_, parts)| parts.iter().copied())
+            .collect();
+        return Err(format!(
+            "the {property} fields mix bare numbers ({}) with units ({})",
+            references(bare),
+            references(&with_units)
+        ));
+    }
+    if by_unit.len() > 1 {
+        let units: Vec<String> = by_unit
+            .iter()
+            .map(|(unit, parts)| {
+                format!("{} on {}", unit.as_deref().unwrap_or(""), references(parts))
+            })
+            .collect();
+        return Err(format!(
+            "the {property} fields mix units: {}",
+            units.join("; ")
+        ));
+    }
+    // Folded from 0.0: an empty `sum` of floats is -0.0.
+    let total = tidy(
+        by_unit
+            .values()
+            .flatten()
+            .fold(0.0, |total, (_, value)| total + value),
+    );
+    let value = match by_unit.keys().next() {
+        Some(Some(unit)) => format!("{total:?} [{unit}]"),
+        _ => format!("{total:?}"),
+    };
+    let counted = by_unit.values().flatten().map(|(reference, _)| *reference);
+    Ok(ReadValue::summed(value, Parts::new(counted, uncounted)))
+}
+
+/// The SI prefixes a field's unit may start with, and their factors.
+const PREFIXES: [(char, f64); 9] = [
+    ('p', 1e-12),
+    ('n', 1e-9),
+    ('u', 1e-6),
+    ('µ', 1e-6),
+    ('μ', 1e-6),
+    ('m', 1e-3),
+    ('k', 1e3),
+    ('M', 1e6),
+    ('G', 1e9),
+];
+
+/// A field read as a number with an optional unit, given in the unit's
+/// base symbol: `45mW` is 0.045 in `W`, `0.12` is 0.12 with no unit.
+/// `None` when it can't be read (`lots`, `TBD`, `1,5 W`).
+fn quantity(text: &str) -> Option<(f64, Option<String>)> {
+    let text = text.trim();
+    let end = text
+        .char_indices()
+        .find(|&(i, c)| !(c.is_ascii_digit() || c == '.' || (i == 0 && matches!(c, '+' | '-'))))
+        .map_or(text.len(), |(i, _)| i);
+    let (number, unit) = text.split_at(end);
+    let number: f64 = number.parse().ok()?;
+    let unit = unit.trim();
+    if unit.is_empty() {
+        return Some((number, None));
+    }
+    if !unit.chars().all(char::is_alphabetic) {
+        return None;
+    }
+    let mut chars = unit.chars();
+    let first = chars.next()?;
+    let base = chars.as_str();
+    match PREFIXES.iter().find(|(prefix, _)| *prefix == first) {
+        Some((_, factor)) if !base.is_empty() => Some((number * factor, Some(base.to_string()))),
+        _ => Some((number, Some(unit.to_string()))),
+    }
+}
+
+/// `total` without the noise of adding binary fractions: `0.045 + 1.2`
+/// is `1.245`, not `1.2449999999999999`.
+fn tidy(total: f64) -> f64 {
+    format!("{total:.12e}").parse().unwrap_or(total)
 }
 
 /// The key of `pcb export stats` a board property is read from:

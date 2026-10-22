@@ -99,7 +99,7 @@ impl Parts {
 
 /// `a` before `b` with runs of digits compared as numbers: `C2` before
 /// `C10`, `R1` after both.
-fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+pub fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
     /// Splits off the leading run of digits or of other characters.
     fn chunk(s: &str) -> (&str, &str) {
         let digits = s.starts_with(|c: char| c.is_ascii_digit());
