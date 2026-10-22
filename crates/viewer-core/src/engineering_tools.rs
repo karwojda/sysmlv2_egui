@@ -67,8 +67,7 @@ impl Parts {
         counted: impl IntoIterator<Item = impl Into<String>>,
         uncounted: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        let sorted = |refs: Vec<String>| {
-            let mut refs = refs;
+        let sorted = |mut refs: Vec<String>| {
             refs.sort_by(|a, b| natural_order(a, b));
             refs
         };
