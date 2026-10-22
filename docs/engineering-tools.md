@@ -54,6 +54,14 @@ The thinnest slice that exercises every seam, end to end:
 
 Then, as their own slices: the Design Values tab and the Diagram row marks, `--model-values`, watching linked files and the in-memory cache, `Mass` with the material guard, the CI recipe, and KiCad.
 
+### As built
+
+Where the tracer build differs from, or adds to, the design above:
+
+- **One FreeCAD run per file, not per load.** The adapter is called once per tool and file, so a Model whose links reach three `.FCStd` files starts FreeCAD three times; story 27 of the tracer spec asks for one run per load. Each run costs about 0.6–0.75 s, mostly startup. Batching every file of a load into one run needs the script to take several documents; it is left for when Models link many files.
+- **`export` and unreadable links.** `sysml-viewer export` loads Design Values like every other command, so a Diagram showing Verdicts shows the design's. When a Tool Link can't be read there, the affected Verdicts draw as Undecided, and `export` prints no warning and still succeeds: the planned `export` warning is out of the tracer's scope.
+- **A timed-out Windows FreeCAD.** Under WSL the adapter runs `freecadcmd.exe` through the interop process and kills that process on timeout. Tried against FreeCAD 1.1 at `C:\Program Files\FreeCAD 1.1` with a script that sleeps: killing the interop process ends the Windows `freecadcmd.exe` too (`tasklist.exe` no longer lists it), so no `taskkill.exe` is needed. A process FreeCAD itself starts would not be covered; `freecadcmd` starts none for the `Volume` query.
+
 Reference Models and code: branches `prototype/live-freecad` (the pipeline as one program, `prototypes/live-freecad/`) and `prototype/design-values-ui` (the GUI variants).
 
 ## Not designed here

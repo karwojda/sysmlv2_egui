@@ -39,3 +39,6 @@ See `.scratch/freecad-tracer/spec.md` (stories 5, 6, 16–20, 25, 26).
   - **Deviation, rounding:** OCCT gives the PartDesign cube as 999999.9999999999 mm³, so the script rounds to 12 significant digits (`1000000.0`, the cylinder `31415.9265359`). Values print with Rust's `{:?}`, so always with a decimal point.
   - **Deviation, default timeout:** tested through `FreeCad::timeout()` returning 30 s; the message is tested with a 1 s timeout from the variable.
   - **For 07/08:** build the tool with `FreeCad::new()` per backend; it holds no process between reads. Killing on timeout kills the WSL interop process; whether the Windows `freecadcmd.exe` dies with it was not tested.
+- Review fixes.
+  - **Timeout under WSL, tried:** with FreeCAD 1.1 on Windows and a script that sleeps, killing the interop process ends the Windows `freecadcmd.exe` as well (`tasklist.exe` lists none afterwards), so the plain kill is enough and no `taskkill.exe` is used. Recorded in `docs/engineering-tools.md` ("As built").
+  - **Discovery:** the newest `FreeCAD*` install is chosen by the version numbers in its folder name (`FreeCAD 1.10` before `FreeCAD 1.9`), no longer by text order.

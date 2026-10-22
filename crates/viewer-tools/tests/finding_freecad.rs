@@ -139,6 +139,23 @@ fn the_newest_install_is_found_including_a_windows_one_seen_from_wsl() {
 }
 
 #[test]
+fn the_newest_install_is_found_by_its_version_numbers_not_its_spelling() {
+    let dir = tempfile::tempdir().unwrap();
+    let opt = dir.path().join("opt");
+    stub(&opt.join("FreeCAD 1.9/bin/freecadcmd"), "true");
+    let newest = stub(&opt.join("FreeCAD 1.10/bin/freecadcmd"), "true");
+    stub(&opt.join("FreeCAD 1.2/bin/freecadcmd"), "true");
+    stub(&opt.join("FreeCAD/bin/freecadcmd"), "true");
+
+    let executable = found(Machine {
+        install_dirs: vec![opt],
+        ..Machine::default()
+    });
+
+    assert_eq!(executable, newest);
+}
+
+#[test]
 fn a_missing_file_is_named() {
     let dir = tempfile::tempdir().unwrap();
     let freecad = stub(&dir.path().join("freecadcmd"), "true");

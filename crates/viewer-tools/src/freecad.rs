@@ -107,8 +107,8 @@ impl Machine {
         std::env::split_paths(path).find_map(|dir| executable_in(&dir))
     }
 
-    /// The newest `FreeCAD*` install in the install folders: `FreeCAD 1.1`
-    /// before `FreeCAD 1.0`.
+    /// The newest `FreeCAD*` install in the install folders, by the
+    /// version numbers in its name: `FreeCAD 1.10` before `FreeCAD 1.9`.
     fn installed(&self) -> Option<PathBuf> {
         self.install_dirs.iter().find_map(|dir| {
             let mut installs: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -120,7 +120,7 @@ impl Machine {
                 })
                 .map(|entry| entry.path())
                 .collect();
-            installs.sort();
+            installs.sort_by_cached_key(|install| version(install));
             installs.iter().rev().find_map(|install| {
                 ["bin", "Contents/Resources/bin"]
                     .iter()
@@ -141,6 +141,15 @@ impl Machine {
             .filter(|duration| !duration.is_zero())
             .ok_or_else(|| format!("{TIMEOUT_VARIABLE} is {text}, not a number of seconds"))
     }
+}
+
+/// The version numbers in an install folder's name, in order:
+/// `FreeCAD 1.10` is `[1, 10]`, a plain `FreeCAD` is `[]`.
+fn version(install: &Path) -> Vec<u64> {
+    let name = install.file_name().unwrap_or_default().to_string_lossy();
+    name.split(|c: char| !c.is_ascii_digit())
+        .filter_map(|digits| digits.parse().ok())
+        .collect()
 }
 
 /// `freecadcmd` (or `FreeCADCmd`, either with `.exe`) in `dir`.
