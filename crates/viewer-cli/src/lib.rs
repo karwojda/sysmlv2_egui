@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::backend::Analyses;
-use viewer_core::engineering_tools::{self, DesignValue, DesignValueSource, ToolLink};
+use viewer_core::engineering_tools::{self, DesignValue, DesignValueSource, Parts, ToolLink};
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::model::{Element, ElementKind};
 use viewer_core::satisfaction;
@@ -272,7 +272,10 @@ fn design_values_report(model: &Model, stdout: &mut dyn Write) -> usize {
         );
         let design_value = &outcome.design_value;
         let text = match design_value {
-            DesignValue::Read { value, .. } => format!("{} from {from}", readable_value(value)),
+            DesignValue::Read { value, parts } => {
+                let summed = parts.as_ref().map_or(String::new(), summed);
+                format!("{} from {from}{summed}", readable_value(value))
+            }
             DesignValue::Missing { reason } => {
                 if !unread_links.contains(&link) {
                     unread_links.push(link);
@@ -306,6 +309,26 @@ fn design_values_report(model: &Model, stdout: &mut dyn Write) -> usize {
         outcomes.len() - read
     );
     unread_links.len()
+}
+
+/// How many parts a Summed Design Value was added up over, and the first
+/// of those left out: ` (summed 9 of 71 parts; 62 uncounted: C1, C2, …,
+/// C10 and 52 more)`, or ` (summed 3 of 3 parts)`.
+fn summed(parts: &Parts) -> String {
+    const SHOWN: usize = 10;
+    let uncounted = parts.uncounted();
+    if uncounted.is_empty() {
+        return format!(" ({})", parts.summary());
+    }
+    let mut named = uncounted[..uncounted.len().min(SHOWN)].join(", ");
+    if uncounted.len() > SHOWN {
+        named.push_str(&format!(" and {} more", uncounted.len() - SHOWN));
+    }
+    format!(
+        " ({}; {} uncounted: {named})",
+        parts.summary(),
+        uncounted.len()
+    )
 }
 
 /// The `requirements` report, then one line per Constraint Result. Fails on
