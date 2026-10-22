@@ -130,7 +130,7 @@ enum BrowserAction {
 /// on its worker thread, so tools run there too and a load arrives with its
 /// Design Values in one piece.
 pub fn backend(config: ServiceConfig) -> OpenSysmlBackend {
-    OpenSysmlBackend::with_config(config).with_tool("FreeCAD", viewer_tools::FreeCad::new())
+    OpenSysmlBackend::with_config(config).with_tools(viewer_tools::built_in())
 }
 
 impl ViewerApp {

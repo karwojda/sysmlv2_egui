@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
 
+/// The name Tool Links give FreeCAD: `@ToolLink { tool = "FreeCAD"; … }`.
+pub const NAME: &str = "FreeCAD";
+
 /// The environment variable naming the `freecadcmd` to run, ahead of
 /// `PATH` and the usual install locations:
 /// `SYSML_VIEWER_FREECAD=/opt/freecad/bin/freecadcmd`.
@@ -161,8 +164,8 @@ fn executable_in(dir: &Path) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
-/// The FreeCAD Engineering Tool: register it with a backend as `"FreeCAD"`
-/// (`OpenSysmlBackend::new().with_tool("FreeCAD", FreeCad::new())`).
+/// The FreeCAD Engineering Tool, which a backend is given under [`NAME`]
+/// (see [`crate::built_in`]).
 pub struct FreeCad {
     executable: Result<PathBuf, String>,
     timeout: Result<Duration, String>,

@@ -143,6 +143,20 @@ impl OpenSysmlBackend {
         self
     }
 
+    /// Lets Tool Links read their Design Values from each of `tools`, by
+    /// the name given with it (`viewer_tools::built_in()`).
+    pub fn with_tools(
+        mut self,
+        tools: impl IntoIterator<Item = (&'static str, Box<dyn EngineeringTool>)>,
+    ) -> Self {
+        self.tools.extend(
+            tools
+                .into_iter()
+                .map(|(name, tool)| (name.to_owned(), tool)),
+        );
+        self
+    }
+
     fn connection(&mut self) -> Result<&Connection, BackendError> {
         if self.connection.is_none() {
             self.connection = Some(self.config.connect()?);
