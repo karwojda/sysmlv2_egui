@@ -98,7 +98,7 @@ An external program that owns part of the design in its own files, such as FreeC
 _Avoid_: domain tool, external tool, CAD (too narrow), domain (means something else here)
 
 **Tool Link**:
-A statement in the Model that one of its elements is designed in a specific place inside an Engineering Tool, for example that `part engine` is the body `Engine` in `engine.FCStd`. It is written as metadata on the element.
+A statement in the Model that one of its elements is designed in a specific place inside an Engineering Tool, for example that `part engine` is the body `Engine` in `engine.FCStd`. It is written as metadata from the `EngineeringTools` library (ADR 0004): `@ToolLink` on the element, and `@ToolProperty` on each of its features that takes a Design Value, naming the tool's property (`Volume`). A feature with a `@ToolProperty` is a linked feature; `@ToolProperty` is part of the Tool Link, not a concept of its own.
 _Avoid_: binding (a SysML binding connects features), mapping, trace
 
 **Design Value**:
