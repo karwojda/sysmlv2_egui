@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 use viewer_app::ViewerApp;
-use viewer_opensysml::OpenSysmlBackend;
+use viewer_opensysml::ServiceConfig;
 
 /// How long to wait before the screenshot; `SCREENSHOT_AFTER_SECS` overrides.
 fn settle() -> Duration {
@@ -109,10 +109,15 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             let app = ViewerApp::new(
                 &cc.egui_ctx,
-                Box::new(OpenSysmlBackend::new()),
+                Box::new(viewer_app::backend(ServiceConfig::default())),
                 Some(folder),
                 root,
             );
+            // SCREENSHOT_SELECT=<qualified name> shows that element's Properties.
+            let app = match std::env::var("SCREENSHOT_SELECT") {
+                Ok(element) => app.select(viewer_core::QualifiedName::new(element)),
+                Err(_) => app,
+            };
             // SCREENSHOT_INTERCONNECTION=1 opens the root's Interconnection Diagram.
             let app = if std::env::var_os("SCREENSHOT_INTERCONNECTION").is_some() {
                 app.prefer_interconnection()
