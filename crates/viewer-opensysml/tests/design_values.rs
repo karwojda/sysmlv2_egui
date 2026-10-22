@@ -519,6 +519,45 @@ fn a_design_value_of_the_wrong_dimension_names_its_own_feature_among_same_named_
     );
 }
 
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn when_design_values_cannot_be_written_nothing_is_judged_on_model_values() {
+    // A value text the Model can't take, so the edit fails.
+    let (mut tool, _) = designed();
+    tool.volumes[0] = ("Engine", "1000000.0 [mm^3");
+    let model = OpenSysmlBackend::new()
+        .with_tool("FreeCAD", tool)
+        .load(&fixture("design_values"))
+        .unwrap();
+
+    let error = model
+        .diagnostics()
+        .iter()
+        .find(|d| d.severity == Severity::Error)
+        .unwrap_or_else(|| panic!("no error: {:?}", model.diagnostics()));
+    assert!(
+        error
+            .message
+            .starts_with("Design Values could not be written into the Model: "),
+        "{error:?}"
+    );
+    for outcome in model.design_values() {
+        let DesignValue::Missing { reason } = &outcome.design_value else {
+            panic!("{} kept its Design Value", outcome.feature);
+        };
+        assert!(
+            reason.starts_with("could not be written into the Model: "),
+            "{reason}"
+        );
+    }
+    // The Model Values would hold everywhere; nothing is judged on them.
+    assert_eq!(requirement_status(&model), Status::Undecided);
+    for part in ["engine", "spare"] {
+        assert_eq!(engine_mass_on(&model, part), Status::Undecided, "{part}");
+    }
+    assert!(element(&model, "drive::mass").computed.is_empty());
+}
+
 /// `fixtures/tool_link_mistakes`: the engine has two links to FreeCAD,
 /// and the spare's volume a Tool Property without one.
 fn load_mistakes() -> (Model, Calls) {

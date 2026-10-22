@@ -356,7 +356,7 @@ fn tool_links(
             .unwrap_or_default()
             .to_owned()
     };
-    let mut read = ToolLinks::default();
+    let mut found = ToolLinks::default();
     let mut annotations: Vec<&Value> = items
         .values()
         .map(|(item, _)| item)
@@ -382,7 +382,7 @@ fn tool_links(
         };
         let document = document.to_string_lossy().into_owned();
         match def {
-            Some("EngineeringTools::ToolLink") => read.links.push(HeldLink {
+            Some("EngineeringTools::ToolLink") => found.links.push(HeldLink {
                 link: ToolLink {
                     element: annotated,
                     tool: field(id, "tool"),
@@ -401,7 +401,7 @@ fn tool_links(
                     c.get("@type").and_then(Value::as_str) == Some("FeatureValue")
                         && reference(c, "featureWithValue") == Some(owner)
                 });
-                read.properties.push(LinkedProperty {
+                found.properties.push(LinkedProperty {
                     feature: annotated,
                     owner: linked,
                     property: field(id, "name"),
@@ -425,7 +425,7 @@ fn tool_links(
             _ => {}
         }
     }
-    read
+    found
 }
 
 /// The id of what an `expose` shows, and how much of it. A membership

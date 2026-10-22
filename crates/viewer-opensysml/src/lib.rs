@@ -19,9 +19,10 @@ mod expression;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use design_values::{EditorEdit, ValueEdit, ValuePlace};
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
 use viewer_core::backend::Analyses;
-use viewer_core::engineering_tools::EngineeringTool;
+use viewer_core::engineering_tools::{DesignValue, EngineeringTool};
 use viewer_core::model::{
     ClaimResult, Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName,
     Severity, SourceLocation,
@@ -224,7 +225,7 @@ impl ModelBackend for OpenSysmlBackend {
         }
         if tool_links.is_empty() {
             diagnostics.extend(checks::run(
-                &checks::Service(&parsed),
+                &checks::Service::new(&parsed),
                 &mut elements,
                 folder,
                 analyses,
@@ -236,32 +237,63 @@ impl ModelBackend for OpenSysmlBackend {
         // keep what the Model writes, Model Values included.
         let mut plan = design_values::plan(&tool_links, &mut self.tools, &elements);
         diagnostics.append(&mut plan.diagnostics);
-        let designed = match with_design_values(&connection, &parsed, &documents, &plan.edits) {
-            Ok(designed) => designed,
+        match with_design_values(&connection, &parsed, &documents, &plan.edits) {
+            Ok(designed) => diagnostics.extend(checks::run(
+                &checks::Service::with_design_values(
+                    designed.as_ref().unwrap_or(&parsed),
+                    &plan.written,
+                ),
+                &mut elements,
+                folder,
+                analyses,
+            )),
             Err(error) => {
+                // Without its Design Values the Model holds only Model
+                // Values, and which checks rest on the linked features
+                // can't be told: none is judged.
                 diagnostics.push(Diagnostic {
                     severity: Severity::Error,
                     message: format!("Design Values could not be written into the Model: {error}"),
                     location: None,
                 });
-                None
-            }
-        };
-        diagnostics.extend(checks::run(
-            &checks::Service(designed.as_ref().unwrap_or(&parsed)),
-            &mut elements,
-            folder,
-            analyses,
-        ));
-        for result in elements.values_mut().flat_map(check_results) {
-            if let ClaimResult::Undecided { reason } | ClaimResult::Unchecked { reason } = result
-                && let Some(words) = plan.translate(reason)
-            {
-                *reason = words;
+                diagnostics.extend(checks::run(
+                    &checks::Service::new(&parsed),
+                    &mut elements,
+                    folder,
+                    analyses,
+                ));
+                let reason = format!("could not be written into the Model: {error}");
+                not_judged(
+                    &mut elements,
+                    &format!("Design Values {reason}, so nothing was judged"),
+                );
+                for outcome in &mut plan.outcomes {
+                    if let DesignValue::Read { .. } = outcome.design_value {
+                        outcome.design_value = DesignValue::Missing {
+                            reason: reason.clone(),
+                        };
+                    }
+                }
             }
         }
         Ok(Model::new(elements.into_values(), diagnostics)
             .with_design_values(plan.tool_links, plan.outcomes))
+    }
+}
+
+/// Makes every check result on `elements` Undecided with `reason`, and
+/// drops every value the checks computed: none of them can be trusted.
+fn not_judged(elements: &mut BTreeMap<QualifiedName, Element>, reason: &str) {
+    for element in elements.values_mut() {
+        element.computed.clear();
+        if let Some(analysis) = &mut element.analysis_result {
+            analysis.outputs.clear();
+        }
+        for result in check_results(element) {
+            *result = ClaimResult::Undecided {
+                reason: reason.to_owned(),
+            };
+        }
     }
 }
 
@@ -287,20 +319,24 @@ fn with_design_values(
     connection: &Connection,
     parsed: &opensysml::Model,
     documents: &[SourceDocument],
-    edits: &[design_values::Edit],
+    edits: &[ValueEdit],
 ) -> Result<Option<opensysml::Model>, String> {
     if edits.is_empty() {
         return Ok(None);
     }
+    let mut in_text: Vec<(&ValueEdit, (u32, u32))> = Vec::new();
+    let mut per_document: BTreeMap<&str, Vec<(&ValueEdit, &EditorEdit)>> = BTreeMap::new();
+    for edit in edits {
+        match &edit.place {
+            ValuePlace::InText { at } => in_text.push((edit, *at)),
+            ValuePlace::Editor(editor_edit) => per_document
+                .entry(&edit.document)
+                .or_default()
+                .push((edit, editor_edit)),
+        }
+    }
     // The values the service won't write go into the text first, the last
     // in each document first, so the places of the others stay as parsed.
-    let mut in_text: Vec<(&design_values::Edit, (u32, u32))> = edits
-        .iter()
-        .filter_map(|edit| match edit.how {
-            design_values::How::InText { at } => Some((edit, at)),
-            _ => None,
-        })
-        .collect();
     in_text.sort_by(|(a, at_a), (b, at_b)| (&b.document, at_b).cmp(&(&a.document, at_a)));
     let mut edited: BTreeMap<String, String> = BTreeMap::new();
     for (edit, at) in in_text {
@@ -327,24 +363,18 @@ fn with_design_values(
     };
     let base = reparsed.as_ref().unwrap_or(parsed);
 
-    let mut per_document: BTreeMap<&str, Vec<&design_values::Edit>> = BTreeMap::new();
-    for edit in edits {
-        if !matches!(edit.how, design_values::How::InText { .. }) {
-            per_document.entry(&edit.document).or_default().push(edit);
-        }
-    }
     if per_document.is_empty() {
         return Ok(reparsed);
     }
     for (document, edits) in per_document {
         let mut editor = base.edit();
         editor.in_document(document);
-        for edit in edits {
-            match &edit.how {
-                design_values::How::SetValue => {
+        for (edit, editor_edit) in edits {
+            match editor_edit {
+                EditorEdit::SetValue => {
                     editor.set_value(edit.feature.as_str(), &edit.value);
                 }
-                design_values::How::Redefine { owner, redefines } => {
+                EditorEdit::Redefine { owner, redefines } => {
                     editor.delete(edit.feature.as_str(), false);
                     editor.add_member(
                         owner.as_str(),
@@ -357,8 +387,6 @@ fn with_design_values(
                         },
                     );
                 }
-                // Already in the text.
-                design_values::How::InText { .. } => {}
             }
         }
         for result in editor.apply().map_err(|e| e.to_string())?.documents {

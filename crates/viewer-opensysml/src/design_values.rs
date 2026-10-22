@@ -1,7 +1,8 @@
 //! Design Values (ADR-0003 to ADR-0005): from the Tool Links a Model
 //! writes, asks each Engineering Tool once per file for what is linked to
 //! it, and says which feature takes which value. The edit that puts those
-//! values into the Model in memory is the service's, in `lib.rs`.
+//! values into the Model in memory is the service's, in `lib.rs`; putting
+//! the service's reasons about them into words is `checks/service.rs`'s.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,7 @@ use viewer_core::model::{Diagnostic, Element, QualifiedName, Severity, SourceLoc
 /// relative to.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct HeldLink {
+    /// The link, `@ToolLink { tool = "FreeCAD"; … }` on `Drive::drive::engine`.
     pub link: ToolLink,
     /// The document as the parse named it.
     pub document: String,
@@ -48,11 +50,15 @@ pub(crate) struct LinkedProperty {
 /// What the Model's Tool Links say, as the backend read them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ToolLinks {
+    /// Every `@ToolLink`, in the order read.
     pub links: Vec<HeldLink>,
+    /// Every feature with a `@ToolProperty`, in the order read.
     pub properties: Vec<LinkedProperty>,
 }
 
 impl ToolLinks {
+    /// Whether the Model writes no `@ToolLink` and no `@ToolProperty`, so
+    /// a load has no Design Values to read.
     pub fn is_empty(&self) -> bool {
         self.links.is_empty() && self.properties.is_empty()
     }
@@ -61,25 +67,24 @@ impl ToolLinks {
 /// One Design Value to write into the Model: `feature`, declared in
 /// `document`, takes `value` (`1000000.0 [mm^3]`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Edit {
+pub(crate) struct ValueEdit {
+    /// The document declaring the feature, as the parse named it.
     pub document: String,
+    /// The linked feature, `Drive::drive::engine::volume`.
     pub feature: QualifiedName,
+    /// What it takes, as SysML writes it: `1000000.0 [mm^3]`, or a
+    /// marker string when there is no Design Value.
     pub value: String,
-    pub how: How,
+    /// Where the value is written.
+    pub place: ValuePlace,
 }
 
-/// How a Design Value gets into the Model.
+/// Where a Design Value is written: through the service's editor, or into
+/// the text before the service parses it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum How {
-    /// The feature writes a value of its own, which `value` replaces.
-    SetValue,
-    /// The feature has a body and no value, which the service won't give
-    /// one: it is replaced by `attribute :>> <redefines> = <value>;` in
-    /// `owner`.
-    Redefine {
-        owner: QualifiedName,
-        redefines: String,
-    },
+pub(crate) enum ValuePlace {
+    /// Through the service's editor.
+    Editor(EditorEdit),
     /// The feature has a name of its own and no value (`attribute bore :
     /// LengthValue { @ToolProperty … }`): the service won't give one to a
     /// declaration with a body, nor delete one anything refers to, so
@@ -89,69 +94,75 @@ pub(crate) enum How {
     InText { at: (u32, u32) },
 }
 
+/// What the service's editor is asked to do with a Design Value.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum EditorEdit {
+    /// The feature writes a value of its own, which the Design Value
+    /// replaces.
+    SetValue,
+    /// The feature has a body and no value, which the service won't give
+    /// one: it is replaced by `attribute :>> <redefines> = <value>;` in
+    /// `owner`.
+    Redefine {
+        /// The element holding the feature, `Drive::drive::engine`.
+        owner: QualifiedName,
+        /// The name of the feature it redefines, `volume`.
+        redefines: String,
+    },
+}
+
 /// What the tools answered: the edits to make, and what the Model records.
 #[derive(Debug, Default)]
 pub(crate) struct Plan {
-    pub edits: Vec<Edit>,
+    /// One edit per linked feature: its Design Value, or a marker.
+    pub edits: Vec<ValueEdit>,
+    /// Every Tool Link, for the Model to record.
     pub tool_links: Vec<ToolLink>,
+    /// Every linked feature's Design Value outcome, for the Model to
+    /// record.
     pub outcomes: Vec<DesignValueOutcome>,
     /// What is wrong with the Tool Links as written.
     pub diagnostics: Vec<Diagnostic>,
+    /// What the values written mean, for the checks' reasons.
+    pub written: Written,
+}
+
+/// What the values a plan writes mean in words, so the service's adapter
+/// can put a check's reason about one into words.
+#[derive(Debug, Default)]
+pub(crate) struct Written {
     /// Each marker written in place of a missing Design Value
-    /// (`no Design Value #0#`), and what it means in words.
-    markers: Vec<(String, String)>,
-    /// Each Design Value written: how the service names its feature from
-    /// a part (`pump.mass`), and how a reason about it begins in words
-    /// (`Design Value for Drive::drive::pump::mass (FreeCAD: Pump.Volume)`).
-    written: Vec<(String, String)>,
+    /// (`no Design Value #0#`), and what it means: `no Design Value for
+    /// Drive::drive::gearbox::volume (FreeCAD: no object Assembly.Link.)`.
+    pub markers: Vec<(String, String)>,
+    /// Each Design Value written.
+    pub values: Vec<WrittenValue>,
+}
+
+/// A Design Value written into the Model.
+#[derive(Debug)]
+pub(crate) struct WrittenValue {
+    /// The feature, `Drive::drive::pump::mass`.
+    pub feature: QualifiedName,
+    /// The value written, `1500000.0 [mm^3]`.
+    pub value: String,
+    /// What it is, in words: `Design Value for Drive::drive::pump::mass
+    /// (FreeCAD: Pump.Volume)`.
+    pub words: String,
 }
 
 /// How a marker begins; its number and a closing `#` follow.
 const MARKER: &str = "no Design Value #";
 
-/// How the service says a value doesn't fit its feature's type:
-/// `feature value pump.mass: type mismatch: cannot write 1500000.0
-/// [mm**3] (dimension L^3) to a feature typed by MassValue (dimension M)`.
-const FEATURE_VALUE: &str = "feature value ";
-const TYPE_MISMATCH: &str = ": type mismatch: ";
-
-impl Plan {
-    /// `reason`, a check's, in words when it is about a Design Value:
-    /// `no Design Value for Drive::drive::gearbox::volume (FreeCAD: no
-    /// object Assembly.Link.)` when there is none, `Design Value for
-    /// Drive::drive::pump::mass (FreeCAD: Pump.Volume) does not fit it:
-    /// cannot write …` when its dimension is wrong. `None` otherwise.
-    pub fn translate(&self, reason: &str) -> Option<String> {
-        let found: Vec<&str> = self
-            .markers
-            .iter()
-            .filter(|(marker, _)| reason.contains(marker.as_str()))
-            .map(|(_, words)| words.as_str())
-            .collect();
-        if !found.is_empty() {
-            return Some(found.join("; "));
-        }
-        let (_, rest) = reason.split_once(FEATURE_VALUE)?;
-        let (path, mismatch) = rest.split_once(TYPE_MISMATCH)?;
-        let (_, words) = self.written.iter().find(|(feature, _)| {
-            path == feature
-                || path
-                    .strip_suffix(feature.as_str())
-                    .is_some_and(|p| p.ends_with('.'))
-        })?;
-        Some(format!("{words} does not fit it: {mismatch}"))
-    }
-}
-
 /// Asks `tools` for every linked property, one call per tool and file, and
 /// plans the edits. Model Values come from `elements`.
 pub(crate) fn plan(
-    read: &ToolLinks,
+    found: &ToolLinks,
     tools: &mut BTreeMap<String, Box<dyn EngineeringTool>>,
     elements: &BTreeMap<QualifiedName, Element>,
 ) -> Plan {
     let mut plan = Plan {
-        tool_links: read.links.iter().map(|h| h.link.clone()).collect(),
+        tool_links: found.links.iter().map(|h| h.link.clone()).collect(),
         ..Plan::default()
     };
     let at = |element: &QualifiedName| elements.get(element).and_then(|e| e.source.clone());
@@ -159,7 +170,7 @@ pub(crate) fn plan(
     // An element with several links to one tool has no one object to
     // read; its features take no Design Value.
     let mut per_tool: BTreeMap<(&QualifiedName, &str), usize> = BTreeMap::new();
-    for held in &read.links {
+    for held in &found.links {
         *per_tool
             .entry((&held.link.element, held.link.tool.as_str()))
             .or_default() += 1;
@@ -181,8 +192,12 @@ pub(crate) fn plan(
     }
 
     let mut linked: Vec<(&LinkedProperty, &HeldLink, PathBuf)> = Vec::new();
-    for property in &read.properties {
-        match read.links.iter().find(|h| h.link.element == property.owner) {
+    for property in &found.properties {
+        match found
+            .links
+            .iter()
+            .find(|h| h.link.element == property.owner)
+        {
             Some(held) => linked.push((property, held, resolve(&held.document, &held.link.file))),
             None => plan.diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
@@ -242,22 +257,19 @@ pub(crate) fn plan(
         // on it are Undecided, with the marker in the service's reason.
         let (written, design_value) = match value {
             Ok(value) => {
-                plan.written.push((
-                    format!(
-                        "{}.{}",
-                        last_segment(&property.owner),
-                        last_segment(&property.feature)
-                    ),
-                    format!(
+                plan.written.values.push(WrittenValue {
+                    feature: property.feature.clone(),
+                    value: value.clone(),
+                    words: format!(
                         "Design Value for {} ({}: {}.{})",
                         property.feature, link.tool, link.object, property.property
                     ),
-                ));
+                });
                 (value.clone(), DesignValue::Read { value })
             }
             Err(reason) => {
-                let marker = format!("{MARKER}{}#", plan.markers.len());
-                plan.markers.push((
+                let marker = format!("{MARKER}{}#", plan.written.markers.len());
+                plan.written.markers.push((
                     marker.clone(),
                     format!(
                         "no Design Value for {} ({}: {reason})",
@@ -267,11 +279,11 @@ pub(crate) fn plan(
                 (format!("\"{marker}\""), DesignValue::Missing { reason })
             }
         };
-        plan.edits.push(Edit {
+        plan.edits.push(ValueEdit {
             document: property.document.clone(),
             feature: property.feature.clone(),
             value: written,
-            how: how(property),
+            place: place(property),
         });
         plan.outcomes.push(DesignValueOutcome {
             feature: property.feature.clone(),
@@ -288,18 +300,18 @@ pub(crate) fn plan(
     plan
 }
 
-/// How `property`'s feature takes its Design Value.
-fn how(property: &LinkedProperty) -> How {
+/// Where `property`'s feature takes its Design Value.
+fn place(property: &LinkedProperty) -> ValuePlace {
     if property.has_value {
-        return How::SetValue;
+        return ValuePlace::Editor(EditorEdit::SetValue);
     }
     if let Some(at) = property.named_at {
-        return How::InText { at };
+        return ValuePlace::InText { at };
     }
-    How::Redefine {
+    ValuePlace::Editor(EditorEdit::Redefine {
         owner: property.owner.clone(),
         redefines: last_segment(&property.feature).to_owned(),
-    }
+    })
 }
 
 /// `text` with ` = <value>` written into the declaration beginning at
