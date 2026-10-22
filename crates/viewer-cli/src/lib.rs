@@ -235,11 +235,11 @@ fn requirements(
         0 => None,
         n => Some(counts.failure(n, strict)),
     };
-    fail_on(unreadable, failure)
+    fail_on_unreadable_links_or(unreadable, failure)
 }
 
 /// Fails with one line for unreadable Tool Links, if any, then `failure`.
-fn fail_on(unreadable: usize, failure: Option<String>) -> Result<(), Failure> {
+fn fail_on_unreadable_links_or(unreadable: usize, failure: Option<String>) -> Result<(), Failure> {
     let unreadable = match unreadable {
         0 => None,
         1 => Some("1 Tool Link could not be read".to_owned()),
@@ -339,7 +339,7 @@ fn check(
         .map(|(n, counts)| counts.failure(n, strict))
         .collect();
     let failure = (!failures.is_empty()).then(|| failures.join("; "));
-    fail_on(unreadable, failure)
+    fail_on_unreadable_links_or(unreadable, failure)
 }
 
 /// How a report came out: how many lines it had of each kind.
