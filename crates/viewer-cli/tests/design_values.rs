@@ -219,3 +219,23 @@ fn a_model_without_tool_links_prints_no_design_values() {
         assert!(!outcome.stderr.contains("Tool Link"), "{command}");
     }
 }
+
+#[test]
+fn two_elements_linked_to_one_unreadable_object_are_two_tool_links_not_read() {
+    let model = Model::builder()
+        .package("Drive")
+        .part("Drive::left")
+        .tool_link("FreeCAD", "cad/wheel.FCStd", "Wheel")
+        .attribute("Drive::left::volume")
+        .design_value("Volume", missing("FreeCAD not available"))
+        .part("Drive::right")
+        .tool_link("FreeCAD", "cad/wheel.FCStd", "Wheel")
+        .attribute("Drive::right::volume")
+        .design_value("Volume", missing("FreeCAD not available"))
+        .build();
+
+    let outcome = run("check", model, &[]);
+
+    assert_eq!(outcome.code, EXIT_FAILURE);
+    assert_eq!(outcome.stderr, "error: 2 Tool Links could not be read\n");
+}
