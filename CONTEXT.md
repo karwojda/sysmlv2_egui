@@ -105,6 +105,10 @@ _Avoid_: binding (a SysML binding connects features), mapping, trace
 The value an Engineering Tool reports, through a Tool Link, for a feature of the linked element (the mass FreeCAD reports for body `Engine`). Checks use it in place of the Model Value; a difference between the two is shown, not judged.
 _Avoid_: pulled value, actual value, measured value
 
+**Summed Design Value**:
+A Design Value an Engineering Tool adds up over the parts of a design, such as the power of every placed component on a KiCad board. A part that doesn't state the value is left out and named as uncounted, not treated as unknown; a part that states it unreadably leaves the sum with no Design Value (ADR 0006).
+_Avoid_: rollup (a SysML rollup sums Model features), total, aggregate
+
 **Model Value**:
 The value the Model itself writes for a feature. Once a Tool Link gives that feature a Design Value, the Model Value is kept and shown beside it, typically as the estimate or budget from before the design existed.
 _Avoid_: estimate (it isn't always one), nominal value
