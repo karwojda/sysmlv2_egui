@@ -9,11 +9,12 @@ use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::backend::Analyses;
-use viewer_core::engineering_tools;
+use viewer_core::engineering_tools::{self, DesignValue};
 use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::model::{Element, ElementKind};
 use viewer_core::satisfaction;
 use viewer_core::style::{self, Style};
+use viewer_core::units::readable_value;
 use viewer_core::verdict::{self, Finding, Kind, Status, Verdict};
 use viewer_core::view::{self, ViewError};
 use viewer_core::{
@@ -195,7 +196,9 @@ pub fn run_with_output(
     match result {
         Ok(()) => EXIT_OK,
         Err(error) => {
-            let _ = writeln!(stderr, "error: {error}");
+            for line in error.0.lines() {
+                let _ = writeln!(stderr, "error: {line}");
+            }
             EXIT_FAILURE
         }
     }
@@ -226,11 +229,90 @@ fn requirements(
         stderr,
         "no requirement was checked",
     )?;
+    let unreadable = design_values_report(&model, stdout);
     let counts = requirements_report(&model, model_folder, stdout);
-    match counts.failing(strict) {
-        0 => Ok(()),
-        n => Err(Failure(counts.failure(n, strict))),
+    let failure = match counts.failing(strict) {
+        0 => None,
+        n => Some(counts.failure(n, strict)),
+    };
+    fail_on(unreadable, failure)
+}
+
+/// Fails with one line for unreadable Tool Links, if any, then `failure`.
+fn fail_on(unreadable: usize, failure: Option<String>) -> Result<(), Failure> {
+    let unreadable = match unreadable {
+        0 => None,
+        1 => Some("1 Tool Link could not be read".to_owned()),
+        n => Some(format!("{n} Tool Links could not be read")),
+    };
+    let lines: Vec<String> = unreadable.into_iter().chain(failure).collect();
+    if lines.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure(lines.join("\n")))
     }
+}
+
+/// Prints one line per linked feature, when the Model has Tool Links: its
+/// Design Value, its source and its Model Value, or why it has none. The
+/// result is how many Tool Links could not be read: those with a feature
+/// left without a Design Value.
+fn design_values_report(model: &Model, stdout: &mut dyn Write) -> usize {
+    let outcomes = model.design_values();
+    if model.tool_links().is_empty() && outcomes.is_empty() {
+        return 0;
+    }
+    let width = width(outcomes.iter().map(|o| &o.feature));
+    let mut unread_links: Vec<(&str, &str, &str)> = Vec::new();
+    for outcome in outcomes {
+        let source = &outcome.source;
+        let from = format!(
+            "{}: {} of {} in {}",
+            source.tool, source.property, source.object, source.file
+        );
+        let (mark, label, text) = match &outcome.design_value {
+            DesignValue::Read { value } => (
+                "⚙",
+                "Read",
+                format!("{} from {from}", readable_value(value)),
+            ),
+            DesignValue::Missing { reason } => {
+                let link = (
+                    source.tool.as_str(),
+                    source.file.as_str(),
+                    source.object.as_str(),
+                );
+                if !unread_links.contains(&link) {
+                    unread_links.push(link);
+                }
+                ("⚠", "Not read", format!("{reason}, for {from}"))
+            }
+        };
+        let model_says = outcome.model_value.as_ref().map_or(String::new(), |v| {
+            format!(" (Model says {})", readable_value(v))
+        });
+        let _ = writeln!(
+            stdout,
+            "{mark} {label:<11} {:<width$}  {text}{model_says}",
+            outcome.feature.as_str()
+        );
+    }
+    let read = outcomes
+        .iter()
+        .filter(|o| matches!(o.design_value, DesignValue::Read { .. }))
+        .count();
+    let _ = writeln!(
+        stdout,
+        "{} {}: {read} read, {} not read",
+        outcomes.len(),
+        if outcomes.len() == 1 {
+            "Design Value"
+        } else {
+            "Design Values"
+        },
+        outcomes.len() - read
+    );
+    unread_links.len()
 }
 
 /// The `requirements` report, then one line per Constraint Result. Fails on
@@ -251,6 +333,7 @@ fn check(
         stderr,
         "nothing was checked",
     )?;
+    let unreadable = design_values_report(&model, stdout);
     let reports = [
         requirements_report(&model, model_folder, stdout),
         constraints_report(&model, model_folder, stdout),
@@ -262,11 +345,8 @@ fn check(
         .filter(|(n, _)| *n > 0)
         .map(|(n, counts)| counts.failure(n, strict))
         .collect();
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(Failure(failures.join("; ")))
-    }
+    let failure = (!failures.is_empty()).then(|| failures.join("; "));
+    fail_on(unreadable, failure)
 }
 
 /// How a report came out: how many lines it had of each kind.

@@ -115,8 +115,8 @@ fn a_feature_without_a_design_value_is_listed_with_the_reason() {
     assert_eq!(
         &lines[..3],
         [
-            "⚠ Not read    Drive::drive::engine::volume   FreeCAD not available, for Volume of Engine in cad/engine.FCStd (Model says 900000.0 [millimetre³])",
-            "⚠ Not read    Drive::drive::gearbox::volume  no object Gearbox, for Volume of Gearbox in cad/gearbox.FCStd",
+            "⚠ Not read    Drive::drive::engine::volume   FreeCAD not available, for FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [millimetre³])",
+            "⚠ Not read    Drive::drive::gearbox::volume  no object Gearbox, for FreeCAD: Volume of Gearbox in cad/gearbox.FCStd",
             "2 Design Values: 0 read, 2 not read",
         ],
         "{}",

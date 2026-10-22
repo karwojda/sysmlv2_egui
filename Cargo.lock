@@ -4012,6 +4012,7 @@ dependencies = [
  "tempfile",
  "viewer-core",
  "viewer-opensysml",
+ "viewer-tools",
 ]
 
 [[package]]

@@ -89,3 +89,29 @@ fn as_quotient(unit: &str) -> Option<String> {
     };
     Some(format!("{}/{under}", over.join("⋅")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_have_their_bracketed_unit_made_readable() {
+        assert_eq!(readable_value("1000000.0 [mm^3]"), "1000000.0 [mm³]");
+        assert_eq!(
+            readable_value("900000.0 [millimetre ** 3]"),
+            "900000.0 [millimetre³]"
+        );
+        assert_eq!(
+            readable_value("default 0.2e6 [mm**3]"),
+            "default 0.2e6 [mm³]"
+        );
+        assert_eq!(readable_value("7.85"), "7.85");
+    }
+
+    #[test]
+    fn units_lose_prefixes_and_negative_powers_become_quotients() {
+        assert_eq!(readable_unit("SI::'kg⋅m⁻³'"), "kg/m³");
+        assert_eq!(readable_unit("kg⋅m^-1⋅s^-2"), "kg/(m⋅s²)");
+        assert_eq!(readable_unit("s^-1"), "s⁻¹");
+    }
+}
