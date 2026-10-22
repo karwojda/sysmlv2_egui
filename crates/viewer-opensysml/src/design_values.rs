@@ -35,6 +35,9 @@ pub(crate) struct LinkedProperty {
     /// `Drive::Component::volume`): where its Model Value comes from when
     /// it writes none.
     pub redefines: Vec<QualifiedName>,
+    /// Where the feature's declaration begins, line and column from 1,
+    /// when it has a name of its own (`attribute bore : LengthValue`).
+    pub named_at: Option<(u32, u32)>,
     /// The document declaring the feature, as the parse named it.
     pub document: String,
     /// Where the feature is declared: an unnamed redefinition is no
@@ -77,6 +80,13 @@ pub(crate) enum How {
         owner: QualifiedName,
         redefines: String,
     },
+    /// The feature has a name of its own and no value (`attribute bore :
+    /// LengthValue { @ToolProperty … }`): the service won't give one to a
+    /// declaration with a body, nor delete one anything refers to, so
+    /// ` = <value>` is written into the text before its body or its `;`,
+    /// the declaration beginning at `at` (line, column). See
+    /// [`write_value`].
+    InText { at: (u32, u32) },
 }
 
 /// What the tools answered: the edits to make, and what the Model records.
@@ -285,10 +295,57 @@ fn how(property: &LinkedProperty) -> How {
     if property.has_value {
         return How::SetValue;
     }
+    if let Some(at) = property.named_at {
+        return How::InText { at };
+    }
     How::Redefine {
         owner: property.owner.clone(),
         redefines: last_segment(&property.feature).to_owned(),
     }
+}
+
+/// `text` with ` = <value>` written into the declaration beginning at
+/// `at` (line, column, from 1), before its body or its terminating `;`.
+/// `None` when neither follows: `at` is no declaration of this text.
+pub(crate) fn write_value(text: &str, at: (u32, u32), value: &str) -> Option<String> {
+    let (line, column) = at;
+    let line_start = match line {
+        0 => return None,
+        1 => 0,
+        _ => text.match_indices('\n').nth(line as usize - 2)?.0 + 1,
+    };
+    let start = line_start
+        + text[line_start..]
+            .char_indices()
+            .nth(column.checked_sub(1)? as usize)?
+            .0;
+    // The header runs to the body's `{` or the `;`; neither counts inside
+    // a string, a quoted name or a comment.
+    let header = &text[start..];
+    let mut chars = header.char_indices();
+    let end = loop {
+        let (i, c) = chars.next()?;
+        match c {
+            '{' | ';' => break start + i,
+            '"' | '\'' => {
+                chars.by_ref().find(|&(_, n)| n == c)?;
+            }
+            '/' if header[i..].starts_with("//") => {
+                chars.by_ref().find(|&(_, n)| n == '\n')?;
+            }
+            '/' if header[i..].starts_with("/*") => {
+                chars.next();
+                chars
+                    .by_ref()
+                    .find(|&(j, _)| header[j..].starts_with("*/"))?;
+                chars.next();
+            }
+            _ => {}
+        }
+    };
+    // Not past a line break, which may end a `//` comment.
+    let head = text[..end].trim_end_matches([' ', '\t']);
+    Some(format!("{head} = {value} {}", &text[end..]))
 }
 
 /// `volume` of `Drive::drive::engine::volume`.
@@ -305,4 +362,53 @@ fn resolve(document: &str, file: &str) -> PathBuf {
         .unwrap_or(Path::new(""))
         .join(file);
     std::path::absolute(&joined).unwrap_or(joined)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_value;
+
+    #[test]
+    fn a_value_is_written_before_the_body() {
+        let text =
+            "part p {\n    attribute bore : LengthValue { @ToolProperty { name = \"D\"; } }\n}\n";
+        assert_eq!(
+            write_value(text, (2, 5), "8.0 [mm]").as_deref(),
+            Some(
+                "part p {\n    attribute bore : LengthValue = 8.0 [mm] { @ToolProperty { name = \"D\"; } }\n}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn a_value_is_written_before_the_semicolon_of_a_declaration_without_a_body() {
+        assert_eq!(
+            write_value(
+                "attribute bore : LengthValue;",
+                (1, 1),
+                "\"no Design Value #0#\""
+            )
+            .as_deref(),
+            Some("attribute bore : LengthValue = \"no Design Value #0#\" ;")
+        );
+    }
+
+    #[test]
+    fn braces_in_quoted_names_and_comments_are_not_the_body() {
+        let text = "attribute 'b{re' /* { */ : LengthValue // {\n    { }";
+        assert_eq!(
+            write_value(text, (1, 1), "1 [mm]").as_deref(),
+            Some("attribute 'b{re' /* { */ : LengthValue // {\n = 1 [mm] { }")
+        );
+    }
+
+    #[test]
+    fn a_place_that_starts_no_declaration_writes_nothing() {
+        assert_eq!(
+            write_value("attribute bore : LengthValue", (1, 1), "1"),
+            None
+        );
+        assert_eq!(write_value("attribute bore;", (3, 1), "1"), None);
+        assert_eq!(write_value("attribute bore;", (1, 40), "1"), None);
+    }
 }

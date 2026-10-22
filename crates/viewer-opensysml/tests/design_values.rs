@@ -563,3 +563,38 @@ fn two_tool_links_to_one_tool_on_one_element_are_a_diagnostic_and_neither_is_rea
         )
     );
 }
+
+/// `fixtures/named_design_values`: each shaft's `bore` is a feature of its
+/// own with a body and no value; the tool knows `Shaft`, not `Spare`.
+fn load_named() -> Model {
+    let (tool, _) = designed();
+    let model = OpenSysmlBackend::new()
+        .with_tool("FreeCAD", tool)
+        .load(&fixture("named_design_values"))
+        .unwrap();
+    assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
+    model
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_named_feature_with_a_body_and_no_value_takes_the_design_value_or_is_undecided() {
+    let model = load_named();
+
+    // The design's 8 mm bore is over the shaft's 6 mm; it keeps its name
+    // and its type.
+    let bore = element(&model, "drive::shaft::bore");
+    assert_eq!(bore.computed, ["8.0 [mm]"]);
+    assert_eq!(
+        bore.typed_by.as_ref().map(QualifiedName::as_str),
+        Some("ISQBase::LengthValue")
+    );
+    assert_eq!(
+        check_result(&model, "drive::shaft::boreFits", "shaft").0,
+        Status::Violated
+    );
+    assert_eq!(
+        check_result(&model, "drive::spare::boreFits", "spare"),
+        undecided("no Design Value for Drive::drive::spare::bore (FreeCAD: no object Spare)")
+    );
+}
