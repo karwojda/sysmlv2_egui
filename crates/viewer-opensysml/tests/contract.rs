@@ -669,8 +669,30 @@ fn a_model_with_the_engineering_tools_library_resolves_its_tool_links() {
 }
 
 #[test]
-fn the_tool_links_fixture_holds_the_library_the_tool_prints() {
-    let copy = std::fs::read_to_string(fixture("tool_links").join("EngineeringTools.sysml"));
+fn every_fixture_copy_of_the_library_is_the_library_the_tool_prints() {
+    let mut copies = Vec::new();
+    let mut folders = vec![fixture("")];
+    while let Some(folder) = folders.pop() {
+        for entry in std::fs::read_dir(&folder).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if path
+                .file_name()
+                .is_some_and(|n| n == "EngineeringTools.sysml")
+            {
+                copies.push(path);
+            }
+        }
+    }
 
-    assert_eq!(copy.unwrap(), viewer_core::engineering_tools::LIBRARY);
+    assert!(copies.len() >= 6, "only {copies:?}");
+    for copy in copies {
+        let text = std::fs::read_to_string(&copy).unwrap();
+        assert!(
+            text == viewer_core::engineering_tools::LIBRARY,
+            "{} differs from the library",
+            copy.display()
+        );
+    }
 }
