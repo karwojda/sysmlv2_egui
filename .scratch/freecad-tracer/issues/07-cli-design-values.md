@@ -6,12 +6,23 @@ See `.scratch/freecad-tracer/spec.md` (stories 29–32, 34, 35).
 
 **Blocked by:** 03 (Design Values replace Model Values in load), 06 (FreeCAD adapter)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `check` and `requirements` pass the FreeCAD adapter to the backend
-- [ ] "Design Values" section printed first, only when the Model has Tool Links
-- [ ] Each line: Design Value, source (tool, file, object, property), `(Model says …)`; or the reason
-- [ ] Any unreadable link fails the command with `error: N Tool Link(s) could not be read`, independent of `--strict`; singular/plural correct
-- [ ] Existing failure lines and exit codes otherwise unchanged
-- [ ] Output for a Model without Tool Links unchanged
-- [ ] Tests with `FakeBackend` returning a `Model` with Design Value outcomes and Tool Links (prior art: `viewer-cli/tests/check.rs`, `requirements.rs`)
+- [x] `check` and `requirements` pass the FreeCAD adapter to the backend
+- [x] "Design Values" section printed first, only when the Model has Tool Links
+- [x] Each line: Design Value, source (tool, file, object, property), `(Model says …)`; or the reason
+- [x] Any unreadable link fails the command with `error: N Tool Link(s) could not be read`, independent of `--strict`; singular/plural correct
+- [x] Existing failure lines and exit codes otherwise unchanged
+- [x] Output for a Model without Tool Links unchanged
+- [x] Tests with `FakeBackend` returning a `Model` with Design Value outcomes and Tool Links (prior art: `viewer-cli/tests/check.rs`, `requirements.rs`)
+
+## Comments
+
+- Done.
+  - **Section (`viewer-cli/src/lib.rs`, `design_values_report`):** printed before the requirements report by both `check` and `requirements` when the Model has Tool Links or Design Value outcomes. Each line is `⚙ Read        <feature>  <value> from <tool>: <property> of <object> in <file> (Model says <model value>)` or `⚠ Not read    <feature>  <reason>, for <tool>: <property> of <object> in <file> (Model says …)`, followed by `N Design Value(s): R read, M not read`. `(Model says …)` is left out when the Model writes no value. Values and Model Values go through the shared unit formatter, so `[mm^3]` prints as `[mm³]` and `[millimetre ** 3]` as `[millimetre³]`.
+  - **Failing:** a Tool Link counts as unreadable when any of its features has no Design Value, with links told apart by (tool, file, object). `error: N Tool Link(s) could not be read` is a stderr line of its own, before the existing failure line, and it fails the command whatever `--strict` says. The existing lines and exit codes are unchanged. `Failure` can now carry several lines, and each one is printed with an `error: ` prefix.
+  - **Adapter:** `main.rs` builds `OpenSysmlBackend::with_config(config).with_tool("FreeCAD", viewer_tools::FreeCad::new())` for every command, so `export` loads Design Values too. FreeCAD starts only when the Model has Tool Links. `viewer-cli` now depends on `viewer-tools`.
+  - **Unit formatter:** moved from `viewer-opensysml/src/checks/service.rs` to `viewer_core::units` (`readable_unit`, plus `readable_value`, which formats the bracketed unit of a value text). It now also handles spaced `**`.
+  - **Tests:** `viewer-cli/tests/design_values.rs` has 7 tests on `FakeBackend`: the read line, the not-read lines, the failure without `--strict`, singular before the other failures, read values failing nothing, `requirements`, and no output change without links. `viewer_core::units` has its own unit tests. A live run against `viewer-tools/tests/fixtures/parts.FCStd` (`Body`) printed `1000000.0 [mm³] from FreeCAD: Volume of Body …`.
+  - **Deviation:** the not-read line names the tool as well (`for FreeCAD: Volume of …`), to match the read line.
+  - **Left for ticket 05:** Undecided lines still carry whatever reason the checks give. Until 05 writes the marker, a feature without a Design Value is checked on its Model Value, so in the live run a missing gearbox still showed `Violated` rather than `Undecided`.
