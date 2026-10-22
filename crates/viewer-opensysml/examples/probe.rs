@@ -11,7 +11,7 @@ use opensysml::{
 use serde_json::Value;
 
 /// The properties worth printing; the rest is noise for most questions.
-const SHOWN: [&str; 16] = [
+const SHOWN: [&str; 18] = [
     "@id",
     "@type",
     "declaredName",
@@ -28,6 +28,8 @@ const SHOWN: [&str; 16] = [
     "direction",
     "kind",
     "isDefault",
+    "sysx:sourceLine",
+    "sysx:sourceColumn",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

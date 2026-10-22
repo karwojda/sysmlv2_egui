@@ -315,7 +315,8 @@ fn place(property: &LinkedProperty) -> ValuePlace {
 }
 
 /// `text` with ` = <value>` written into the declaration beginning at
-/// `at` (line, column, from 1), before its body or its terminating `;`.
+/// `at` (line from 1, column from 1 in UTF-8 bytes, as the service counts
+/// it), before its body or its terminating `;`.
 /// `None` when neither follows: `at` is no declaration of this text.
 pub(crate) fn write_value(text: &str, at: (u32, u32), value: &str) -> Option<String> {
     let (line, column) = at;
@@ -324,11 +325,11 @@ pub(crate) fn write_value(text: &str, at: (u32, u32), value: &str) -> Option<Str
         1 => 0,
         _ => text.match_indices('\n').nth(line as usize - 2)?.0 + 1,
     };
-    let start = line_start
-        + text[line_start..]
-            .char_indices()
-            .nth(column.checked_sub(1)? as usize)?
-            .0;
+    // The service counts the column in UTF-8 bytes, not characters.
+    let start = line_start + column.checked_sub(1)? as usize;
+    if !text.is_char_boundary(start) || text[line_start..start].contains('\n') {
+        return None;
+    }
     // The header runs to the body's `{` or the `;`; neither counts inside
     // a string, a quoted name or a comment.
     let header = &text[start..];

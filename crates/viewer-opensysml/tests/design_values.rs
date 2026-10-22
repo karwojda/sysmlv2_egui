@@ -670,3 +670,13 @@ fn a_named_feature_with_a_body_and_no_value_takes_the_design_value_or_is_undecid
         undecided("no Design Value for Drive::drive::spare::bore (FreeCAD: no object Spare)")
     );
 }
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_named_feature_after_text_that_is_not_ascii_on_its_line_takes_the_design_value() {
+    let model = load_named();
+
+    let welle = "drive::Welle⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙";
+    let bore = element(&model, &format!("{welle}::bore"));
+    assert_eq!(bore.computed, ["8.0 [mm]"]);
+}

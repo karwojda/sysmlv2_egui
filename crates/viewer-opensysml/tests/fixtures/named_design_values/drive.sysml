@@ -18,5 +18,11 @@ package Drive {
             attribute bore : LengthValue { @ToolProperty { name = "Diameter"; } }
             assert constraint boreFits { bore <= 6 [mm] }
         }
+        // The feature follows text that isn't ASCII on its line, so its
+        // column counts more bytes than characters.
+        part 'Welle⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙' : Shaft { attribute bore : LengthValue { @ToolProperty { name = "Diameter"; } }
+            @ToolLink { tool = "FreeCAD"; file = "cad/drive.FCStd"; object = "Shaft"; }
+            assert constraint boreFits { bore <= 6 [mm] }
+        }
     }
 }
