@@ -19,13 +19,13 @@ See `.scratch/kicad-tracer/spec.md` (stories 1–4, 20–28, 30, 37, 38) and its
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `"KiCad"` is in `built_in()`; a Model without KiCad links never starts it
-- [ ] Stub `kicad-cli` (a script named by `SYSML_VIEWER_KICAD` that answers `version` and writes recorded output to `-o`): each dimension with its unit
-- [ ] The stub asserts it was given `KICAD_CONFIG_HOME`; a stats recording in Polish (decimal commas, translated keys) is kept to show what English forcing prevents
-- [ ] Reasons for: missing executable, version below 10, timeout (a stub that sleeps), missing `.kicad_pro`/`.kicad_sch`/`.kicad_pcb`, an object other than `board`
-- [ ] The files an answer depends on: every schematic and board file in the project folder; FreeCAD's is its own file
-- [ ] Real `kicad-cli` on `examples/feather-budget/`: 58.42 × 22.86 × 1.6 mm; skipped with a printed note when KiCad can't be found
-- [ ] `sysml-viewer check examples/feather-budget` shows the Design Values section with the board dimensions and judges the envelope requirements
-- [ ] The example folder carries the Feather's LICENSE and a NOTICE naming its source
+- [x] `"KiCad"` is in `built_in()`; a Model without KiCad links never starts it
+- [x] Stub `kicad-cli` (a script named by `SYSML_VIEWER_KICAD` that answers `version` and writes recorded output to `-o`): each dimension with its unit
+- [x] The stub asserts it was given `KICAD_CONFIG_HOME`; a stats recording in Polish (decimal commas, translated keys) is kept to show what English forcing prevents
+- [x] Reasons for: missing executable, version below 10, timeout (a stub that sleeps), missing `.kicad_pro`/`.kicad_sch`/`.kicad_pcb`, an object other than `board`
+- [x] The files an answer depends on: every schematic and board file in the project folder; FreeCAD's is its own file
+- [x] Real `kicad-cli` on `examples/feather-budget/`: 58.42 × 22.86 × 1.6 mm; skipped with a printed note when KiCad can't be found
+- [x] `sysml-viewer check examples/feather-budget` shows the Design Values section with the board dimensions and judges the envelope requirements
+- [x] The example folder carries the Feather's LICENSE and a NOTICE naming its source

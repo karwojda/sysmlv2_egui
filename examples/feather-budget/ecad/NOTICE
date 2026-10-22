@@ -1,0 +1,14 @@
+RoyalBlue54L Feather
+
+This folder is the RoyalBlue54L Feather by Lord's Boards
+(https://github.com/LordsBoards), as KiCad 10.0.7 ships it among its demo
+projects (share/kicad/demos/royalblue54L_feather). It is licensed under
+the CERN Open Hardware Licence Version 2 - Permissive (CERN-OHL-P-2.0);
+see LICENSE in this folder.
+
+Changes made for the sysmlv2_egui example:
+- img/ (the board photographs README.md refers to) is left out.
+- .gitmodules, which names library submodules the demo does not include,
+  is left out.
+
+No design file is modified.
