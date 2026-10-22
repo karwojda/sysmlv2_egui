@@ -35,6 +35,7 @@ fn run(command: &str, model: Model, flags: &[&str]) -> Outcome {
 fn read(value: &str) -> DesignValue {
     DesignValue::Read {
         value: value.to_owned(),
+        parts: None,
     }
 }
 

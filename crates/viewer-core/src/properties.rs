@@ -79,7 +79,7 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         rows.push(text(
             "Design Value",
             match design_value {
-                DesignValue::Read { value } => format!(
+                DesignValue::Read { value, .. } => format!(
                     "{}  {} {} {}.{}",
                     readable_value(value),
                     design_value.mark(),

@@ -272,7 +272,7 @@ fn design_values_report(model: &Model, stdout: &mut dyn Write) -> usize {
         );
         let design_value = &outcome.design_value;
         let text = match design_value {
-            DesignValue::Read { value } => format!("{} from {from}", readable_value(value)),
+            DesignValue::Read { value, .. } => format!("{} from {from}", readable_value(value)),
             DesignValue::Missing { reason } => {
                 if !unread_links.contains(&link) {
                     unread_links.push(link);

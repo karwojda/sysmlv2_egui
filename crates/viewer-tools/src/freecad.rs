@@ -11,7 +11,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
+use viewer_core::engineering_tools::{Answer, EngineeringTool, ReadValue, Wanted};
 
 /// The name Tool Links give FreeCAD: `@ToolLink { tool = "FreeCAD"; … }`.
 pub const NAME: &str = "FreeCAD";
@@ -281,7 +281,7 @@ impl EngineeringTool for FreeCad {
                     .map(|property| {
                         let value = match found["error"].as_str() {
                             Some(reason) => Err(format!("{reason} in {}", file.display())),
-                            None => value_text(&found[property]),
+                            None => value_text(&found[property]).map(ReadValue::new),
                         };
                         (property.clone(), value)
                     })

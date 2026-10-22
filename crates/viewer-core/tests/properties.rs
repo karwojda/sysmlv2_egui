@@ -213,6 +213,7 @@ fn linked_drive() -> Model {
             "Volume",
             DesignValue::Read {
                 value: "1000000.0 [mm^3]".to_owned(),
+                parts: None,
             },
         )
         .part("Drive::drive::gearbox")
