@@ -8,6 +8,7 @@ clap = { version = "4", features = ["derive"] }
 eframe = { version = "0.37.0", features = ["glow"] }
 viewer-core = { version = "0.1.0", path = "../viewer-core" }
 viewer-opensysml = { version = "0.1.0", path = "../viewer-opensysml" }
+viewer-tools = { version = "0.1.0", path = "../viewer-tools" }
 
 [[bin]]
 name = "sysml-viewer-gui"

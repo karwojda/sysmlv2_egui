@@ -626,3 +626,73 @@ fn a_broken_settings_file_warns_and_runs_analyses() {
             .is_some()
     );
 }
+
+/// The Computed Values of `Q::engine::<feature>` in `fixtures/quantities`.
+fn engine_value(model: &Model, feature: &str) -> Vec<String> {
+    model
+        .element(&QualifiedName::new(format!("Q::engine::{feature}")))
+        .unwrap()
+        .computed
+        .clone()
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn computed_quantities_read_as_numbers_in_readable_units() {
+    let model = OpenSysmlBackend::new()
+        .load(&fixture("quantities"))
+        .unwrap();
+    assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
+
+    // The service answers `157/20 [SI::kg]`, `0.002 [SI::'m³']`,
+    // `7850.0 [SI::'kg⋅m⁻³']`, `2000000.0 [mm**3]` and a BigInteger.
+    assert_eq!(engine_value(&model, "mass"), ["7.85 [kg]"]);
+    assert_eq!(engine_value(&model, "doubled"), ["0.002 [m³]"]);
+    assert_eq!(engine_value(&model, "perVolume"), ["7850.0 [kg/m³]"]);
+    assert_eq!(engine_value(&model, "sum"), ["2000000.0 [mm³]"]);
+    assert_eq!(engine_value(&model, "huge"), ["30000000000000000000000"]);
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_model_with_the_engineering_tools_library_resolves_its_tool_links() {
+    let model = OpenSysmlBackend::new()
+        .load(&fixture("tool_links"))
+        .unwrap();
+
+    assert_eq!(model.diagnostics(), &[]);
+    assert!(
+        model
+            .element(&QualifiedName::from("Drive::drive::engine"))
+            .is_some()
+    );
+}
+
+#[test]
+fn every_fixture_copy_of_the_library_is_the_library_the_tool_prints() {
+    let mut copies = Vec::new();
+    let mut folders = vec![fixture("")];
+    while let Some(folder) = folders.pop() {
+        for entry in std::fs::read_dir(&folder).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if path
+                .file_name()
+                .is_some_and(|n| n == "EngineeringTools.sysml")
+            {
+                copies.push(path);
+            }
+        }
+    }
+
+    assert!(copies.len() >= 6, "only {copies:?}");
+    for copy in copies {
+        let text = std::fs::read_to_string(&copy).unwrap();
+        assert!(
+            text == viewer_core::engineering_tools::LIBRARY,
+            "{} differs from the library",
+            copy.display()
+        );
+    }
+}

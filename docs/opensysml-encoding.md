@@ -22,7 +22,11 @@ It prints the symbol tree (`TREE` lines) and the JSON items whose `@type` contai
 
 - A JSON `@id` is the qualified name with `::` written `__` and `@` written `_40`: `A::MassCheck::@2` is `A__MassCheck___402`. A membership's id is its member's id plus `_om`. Use `qualifiedName` to get our names; only `expose` falls back on the `_om` rule.
 - Unnamed elements get generated names, numbered within their owner: `P::@1`, `Req::@10`. Sort them by that number, not as text, to keep declaration order.
-- A redefinition without a name of its own (`attribute :>> mass = 180.0`) is unnamed in the element form (`engine::@0`) but appears in the symbol tree under the name of the feature it redefines (`engine::mass`). Its owner may be an unnamed redefinition too (`part :>> tank { … }`), so resolve names recursively (`valued_element`).
+- A redefinition without a name of its own (`attribute :>> mass = 180.0`) is unnamed in the element form (`engine::@0`) but appears in the symbol tree under the name of the feature it redefines (`engine::mass`). Its owner may be an unnamed redefinition too (`part :>> tank { … }`), so resolve names recursively (`valued_element`). The feature it redefines may be unnamed as well (a usage's `:>> volume` redefines its def's own `:>> volume default = …`), so follow `Redefinition` → `redefinedFeature` until one has a `declaredName` (`declared_name`).
+- An unnamed redefinition with a body and no value (`attribute :>> volume { @ToolProperty … }`) refuses `set_value`; to give it one, `delete` it and `add_member(owner, "attribute", "", redefines = ["volume"], value)`.
+- A named feature with a body and no value (`attribute bore : LengthValue { @ToolProperty … }`) can't be given one through the editor: `set_value` refuses the body, `delete` and `rename` refuse while anything refers to it, `add_member` refuses its name while it exists, `move_to` respells the references, and the body's unnamed members (`bore::@0`, named only in the JSON form) are unknown to it. The service does parse a value written before the body (`attribute bore : LengthValue = 8.0 [mm] { … }`), so `design_values::write_value` writes it into the text, at the declaration's `sysx:sourceLine`/`sysx:sourceColumn` (both from 1, the column counted in UTF-8 bytes: `ö` before it on its line counts 2, `😀` 4; `sysx:sourceEndLine`/`sysx:sourceEndColumn`, `sysx:hasBody` and `sysx:sourceText` are there too), before the service's edits.
+- A string written as a quantity feature's value (`"no Design Value #0#"`) is accepted by the edit; exactly the checks that depend on the feature come back Undecided with the string somewhere in their error chain, and the rest are judged as before. Removing the value instead would let a def's `default` show through. A quantity of the wrong dimension comes back as `feature value pump.mass: type mismatch: cannot write … to a feature typed by MassValue (dimension M)`, naming the feature only from its part, so two linked `engine.mass` under different parents read the same. Neither text is shown as is: `design_value_reason` in `checks/service.rs` puts both into words, telling same-named features apart by the part the check was about and by the value the service could not write.
+- An unnamed redefinition's `sysx:sourceLine` sits on its `engine::@0` item, which is no element of ours; read the line from that item.
 
 ## Where each fact lives
 
@@ -41,12 +45,14 @@ It prints the symbol tree (`TREE` lines) and the JSON items whose `@type` contai
 | A `return` parameter | a `ReturnParameterMembership` owned by the analysis |
 | Connector ends | `connectorEnd`; each end's `ReferenceSubsetting` names the feature or chain, and a flow end's owned `ReferenceUsage` `redefines` the port it reaches |
 | Metadata | owned `MetadataUsage` items, by `type` |
+| A metadata field's value (`@ToolLink { tool = "FreeCAD"; … }`) | the literal item `<metadata id>__<field>_pvalue` (`value`); a `@ToolProperty`'s `owner` is the feature, whose own `FeatureValue` says it has a value |
 | `expose` | `MembershipExpose` (`importedMembership`) or `NamespaceExpose` (`importedNamespace`), with `isRecursive` |
 
 ## Check answers
 
 - A verdict's `status` is `holds` or `violated`, with the failing `condition`; a non-empty `error` means it couldn't be evaluated. An analysis objective's verdict has no status text, only the `holds` flag.
 - `validate_instance` of a top-level part returns verdicts with an `instance_path` relative to that part (`tank`, `axle.wheel`), and every instance's feature values: the value of feature `f` on an instance of type symbol `T` belongs to `T::f`.
+- A computed magnitude an `f64` doesn't hold exactly is a `Rational` (`1.0e6 [mm^3] * 7850 [kg/m^3]` is `157/20`), and one beyond `i64` a `BigInteger`. Units come back in the service's spelling: `SI::kg`, `SI::'m³'` and `SI::'kg⋅m⁻³'` from products and quotients, `mm**3` from sums. `value_text` writes them as decimals in readable units (`7.85 [kg]`, `kg/m³`, `mm³`).
 
 ## Quirks
 

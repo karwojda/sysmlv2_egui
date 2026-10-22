@@ -10,7 +10,9 @@ fn main() -> ExitCode {
         // SAFETY: nothing else runs yet, so no thread reads the environment.
         unsafe { std::env::set_var(BINARY_VARIABLE, binary) };
     }
-    let mut backend = OpenSysmlBackend::with_config(config);
+    // Tool Links naming FreeCAD read their Design Values through it; a
+    // Model without Tool Links never starts it.
+    let mut backend = OpenSysmlBackend::with_config(config).with_tools(viewer_tools::built_in());
     let code = viewer_cli::run(args, &mut backend, &mut std::io::stderr());
     // Dropping the backend stops the sidecar before the process exits.
     drop(backend);

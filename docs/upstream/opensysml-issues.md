@@ -1,7 +1,7 @@
 # Draft issues for OpenSysML (sysml-grpc)
 
 Status: draft, not posted. Review before filing at https://github.com/Open-MBEE/OpenSysML.
-Two separate bugs, meant to be filed as two issues. The reproductions are in `repro/` beside this file.
+Two separate bugs and one request (Issue 3, added 2026-10-21), meant to be filed as separate issues. The reproductions are in `repro/` beside this file.
 Found 2026-10-18 with sysml-grpc 0.10.0 through the `opensysml` Rust client 0.10.0.
 
 ---
@@ -127,8 +127,42 @@ Include `declaredShortName` (and, ideally, `shortName`) in the reduced form of l
 
 ---
 
+## Issue 3 (request): `SetValue` on a declaration with a body
+
+Found 2026-10-21 with sysml-grpc 0.10.0.
+
+### Summary
+
+`SetValue` refuses a feature that has no value and has a body:
+
+```
+attribute :>> volume { @ToolProperty { name = "Volume"; } }
+```
+
+fails with `NotValued`: "has no value and no terminating ';' to add one before (a value cannot be added to a declaration with a body)". The value belongs before the body (`attribute :>> volume = 1.0e6 [mm^3] { … }`), which is valid notation.
+
+### Impact
+
+Any feature annotated with metadata in its body can't be given a value by an edit. The workaround is `Delete` plus `AddMember` with `redefines` and `value`, which drops the body.
+
+### Suggestion
+
+Let `SetValue` insert ` = <value>` before the body's `{`.
+
+---
+
 ## Notes for whoever files these
 
 - Both were checked against the real service, not inferred. Re-run the reproductions with the current sysml-grpc before filing, in case a newer release fixed either.
 - The viewer already copes with both. Nested claims are drawn from their owning part, and shown Undecided with the service's reason. Library references fall back to the full name. Once the service is fixed, the viewer shows correct results with no change.
 - Smaller observations, not worth an issue on their own: the symbol tree leaves a requirement's `subject` untyped (the `api-json` form has the type), and lists elements that have a short name twice under the same id.
+
+## Not for OpenSysML: `tonne` in the OMG standard library
+
+Found 2026-10-21 with sysml-grpc 0.10.0, while probing units. The service follows the standard library correctly; the library itself is wrong. This belongs with the SysML v2 Release / Pilot Implementation, not OpenSysML.
+
+- `SI.sysml` (Pilot Implementation, line 99) declares `attribute tonne : MassUnit { … referenceUnit = kg; conversionFactor = 1.0e-3; }`, so 1 t = 0.001 kg. It should be `1.0e3`. As a result `1 [tonne] == 1 [g]` evaluates true, and `200 [kg] <= 0.25 [tonne]` evaluates false.
+- `tonne` has no short name `<t>`, so `[t]` is an unresolved reference ("did you mean T?") and checks using it are undecided.
+- Also unresolved: `SI::bar`, `SI::hectare`.
+
+Reproduction: `repro/tonne.sysml`. Check the current SysML v2 Release library before filing, in case it was fixed.

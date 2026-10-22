@@ -4002,6 +4002,7 @@ dependencies = [
  "viewer-cli",
  "viewer-core",
  "viewer-opensysml",
+ "viewer-tools",
 ]
 
 [[package]]
@@ -4012,6 +4013,7 @@ dependencies = [
  "tempfile",
  "viewer-core",
  "viewer-opensysml",
+ "viewer-tools",
 ]
 
 [[package]]
@@ -4031,6 +4033,15 @@ name = "viewer-opensysml"
 version = "0.1.0"
 dependencies = [
  "opensysml",
+ "serde_json",
+ "tempfile",
+ "viewer-core",
+]
+
+[[package]]
+name = "viewer-tools"
+version = "0.1.0"
+dependencies = [
  "serde_json",
  "tempfile",
  "viewer-core",
