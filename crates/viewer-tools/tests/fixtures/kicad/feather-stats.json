@@ -1,0 +1,144 @@
+{
+  "metadata": {
+    "date": "2026-10-22T23:00:54",
+    "generator": "KiCad 10.0.7",
+    "project": "RoyalBlue54L-Feather",
+    "board_name": "RoyalBlue54L-Feather"
+  },
+  "board": {
+    "has_outline": true,
+    "width": "58.4200 mm",
+    "height": "22.8600 mm",
+    "area": "1329.932 mm²",
+    "front_component_density": "77.06",
+    "back_component_density": "28.76",
+    "front_copper_area": "1108.075 mm²",
+    "back_copper_area": "1120.993 mm²",
+    "min_track_clearance": "0.1510 mm",
+    "min_track_width": "0.1000 mm",
+    "min_drill_diameter": "1.000e-05 mm",
+    "board_thickness": "1.6000 mm",
+    "front_footprint_area": "1024.79 mm²",
+    "back_footprint_area": "382.447 mm²",
+    "front_footprint_density": "77.06",
+    "back_footprint_density": "28.76"
+  },
+  "pads": {
+    "through_hole": 86,
+    "smd": 327,
+    "connector": 6,
+    "npth": 9,
+    "castellated": 0,
+    "press_fit": 0
+  },
+  "vias": {
+    "through": 0,
+    "blind": 183,
+    "buried": 0,
+    "micro": 0
+  },
+  "components": {
+    "tht": {
+      "front": 1,
+      "back": 1,
+      "total": 2
+    },
+    "smd": {
+      "front": 51,
+      "back": 0,
+      "total": 51
+    },
+    "unspecified": {
+      "front": 4,
+      "back": 14,
+      "total": 18
+    },
+    "total": {
+      "front": 56,
+      "back": 15,
+      "total": 71
+    }
+  },
+  "drill_holes": [
+    {
+      "count": 183,
+      "shape": "Round",
+      "x_size": "1.000e-05 mm",
+      "y_size": "1.000e-05 mm",
+      "plated": true,
+      "source": "Via",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 57,
+      "shape": "Round",
+      "x_size": "1.0000 mm",
+      "y_size": "1.0000 mm",
+      "plated": true,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 25,
+      "shape": "Round",
+      "x_size": "0.2000 mm",
+      "y_size": "0.2000 mm",
+      "plated": true,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 4,
+      "shape": "Round",
+      "x_size": "2.5000 mm",
+      "y_size": "2.5000 mm",
+      "plated": false,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 3,
+      "shape": "Round",
+      "x_size": "0.9906 mm",
+      "y_size": "0.9906 mm",
+      "plated": false,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 2,
+      "shape": "Round",
+      "x_size": "0.6500 mm",
+      "y_size": "0.6500 mm",
+      "plated": false,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 2,
+      "shape": "Slot",
+      "x_size": "0.6000 mm",
+      "y_size": "1.7000 mm",
+      "plated": true,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    },
+    {
+      "count": 2,
+      "shape": "Slot",
+      "x_size": "0.6000 mm",
+      "y_size": "1.2000 mm",
+      "plated": true,
+      "source": "Pad",
+      "start_layer": "F.Cu",
+      "stop_layer": "B.Cu"
+    }
+  ]
+}

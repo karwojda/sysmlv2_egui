@@ -4,14 +4,14 @@
 //! from a top-level object (`Assembly.Link.`).
 
 use std::ffi::OsString;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
+
+use crate::process;
 
 /// The name Tool Links give FreeCAD: `@ToolLink { tool = "FreeCAD"; … }`.
 pub const NAME: &str = "FreeCAD";
@@ -133,26 +133,14 @@ impl Machine {
     }
 
     fn timeout(&self) -> Result<Duration, String> {
-        let Some(timeout) = &self.timeout else {
-            return Ok(DEFAULT_TIMEOUT);
-        };
-        let text = timeout.to_string_lossy();
-        text.trim()
-            .parse::<f64>()
-            .ok()
-            .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
-            .filter(|duration| !duration.is_zero())
-            .ok_or_else(|| format!("{TIMEOUT_VARIABLE} is {text}, not a number of seconds"))
+        process::timeout(self.timeout.as_ref(), TIMEOUT_VARIABLE, DEFAULT_TIMEOUT)
     }
 }
 
 /// The version numbers in an install folder's name, in order:
 /// `FreeCAD 1.10` is `[1, 10]`, a plain `FreeCAD` is `[]`.
 fn version(install: &Path) -> Vec<u64> {
-    let name = install.file_name().unwrap_or_default().to_string_lossy();
-    name.split(|c: char| !c.is_ascii_digit())
-        .filter_map(|digits| digits.parse().ok())
-        .collect()
+    process::version_numbers(&install.file_name().unwrap_or_default().to_string_lossy())
 }
 
 /// `freecadcmd` (or `FreeCADCmd`, either with `.exe`) in `dir`.
@@ -209,38 +197,24 @@ impl FreeCad {
         std::fs::write(&script, SCRIPT)
             .map_err(|e| format!("could not write {}: {e}", script.display()))?;
 
-        let windows = is_windows_executable(executable);
-        let path_for_freecad = |path: &Path| -> Result<String, String> {
-            if windows {
-                windows_path(path)
-            } else {
-                Ok(path.to_string_lossy().into_owned())
-            }
-        };
+        let path_for_freecad = |path: &Path| process::path_for(executable, path, NAME);
         let request = json!({"file": path_for_freecad(file)?, "objects": wanted}).to_string();
 
         let mut command = Command::new(executable);
         command
             .arg(path_for_freecad(&script)?)
-            .env(REQUEST_VARIABLE, request)
             .current_dir(dir.path())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if windows {
-            let shared = match std::env::var("WSLENV") {
-                Ok(existing) if !existing.is_empty() => format!("{existing}:{REQUEST_VARIABLE}"),
-                _ => REQUEST_VARIABLE.to_owned(),
-            };
-            command.env("WSLENV", shared);
-        }
+        process::set_variable(&mut command, executable, REQUEST_VARIABLE, &request);
         let child = command.spawn().map_err(|e| {
             format!(
                 "FreeCAD not available: {} could not be started: {e}",
                 executable.display()
             )
         })?;
-        let (stdout, stderr) = finish(child, timeout)?;
+        let process::Output { stdout, stderr } = process::finish(child, timeout, NAME)?;
 
         let Some(line) = stdout
             .lines()
@@ -302,70 +276,4 @@ fn value_text(answer: &Value) -> Result<String, String> {
         (Some(number), Some(unit)) => Ok(format!("{number:?} [{unit}]")),
         _ => Err("FreeCAD gave no answer for it".to_owned()),
     }
-}
-
-/// Waits for `child` up to `timeout`, then kills it. Gives its stdout and
-/// stderr.
-fn finish(mut child: Child, timeout: Duration) -> Result<(String, String), String> {
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if started.elapsed() >= timeout => {
-                let _ = child.kill();
-                let _ = child.wait();
-                // The readers are left behind: a process the run started
-                // may still hold the pipes open.
-                return Err(format!(
-                    "FreeCAD did not answer within {} s",
-                    timeout.as_secs_f64()
-                ));
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(e) => return Err(format!("FreeCAD could not be waited for: {e}")),
-        }
-    }
-    let text = |reader: JoinHandle<String>| reader.join().unwrap_or_default();
-    Ok((text(stdout), text(stderr)))
-}
-
-/// Reads a pipe to its end on its own thread, so a chatty run never
-/// blocks on a full pipe.
-fn drain(pipe: Option<impl Read + Send + 'static>) -> JoinHandle<String> {
-    thread::spawn(move || {
-        let mut bytes = Vec::new();
-        if let Some(mut pipe) = pipe {
-            let _ = pipe.read_to_end(&mut bytes);
-        }
-        String::from_utf8_lossy(&bytes).into_owned()
-    })
-}
-
-/// A Windows `freecadcmd.exe` run from Linux, which is WSL: it needs
-/// Windows paths and its request passed through `WSLENV`.
-fn is_windows_executable(executable: &Path) -> bool {
-    cfg!(unix)
-        && executable
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
-}
-
-/// `path` as Windows sees it from WSL: `/tmp/x` as
-/// `\\wsl.localhost\Ubuntu\tmp\x`, `/mnt/c/x` as `C:\x`.
-fn windows_path(path: &Path) -> Result<String, String> {
-    let output = Command::new("wslpath")
-        .arg("-w")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("wslpath could not be run for a Windows FreeCAD: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "wslpath could not convert {}: {}",
-            path.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }

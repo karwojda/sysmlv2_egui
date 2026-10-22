@@ -3,7 +3,7 @@
 //! `ToolLink` and `DesignValueOutcome` are what the Model records of it.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::model::QualifiedName;
 
@@ -31,6 +31,15 @@ pub trait EngineeringTool: Send {
     /// installed, the file is missing, the tool timed out) and applies to
     /// every property asked of it.
     fn read(&mut self, file: &Path, wanted: &Wanted) -> Result<Answer, String>;
+
+    /// The files an answer for `file` depends on: a change to any of them
+    /// may change it. By default `file` itself; a KiCad project
+    /// (`board.kicad_pro`) depends on every schematic and board file in
+    /// its folder instead. Nothing asks this until linked files are
+    /// watched.
+    fn dependent_files(&self, file: &Path) -> Vec<PathBuf> {
+        vec![file.to_path_buf()]
+    }
 }
 
 /// A Tool Link: the Model says `element` is designed as `object` in

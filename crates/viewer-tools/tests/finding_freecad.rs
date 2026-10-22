@@ -172,6 +172,13 @@ fn a_missing_file_is_named() {
 }
 
 #[test]
+fn an_answer_depends_on_its_own_file_only() {
+    let freecad = FreeCad::from_machine(Machine::default());
+
+    assert_eq!(freecad.dependent_files(&parts()), vec![parts()]);
+}
+
+#[test]
 fn a_run_may_take_30_seconds_unless_the_machine_says_otherwise() {
     assert_eq!(
         FreeCad::from_machine(Machine::default()).timeout(),
