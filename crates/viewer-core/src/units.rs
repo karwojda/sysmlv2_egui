@@ -18,10 +18,13 @@ pub fn readable_value(text: &str) -> String {
 }
 
 /// A unit as the Model would write it, not as the service spells it:
-/// without package prefixes and quotes (`SI::'m³'` → `m³`), with powers as
-/// superscripts (`mm**3`, `mm ** 3`, `mm^3` → `mm³`), and a product with
-/// negative powers as a quotient (`kg⋅m⁻³` → `kg/m³`).
+/// without package prefixes and quotes (`SI::'m³'` → `m³`), with unit
+/// names as symbols (`millimetre` → `mm`), with powers as superscripts
+/// (`mm**3`, `mm ** 3`, `mm^3` → `mm³`), and a product with negative powers
+/// as a quotient (`kg⋅m⁻³` → `kg/m³`).
 pub fn readable_unit(unit: &str) -> String {
+    let unit = symbols(unit);
+    let unit = unit.as_str();
     let mut plain = String::new();
     let mut chars = unit.chars().peekable();
     while let Some(c) = chars.next() {
@@ -43,6 +46,37 @@ pub fn readable_unit(unit: &str) -> String {
         }
     }
     as_quotient(&plain).unwrap_or(plain)
+}
+
+/// Unit names the service spells out (`millimetre`) as their symbols
+/// (`mm`), whole words only.
+fn symbols(unit: &str) -> String {
+    const NAMES: [(&str, &str); 7] = [
+        ("millimetre", "mm"),
+        ("centimetre", "cm"),
+        ("kilometre", "km"),
+        ("metre", "m"),
+        ("kilogram", "kg"),
+        ("gram", "g"),
+        ("second", "s"),
+    ];
+    fn flush(word: &mut String, out: &mut String) {
+        let name = NAMES.iter().find(|(name, _)| name == word);
+        out.push_str(name.map_or(word.as_str(), |(_, symbol)| symbol));
+        word.clear();
+    }
+    let mut out = String::new();
+    let mut word = String::new();
+    for c in unit.chars() {
+        if c.is_alphabetic() {
+            word.push(c);
+        } else {
+            flush(&mut word, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut word, &mut out);
+    out
 }
 
 /// Writes the power that follows in `chars` (`-1`, `3`, ` 3`) as
@@ -99,8 +133,11 @@ mod tests {
         assert_eq!(readable_value("1000000.0 [mm^3]"), "1000000.0 [mm³]");
         assert_eq!(
             readable_value("900000.0 [millimetre ** 3]"),
-            "900000.0 [millimetre³]"
+            "900000.0 [mm³]"
         );
+        assert_eq!(readable_value("0.0002 [metre^3]"), "0.0002 [m³]");
+        assert_eq!(readable_value("8 [kilogram]"), "8 [kg]");
+        assert_eq!(readable_value("3 [megametre]"), "3 [megametre]");
         assert_eq!(
             readable_value("default 0.2e6 [mm**3]"),
             "default 0.2e6 [mm³]"

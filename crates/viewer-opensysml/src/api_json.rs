@@ -407,6 +407,18 @@ fn tool_links(
                     property: field(id, "name"),
                     has_value,
                     redefines: redefinitions(items, children, owner),
+                    named_at: owner_item.get("declaredName").and_then(|_| {
+                        let line = owner_item.get("sysx:sourceLine")?.as_u64()?;
+                        let column = owner_item.get("sysx:sourceColumn")?.as_u64()?;
+                        Some((line as u32, column as u32))
+                    }),
+                    source: owner_item
+                        .get("sysx:sourceLine")
+                        .and_then(Value::as_u64)
+                        .map(|line| SourceLocation {
+                            file: PathBuf::from(&document),
+                            line: line as u32,
+                        }),
                     document,
                 });
             }

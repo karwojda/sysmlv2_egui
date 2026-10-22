@@ -3,8 +3,10 @@
 
 use crate::constraint;
 use crate::diagram::DiagramKind;
+use crate::engineering_tools::DesignValue;
 use crate::model::{ElementKind, Model, QualifiedName, SourceLocation};
 use crate::satisfaction;
+use crate::units::readable_value;
 use crate::verdict::{self, Kind, Status};
 use crate::view::ViewError;
 
@@ -67,7 +69,36 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
             .unwrap_or_else(|| subject.to_string());
         rows.push(link("Subject", subject, label));
     }
-    if let Some(value) = &e.value {
+    if let Some(l) = model.tool_link(element) {
+        rows.push(text(
+            "Tool Link",
+            format!("⚙ {} · {} · {}", l.tool, l.file, l.object),
+        ));
+    }
+    // A linked feature: the value the checks used, then the Model's own.
+    if let Some(outcome) = model.design_value(element) {
+        let source = &outcome.source;
+        rows.push(text(
+            "Design Value",
+            match &outcome.design_value {
+                DesignValue::Read { value } => format!(
+                    "{}  ⚙ {} {}.{}",
+                    readable_value(value),
+                    source.tool,
+                    source.object,
+                    source.property
+                ),
+                DesignValue::Missing { reason } => format!("⚠ none: {reason}"),
+            },
+        ));
+        rows.push(text(
+            "Model Value",
+            outcome
+                .model_value
+                .as_deref()
+                .map_or_else(|| "none".to_owned(), readable_value),
+        ));
+    } else if let Some(value) = &e.value {
         rows.push(text("Value", value.clone()));
     }
     if !e.computed.is_empty() {

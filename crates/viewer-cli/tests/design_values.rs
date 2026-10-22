@@ -71,7 +71,7 @@ fn check_lists_each_design_value_with_its_source_and_model_value_first() {
     assert_eq!(
         &lines[..2],
         [
-            "⚙ Read        Drive::drive::engine::volume  1000000.0 [mm³] from FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [millimetre³])",
+            "⚙ Read        Drive::drive::engine::volume  1000000.0 [mm³] from FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [mm³])",
             "1 Design Value: 1 read, 0 not read",
         ],
         "{}",
@@ -115,7 +115,7 @@ fn a_feature_without_a_design_value_is_listed_with_the_reason() {
     assert_eq!(
         &lines[..3],
         [
-            "⚠ Not read    Drive::drive::engine::volume   FreeCAD not available, for FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [millimetre³])",
+            "⚠ Not read    Drive::drive::engine::volume   FreeCAD not available, for FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [mm³])",
             "⚠ Not read    Drive::drive::gearbox::volume  no object Gearbox, for FreeCAD: Volume of Gearbox in cad/gearbox.FCStd",
             "2 Design Values: 0 read, 2 not read",
         ],
@@ -192,7 +192,7 @@ fn requirements_lists_design_values_first_and_fails_on_unreadable_links() {
     let read = run("requirements", read_drive(), &[]);
     assert!(
         read.stdout.starts_with(
-            "⚙ Read        Drive::drive::engine::volume  1000000.0 [mm³] from FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [millimetre³])\n1 Design Value: 1 read, 0 not read\n✗ Violated    Drive::volumeReq "
+            "⚙ Read        Drive::drive::engine::volume  1000000.0 [mm³] from FreeCAD: Volume of Engine in cad/engine.FCStd (Model says 900000.0 [mm³])\n1 Design Value: 1 read, 0 not read\n✗ Violated    Drive::volumeReq "
         ),
         "{}",
         read.stdout
