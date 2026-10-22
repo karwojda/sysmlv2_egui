@@ -5670,6 +5670,24 @@
 				(hide yes)
 			)
 		)
+		(property "Power" "0.03W"
+			(at 93.98 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "0.25"
+			(at 93.98 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "f1a3bdd8-3c82-4d35-ba24-80aec6bd8bc3")
 		)
@@ -6394,6 +6412,24 @@
 			)
 		)
 		(property "LCSC" "C7466043"
+			(at 148.59 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Power" "350µW"
+			(at 148.59 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "2.40"
 			(at 148.59 99.06 0)
 			(effects
 				(font

@@ -7632,6 +7632,24 @@
 				(hide yes)
 			)
 		)
+		(property "Power" "15 mW"
+			(at 185.42 93.98 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "3.10"
+			(at 185.42 93.98 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "9"
 			(uuid "7ac131e4-22ef-411f-bdca-0209ee617111")
 		)
@@ -8616,6 +8634,24 @@
 		)
 		(property "LCSC" "C2682773"
 			(at 144.78 63.5 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Power" "2uW"
+			(at 144.78 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "0.30"
+			(at 144.78 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)

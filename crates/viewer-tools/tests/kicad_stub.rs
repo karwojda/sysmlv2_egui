@@ -422,6 +422,45 @@ fn bare_numbers_mixed_with_units_leave_no_sum() {
     );
 }
 
+/// The Feather's placed parts with no `Power` or `Price`: all but the
+/// seven active parts the example gives figures to.
+const FEATHER_UNCOUNTED: [&str; 41] = [
+    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C14", "C15",
+    "C16", "C17", "C18", "C19", "C20", "C21", "C22", "C23", "C24", "C25", "J3", "J4", "J5", "J6",
+    "L1", "R1", "R4", "R5", "R6", "R7", "R8", "SW1", "SW2", "U3", "U4", "U6",
+];
+
+#[test]
+fn the_recorded_feather_gives_its_count_and_sums() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut kicad = kicad(&stub(dir.path(), "10.0.7"));
+
+    let read = kicad
+        .read(
+            &project(dir.path()),
+            &wanted("board", &["ComponentCount", "Power", "Price"]),
+        )
+        .unwrap();
+
+    let counted = ["D1", "D3", "U1", "U2", "U5", "Y1", "Y2"];
+    let board = &read["board"];
+    assert_eq!(board["ComponentCount"], Ok(ReadValue::new("48")));
+    assert_eq!(
+        board["Power"],
+        Ok(ReadValue::summed(
+            "0.060953 [W]",
+            Parts::new(counted, FEATHER_UNCOUNTED)
+        ))
+    );
+    assert_eq!(
+        board["Price"],
+        Ok(ReadValue::summed(
+            "12.8",
+            Parts::new(counted, FEATHER_UNCOUNTED)
+        ))
+    );
+}
+
 #[test]
 fn sums_and_counts_need_no_board_statistics() {
     let dir = tempfile::tempdir().unwrap();

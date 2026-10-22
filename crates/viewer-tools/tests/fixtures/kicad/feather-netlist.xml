@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <export version="E">
   <design>
-    <source>\\wsl.localhost\Debian\tmp\claude-1000\-home-qarol-git-sysmlv2-egui\1251327d-9683-49d3-b8c9-b1ffa340f984\scratchpad\kicad-probe\royalblue54L_feather\RoyalBlue54L-Feather.kicad_sch</source>
-    <date>2026-10-22T22:48:13</date>
+    <source>\\wsl.localhost\Debian\home\qarol\git\sysmlv2_egui\.claude\worktrees\agent-aa8a2bc81dd558655\examples\feather-budget\ecad\RoyalBlue54L-Feather.kicad_sch</source>
+    <date>2026-10-22T23:25:03</date>
     <tool>Eeschema 10.0.7</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -925,12 +925,16 @@
       <footprint>Package_DFN_QFN:QFN-40-1EP_5x5mm_P0.4mm_EP3.6x3.6mm_ThermalVias</footprint>
       <fields>
         <field name="LCSC">C2895249</field>
+        <field name="Power">15 mW</field>
+        <field name="Price">3.10</field>
         <field name="Footprint">Package_DFN_QFN:QFN-40-1EP_5x5mm_P0.4mm_EP3.6x3.6mm_ThermalVias</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
       <libsource lib="nordic-lib-kicad-nrf52" part="nRF52833-QDXX" description=""/>
       <property name="LCSC" value="C2895249"/>
+      <property name="Power" value="15 mW"/>
+      <property name="Price" value="3.10"/>
       <property name="Sheetname" value="Debugger"/>
       <property name="Sheetfile" value="sch/Debugger.kicad_sch"/>
       <sheetpath names="/Debugger/" tstamps="/bee6e003-c9d0-4aff-a9a9-7e1c876b28cb/"/>
@@ -1032,12 +1036,16 @@
       <description>Four pin crystal, GND on pins 2 and 4, small symbol</description>
       <fields>
         <field name="LCSC">C2682773</field>
+        <field name="Power">2uW</field>
+        <field name="Price">0.30</field>
         <field name="Footprint">Crystal:Crystal_SMD_2016-4Pin_2.0x1.6mm</field>
         <field name="Datasheet"/>
         <field name="Description">Four pin crystal, GND on pins 2 and 4, small symbol</field>
       </fields>
       <libsource lib="hlord2000-Device" part="Crystal_GND24_Small_EZRoute" description="Four pin crystal, GND on pins 2 and 4, small symbol"/>
       <property name="LCSC" value="C2682773"/>
+      <property name="Power" value="2uW"/>
+      <property name="Price" value="0.30"/>
       <property name="Sheetname" value="Debugger"/>
       <property name="Sheetfile" value="sch/Debugger.kicad_sch"/>
       <property name="ki_keywords" value="quartz ceramic resonator oscillator"/>
@@ -1277,12 +1285,16 @@
       <description>RGB LED, anode/red/green/blue</description>
       <fields>
         <field name="LCSC">C404280</field>
+        <field name="Power">0.03W</field>
+        <field name="Price">0.25</field>
         <field name="Footprint">LED_SMD:LED_Wurth_150044M155260</field>
         <field name="Datasheet"/>
         <field name="Description">RGB LED, anode/red/green/blue</field>
       </fields>
       <libsource lib="Device" part="LED_ARGB" description="RGB LED, anode/red/green/blue"/>
       <property name="LCSC" value="C404280"/>
+      <property name="Power" value="0.03W"/>
+      <property name="Price" value="0.25"/>
       <property name="Sheetname" value="nPM1300"/>
       <property name="Sheetfile" value="sch/nPM1300.kicad_sch"/>
       <property name="ki_keywords" value="LED RGB diode"/>
@@ -1387,12 +1399,16 @@
       <description>PMIC, LED Driver, Battery Charger, QFN-32</description>
       <fields>
         <field name="LCSC">C7466043</field>
+        <field name="Power">350µW</field>
+        <field name="Price">2.40</field>
         <field name="Footprint">Package_DFN_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.6x3.6mm_ThermalVias</field>
         <field name="Datasheet">https://docs.nordicsemi.com/bundle/ps_npm1300</field>
         <field name="Description">PMIC, LED Driver, Battery Charger, QFN-32</field>
       </fields>
       <libsource lib="nordic-lib-kicad-npm" part="nPM1300-QEXX" description="PMIC, LED Driver, Battery Charger, QFN-32"/>
       <property name="LCSC" value="C7466043"/>
+      <property name="Power" value="350µW"/>
+      <property name="Price" value="2.40"/>
       <property name="Sheetname" value="nPM1300"/>
       <property name="Sheetfile" value="sch/nPM1300.kicad_sch"/>
       <property name="ki_keywords" value="PMIC Regulator LED Driver Battery Charger"/>
@@ -1554,6 +1570,8 @@
       <fields>
         <field name="LCSC">C125103</field>
         <field name="Sim.Pin">1=K 2=A</field>
+        <field name="Power">6mW</field>
+        <field name="Price">0.05</field>
         <field name="Footprint">LED_SMD:LED_0603_1608Metric</field>
         <field name="Datasheet"/>
         <field name="Description">Light emitting diode, small symbol</field>
@@ -1561,6 +1579,8 @@
       <libsource lib="Device" part="LED_Small" description="Light emitting diode, small symbol"/>
       <property name="LCSC" value="C125103"/>
       <property name="Sim.Pin" value="1=K 2=A"/>
+      <property name="Power" value="6mW"/>
+      <property name="Price" value="0.05"/>
       <property name="Sheetname" value="nRF54L15"/>
       <property name="Sheetfile" value="sch/nRF54L15.kicad_sch"/>
       <property name="ki_keywords" value="LED diode light-emitting-diode"/>
@@ -1903,12 +1923,16 @@
       <datasheet>https://static1.squarespace.com/static/561459a2e4b0b39f5cefa12e/t/66c3d7591cc204465c3f6e4f/1724110684125/BM15C+Product+Specifications.pdf</datasheet>
       <fields>
         <field name="LCSC">C9900148376</field>
+        <field name="Power">9.6mW</field>
+        <field name="Price">6.50</field>
         <field name="Footprint">nordic-lib-kicad-nrf54-modules:BM15x-LGA-45_15.8x10mm</field>
         <field name="Datasheet">https://static1.squarespace.com/static/561459a2e4b0b39f5cefa12e/t/66c3d7591cc204465c3f6e4f/1724110684125/BM15C+Product+Specifications.pdf</field>
         <field name="Description"/>
       </fields>
       <libsource lib="nordic-lib-kicad-nrf54-modules" part="BM15x" description=""/>
       <property name="LCSC" value="C9900148376"/>
+      <property name="Power" value="9.6mW"/>
+      <property name="Price" value="6.50"/>
       <property name="Sheetname" value="nRF54L15"/>
       <property name="Sheetfile" value="sch/nRF54L15.kicad_sch"/>
       <property name="ki_keywords" value="nRF54L15"/>
@@ -2007,12 +2031,16 @@
       <description>Two pin crystal, small symbol</description>
       <fields>
         <field name="LCSC">C32346</field>
+        <field name="Power">1uW</field>
+        <field name="Price">0.20</field>
         <field name="Footprint">Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm</field>
         <field name="Datasheet"/>
         <field name="Description">Two pin crystal, small symbol</field>
       </fields>
       <libsource lib="Device" part="Crystal_Small" description="Two pin crystal, small symbol"/>
       <property name="LCSC" value="C32346"/>
+      <property name="Power" value="1uW"/>
+      <property name="Price" value="0.20"/>
       <property name="Sheetname" value="nRF54L15"/>
       <property name="Sheetfile" value="sch/nRF54L15.kicad_sch"/>
       <property name="ki_keywords" value="quartz ceramic resonator oscillator"/>

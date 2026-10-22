@@ -6098,6 +6098,24 @@
 				(hide yes)
 			)
 		)
+		(property "Power" "6mW"
+			(at 93.98 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "0.05"
+			(at 93.98 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "7f2bac1b-fb59-4ea3-88fa-f84ffc16a4c0")
 		)
@@ -6421,6 +6439,24 @@
 				(hide yes)
 			)
 		)
+		(property "Power" "1uW"
+			(at 107.95 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "0.20"
+			(at 107.95 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "3306bb7b-9401-4ca1-b38d-f45eb0a83228")
 		)
@@ -6571,6 +6607,24 @@
 			)
 		)
 		(property "LCSC" "C9900148376"
+			(at 137.16 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Power" "9.6mW"
+			(at 137.16 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Price" "6.50"
 			(at 137.16 90.17 0)
 			(effects
 				(font
