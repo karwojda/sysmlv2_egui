@@ -79,19 +79,32 @@ pub fn properties(model: &Model, element: &QualifiedName) -> Option<Properties> 
         rows.push(text(
             "Design Value",
             match design_value {
-                DesignValue::Read { value, .. } => format!(
-                    "{}  {} {} {}.{}",
+                DesignValue::Read { value, parts } => format!(
+                    "{}  {} {} {}.{}{}",
                     readable_value(value),
                     design_value.mark(),
                     source.link.tool,
                     source.link.object,
-                    source.property
+                    source.property,
+                    parts
+                        .as_ref()
+                        .map_or(String::new(), |p| format!("  {}", p.summary()))
                 ),
                 DesignValue::Missing { reason } => {
                     format!("{} none: {reason}", design_value.mark())
                 }
             },
         ));
+        // A Summed Design Value: every part that stated no value, so the
+        // user sees which still lack one (ADR-0006).
+        if let DesignValue::Read {
+            parts: Some(parts), ..
+        } = design_value
+        {
+            for part in parts.uncounted() {
+                rows.push(text("Uncounted", part.clone()));
+            }
+        }
         rows.push(text(
             "Model Value",
             outcome
