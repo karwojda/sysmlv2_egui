@@ -202,8 +202,8 @@ impl KiCad {
         }
         // `version` prints nothing in KiCad's language, so its run needs
         // no language setting, nor a version to file one under.
-        let workspace = Workspace::new(None)?;
-        let output = self.run(executable, &workspace, &["version".into()])?;
+        let folder = RunFolder::new(None)?;
+        let output = self.run(executable, &folder, &["version".into()])?;
         let found = output.stdout.trim();
         let major = process::version_numbers(found).first().copied();
         match major {
@@ -224,8 +224,8 @@ impl KiCad {
     /// The board statistics of `pcb` (`pcb export stats`), as KiCad
     /// writes them in English and millimetres.
     fn board_statistics(&self, executable: &Path, major: u64, pcb: &Path) -> Result<Value, String> {
-        let workspace = Workspace::new(Some(major))?;
-        let report = workspace.dir.path().join("stats.json");
+        let folder = RunFolder::new(Some(major))?;
+        let report = folder.dir.path().join("stats.json");
         let args = [
             "pcb".into(),
             "export".into(),
@@ -238,7 +238,7 @@ impl KiCad {
             process::path_for(executable, &report, NAME)?,
             process::path_for(executable, pcb, NAME)?,
         ];
-        let output = self.run(executable, &workspace, &args)?;
+        let output = self.run(executable, &folder, &args)?;
         let text = std::fs::read_to_string(&report).map_err(|_| {
             format!(
                 "KiCad gave no board statistics for {}: {}",
@@ -253,8 +253,8 @@ impl KiCad {
     /// The placed parts of the schematic `sch`, every sheet of it, from
     /// `sch export netlist`.
     fn placed_parts(&self, executable: &Path, major: u64, sch: &Path) -> Result<Vec<Part>, String> {
-        let workspace = Workspace::new(Some(major))?;
-        let report = workspace.dir.path().join("netlist.xml");
+        let folder = RunFolder::new(Some(major))?;
+        let report = folder.dir.path().join("netlist.xml");
         let args = [
             "sch".into(),
             "export".into(),
@@ -265,7 +265,7 @@ impl KiCad {
             process::path_for(executable, &report, NAME)?,
             process::path_for(executable, sch, NAME)?,
         ];
-        let output = self.run(executable, &workspace, &args)?;
+        let output = self.run(executable, &folder, &args)?;
         let text = std::fs::read_to_string(&report).map_err(|_| {
             format!(
                 "KiCad gave no netlist for {}: {}",
@@ -296,19 +296,19 @@ impl KiCad {
         })
     }
 
-    /// Runs `kicad-cli` with `args` in `workspace`, its config folder.
+    /// Runs `kicad-cli` with `args` in `folder`, pointed at its config folder.
     fn run(
         &self,
         executable: &Path,
-        workspace: &Workspace,
+        folder: &RunFolder,
         args: &[String],
     ) -> Result<process::Output, String> {
         let timeout = self.timeout.clone()?;
-        let config = process::path_for(executable, &workspace.config, NAME)?;
+        let config = process::path_for(executable, &folder.config, NAME)?;
         let mut command = Command::new(executable);
         command
             .args(args)
-            .current_dir(workspace.dir.path())
+            .current_dir(folder.dir.path())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -552,16 +552,16 @@ fn from_parts(placed: &[Part], property: &str) -> Result<ReadValue, String> {
             units.join("; ")
         ));
     }
-    // Folded from 0.0: an empty `sum` of floats is -0.0.
-    let total = tidy(
+    // Folded from 0.0: an empty `Iterator::sum` of floats is -0.0.
+    let sum = tidy(
         by_unit
             .values()
             .flatten()
-            .fold(0.0, |total, (_, value)| total + value),
+            .fold(0.0, |sum, (_, value)| sum + value),
     );
     let value = match by_unit.keys().next() {
-        Some(Some(unit)) => format!("{total:?} [{unit}]"),
-        _ => format!("{total:?}"),
+        Some(Some(unit)) => format!("{sum:?} [{unit}]"),
+        _ => format!("{sum:?}"),
     };
     let counted = by_unit.values().flatten().map(|(reference, _)| *reference);
     Ok(ReadValue::summed(value, Parts::new(counted, uncounted)))
@@ -615,10 +615,10 @@ fn quantity(text: &str) -> Option<(f64, Option<String>)> {
     }
 }
 
-/// `total` without the noise of adding binary fractions: `0.045 + 1.2`
+/// `sum` without the noise of adding binary fractions: `0.045 + 1.2`
 /// is `1.245`, not `1.2449999999999999`.
-fn tidy(total: f64) -> f64 {
-    format!("{total:.12e}").parse().unwrap_or(total)
+fn tidy(sum: f64) -> f64 {
+    format!("{sum:.12e}").parse().unwrap_or(sum)
 }
 
 /// The key of `pcb export stats` a board property is read from:
@@ -649,7 +649,7 @@ fn dimension(statistics: &Value, key: &str) -> Result<ReadValue, String> {
 
 /// A run's temporary folder, holding the config folder KiCad is pointed
 /// at, and any file the run writes. It is removed when dropped.
-struct Workspace {
+struct RunFolder {
     dir: tempfile::TempDir,
     /// The `KICAD_CONFIG_HOME` of the run, whose
     /// `<major>.0/kicad_common.json` sets the language to English
@@ -657,7 +657,7 @@ struct Workspace {
     config: PathBuf,
 }
 
-impl Workspace {
+impl RunFolder {
     /// A run's folder, with English set for a KiCad of major version
     /// `major`; with no language setting when `None`.
     fn new(major: Option<u64>) -> Result<Self, String> {
