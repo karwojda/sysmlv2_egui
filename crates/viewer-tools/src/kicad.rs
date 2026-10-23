@@ -159,9 +159,9 @@ fn executable_in(dir: &Path) -> Option<PathBuf> {
 pub struct KiCad {
     executable: Result<PathBuf, String>,
     timeout: Result<Duration, String>,
-    /// Whether `kicad-cli` has said it is new enough, so later reads
-    /// don't ask again.
-    version_checked: bool,
+    /// The major version `kicad-cli` said it is, once it has said it is
+    /// new enough, so later reads don't ask again: `10` for 10.0.7.
+    major_version: Option<u64>,
 }
 
 impl KiCad {
@@ -177,7 +177,7 @@ impl KiCad {
         Self {
             executable: machine.find(),
             timeout: process::timeout(machine.timeout.as_ref(), TIMEOUT_VARIABLE, DEFAULT_TIMEOUT),
-            version_checked: false,
+            major_version: None,
         }
     }
 
@@ -193,20 +193,23 @@ impl KiCad {
         self.timeout.as_ref().copied().map_err(String::as_str)
     }
 
-    /// Asks `kicad-cli` its version, once: anything older than KiCad 10
-    /// is a reason (`KiCad 10 or newer needed; found 9.0.3`).
-    fn check_version(&mut self, executable: &Path) -> Result<(), String> {
-        if self.version_checked {
-            return Ok(());
+    /// Asks `kicad-cli` its version, once, and gives its major version:
+    /// anything older than KiCad 10 is a reason (`KiCad 10 or newer
+    /// needed; found 9.0.3`).
+    fn check_version(&mut self, executable: &Path) -> Result<u64, String> {
+        if let Some(major) = self.major_version {
+            return Ok(major);
         }
-        let workspace = Workspace::new()?;
+        // `version` prints nothing in KiCad's language, so its run needs
+        // no language setting, nor a version to file one under.
+        let workspace = Workspace::new(None)?;
         let output = self.run(executable, &workspace, &["version".into()])?;
         let found = output.stdout.trim();
         let major = process::version_numbers(found).first().copied();
         match major {
             Some(major) if major >= OLDEST_VERSION => {
-                self.version_checked = true;
-                Ok(())
+                self.major_version = Some(major);
+                Ok(major)
             }
             Some(_) => Err(format!(
                 "KiCad {OLDEST_VERSION} or newer needed; found {found}"
@@ -220,8 +223,8 @@ impl KiCad {
 
     /// The board statistics of `pcb` (`pcb export stats`), as KiCad
     /// writes them in English and millimetres.
-    fn board_statistics(&self, executable: &Path, pcb: &Path) -> Result<Value, String> {
-        let workspace = Workspace::new()?;
+    fn board_statistics(&self, executable: &Path, major: u64, pcb: &Path) -> Result<Value, String> {
+        let workspace = Workspace::new(Some(major))?;
         let report = workspace.dir.path().join("stats.json");
         let args = [
             "pcb".into(),
@@ -249,8 +252,8 @@ impl KiCad {
 
     /// The placed parts of the schematic `sch`, every sheet of it, from
     /// `sch export netlist`.
-    fn placed_parts(&self, executable: &Path, sch: &Path) -> Result<Vec<Part>, String> {
-        let workspace = Workspace::new()?;
+    fn placed_parts(&self, executable: &Path, major: u64, sch: &Path) -> Result<Vec<Part>, String> {
+        let workspace = Workspace::new(Some(major))?;
         let report = workspace.dir.path().join("netlist.xml");
         let args = [
             "sch".into(),
@@ -273,19 +276,22 @@ impl KiCad {
         placed_in(&text).map_err(|e| format!("KiCad's netlist can't be read: {e}"))
     }
 
-    /// The exports the wanted properties need, run side by side: the
-    /// board statistics of `pcb` and the placed parts of `sch`, each
-    /// `None` when no property needs it.
+    /// The exports the wanted properties need, run side by side by the
+    /// `kicad-cli` of major version `major`: the board statistics of
+    /// `pcb` and the placed parts of `sch`, each `None` when no property
+    /// needs it.
     fn export(
         &self,
         executable: &Path,
+        major: u64,
         pcb: Option<&Path>,
         sch: Option<PathBuf>,
     ) -> (Exported<Value>, Exported<Vec<Part>>) {
         std::thread::scope(|scope| {
             let statistics =
-                pcb.map(|pcb| scope.spawn(move || self.board_statistics(executable, pcb)));
-            let placed = sch.map(|sch| scope.spawn(move || self.placed_parts(executable, &sch)));
+                pcb.map(|pcb| scope.spawn(move || self.board_statistics(executable, major, pcb)));
+            let placed =
+                sch.map(|sch| scope.spawn(move || self.placed_parts(executable, major, &sch)));
             (statistics.map(finished), placed.map(finished))
         })
     }
@@ -332,7 +338,7 @@ impl EngineeringTool for KiCad {
                 return Err(format!("file {} not found", needed.display()));
             }
         }
-        self.check_version(&executable)?;
+        let major = self.check_version(&executable)?;
         let board = wanted.get(BOARD);
         let wants = |dimensions: bool| {
             board.is_some_and(|properties| {
@@ -343,6 +349,7 @@ impl EngineeringTool for KiCad {
         };
         let (statistics, placed) = self.export(
             &executable,
+            major,
             wants(true).then_some(pcb.as_path()),
             wants(false).then(|| file.with_extension("kicad_sch")),
         );
@@ -612,15 +619,23 @@ fn dimension(statistics: &Value, key: &str) -> Result<ReadValue, String> {
 struct Workspace {
     dir: tempfile::TempDir,
     /// The `KICAD_CONFIG_HOME` of the run, whose
-    /// `10.0/kicad_common.json` sets the language to English.
+    /// `<major>.0/kicad_common.json` sets the language to English
+    /// (`10.0/` for KiCad 10.0.7, `11.0/` for 11.0.1).
     config: PathBuf,
 }
 
 impl Workspace {
-    fn new() -> Result<Self, String> {
+    /// A run's folder, with English set for a KiCad of major version
+    /// `major`; with no language setting when `None`.
+    fn new(major: Option<u64>) -> Result<Self, String> {
         let dir = tempfile::tempdir().map_err(|e| format!("no temporary folder for KiCad: {e}"))?;
         let config = dir.path().join("config");
-        let common = config.join("10.0");
+        let Some(major) = major else {
+            std::fs::create_dir_all(&config)
+                .map_err(|e| format!("could not write a KiCad config folder: {e}"))?;
+            return Ok(Self { dir, config });
+        };
+        let common = config.join(format!("{major}.0"));
         std::fs::create_dir_all(&common)
             .and_then(|()| {
                 std::fs::write(

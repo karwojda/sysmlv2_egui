@@ -2,8 +2,8 @@
 //! `kicad-cli` in place of KiCad. The stub answers `version`, and writes
 //! to the `-o` path a netlist (recorded from the Feather demo, or written
 //! by the test) and the board statistics recorded from the Feather demo:
-//! in English when its config folder says so, as a forced-English KiCad
-//! does, and otherwise as the same KiCad recorded them in Polish, with
+//! in English when the config folder of its major version (`10.0/` for
+//! KiCad 10.0.7) says so, as a forced-English KiCad does, and otherwise as the same KiCad recorded them in Polish, with
 //! decimal commas. It refuses to run without `KICAD_CONFIG_HOME`.
 #![cfg(unix)]
 
@@ -44,9 +44,10 @@ fn answering(dir: &Path, version: &str, netlist: Option<&Path>, stats: bool) -> 
         Some(netlist) => format!(r#"cp "{}" "$out""#, netlist.display()),
         None => "echo 'no netlist here' >&2; exit 4".into(),
     };
+    let major = version.split('.').next().unwrap();
     let stats = if stats {
         format!(
-            r#"if grep -q English "$KICAD_CONFIG_HOME/10.0/kicad_common.json" 2>/dev/null; then
+            r#"if grep -q English "$KICAD_CONFIG_HOME/{major}.0/kicad_common.json" 2>/dev/null; then
     cp "{english}" "$out"
   else
     cp "{polish}" "$out"
@@ -169,6 +170,18 @@ fn the_board_gives_its_dimensions_with_their_units() {
     assert_eq!(answer(&read, "board", "Height"), Ok("22.86 [mm]".into()));
     assert_eq!(answer(&read, "board", "Thickness"), Ok("1.6 [mm]".into()));
     assert_eq!(answer(&read, "board", "Area"), Ok("1329.932 [mm^2]".into()));
+}
+
+#[test]
+fn a_newer_kicad_is_set_to_english_in_its_own_config_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut kicad = kicad(&stub(dir.path(), "11.0.1"));
+
+    let read = kicad
+        .read(&project(dir.path()), &wanted("board", &["Width"]))
+        .unwrap();
+
+    assert_eq!(answer(&read, "board", "Width"), Ok("58.42 [mm]".into()));
 }
 
 #[test]
