@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
-use viewer_tools::{FreeCad, Machine};
+use viewer_tools::freecad::{FreeCad, Machine};
 
 fn parts() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/parts.FCStd")

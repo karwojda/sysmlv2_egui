@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use viewer_core::engineering_tools::{EngineeringTool, Wanted};
-use viewer_tools::{FreeCad, Machine};
+use viewer_tools::freecad::{FreeCad, Machine};
 
 /// A shell script at `path` running `body`, made executable.
 fn stub(path: &Path, body: &str) -> PathBuf {

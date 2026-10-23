@@ -12,7 +12,11 @@ use std::time::{Duration, Instant};
 
 /// What a finished run printed: its stdout and its stderr.
 pub(crate) struct Output {
+    /// Everything the run wrote to stdout, decoded lossily as UTF-8:
+    /// `10.0.7` for `kicad-cli version`.
     pub stdout: String,
+    /// Everything the run wrote to stderr, decoded the same way: where a
+    /// tool says why it failed.
     pub stderr: String,
 }
 

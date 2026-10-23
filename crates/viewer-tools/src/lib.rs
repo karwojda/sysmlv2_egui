@@ -6,7 +6,7 @@ pub mod freecad;
 pub mod kicad;
 mod process;
 
-pub use freecad::{FreeCad, Machine};
+pub use freecad::FreeCad;
 pub use kicad::KiCad;
 
 use viewer_core::engineering_tools::EngineeringTool;
