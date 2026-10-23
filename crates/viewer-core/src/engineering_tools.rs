@@ -139,8 +139,12 @@ pub trait EngineeringTool: Send {
     /// The files an answer for `file` depends on: a change to any of them
     /// may change it. By default `file` itself; a KiCad project
     /// (`board.kicad_pro`) depends on every schematic and board file in
-    /// its folder instead. Nothing asks this until linked files are
-    /// watched.
+    /// its folder instead.
+    ///
+    /// Nothing asks this yet: it is the hook for the deferred "watching
+    /// linked files for reloads" slice (Out of Scope in
+    /// `.scratch/freecad-tracer/spec.md`), which will watch these files
+    /// and read the link again when one changes.
     fn dependent_files(&self, file: &Path) -> Vec<PathBuf> {
         vec![file.to_path_buf()]
     }
