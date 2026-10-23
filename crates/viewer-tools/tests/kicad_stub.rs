@@ -245,6 +245,53 @@ fn only_the_board_can_be_linked() {
 }
 
 #[test]
+fn an_object_other_than_the_board_is_named_without_running_kicad() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut kicad = KiCad::from_machine(Machine {
+        executable: Some(dir.path().join("no-kicad-cli").into()),
+        ..Machine::default()
+    });
+
+    let read = kicad
+        .read(
+            &dir.path().join("board.kicad_pro"),
+            &wanted("R12", &["Power"]),
+        )
+        .unwrap();
+
+    assert_eq!(
+        answer(&read, "R12", "Power"),
+        Err("only board can be linked in KiCad for now, not 'R12'".into())
+    );
+}
+
+#[test]
+fn an_object_other_than_the_board_keeps_its_reason_when_kicad_is_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("no-kicad-cli");
+    let mut kicad = KiCad::from_machine(Machine {
+        executable: Some(missing.clone().into()),
+        ..Machine::default()
+    });
+    let mut wanted = wanted("R12", &["Power"]);
+    wanted.insert("board".into(), ["Width".into()].into());
+
+    let read = kicad.read(&project(dir.path()), &wanted).unwrap();
+
+    assert_eq!(
+        answer(&read, "R12", "Power"),
+        Err("only board can be linked in KiCad for now, not 'R12'".into())
+    );
+    assert_eq!(
+        answer(&read, "board", "Width"),
+        Err(format!(
+            "KiCad not available: SYSML_VIEWER_KICAD names {}, which does not exist",
+            missing.display()
+        ))
+    );
+}
+
+#[test]
 fn a_board_kicad_cannot_load_is_a_reason_saying_what_kicad_said() {
     let dir = tempfile::tempdir().unwrap();
     let failing = script(

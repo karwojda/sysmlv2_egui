@@ -13,7 +13,7 @@
 //! (`58,4200 mm`), and locale variables don't change that. The user's own
 //! KiCad settings are never read or written.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -321,6 +321,45 @@ impl KiCad {
         })?;
         process::finish(child, timeout, NAME)
     }
+
+    /// The board's `properties` in the project `file`, or a reason for
+    /// the whole file: no KiCad, a missing project file, an old KiCad.
+    fn read_board(
+        &mut self,
+        file: &Path,
+        properties: &BTreeSet<String>,
+    ) -> Result<BTreeMap<String, Result<ReadValue, String>>, String> {
+        let executable = self.executable.clone()?;
+        let pcb = file.with_extension("kicad_pcb");
+        for needed in [file, &file.with_extension("kicad_sch"), &pcb] {
+            if !needed.is_file() {
+                return Err(format!("file {} not found", needed.display()));
+            }
+        }
+        let major = self.check_version(&executable)?;
+        let wants = |dimensions: bool| {
+            properties
+                .iter()
+                .any(|property| dimension_key(property).is_some() == dimensions)
+        };
+        let (statistics, placed) = self.export(
+            &executable,
+            major,
+            wants(true).then_some(pcb.as_path()),
+            wants(false).then(|| file.with_extension("kicad_sch")),
+        );
+        Ok(properties
+            .iter()
+            .map(|property| {
+                let value = if let Some(key) = dimension_key(property) {
+                    exported(&statistics).and_then(|statistics| dimension(statistics, key))
+                } else {
+                    exported(&placed).and_then(|placed| from_parts(placed, property))
+                };
+                (property.clone(), value)
+            })
+            .collect())
+    }
 }
 
 impl Default for KiCad {
@@ -330,50 +369,36 @@ impl Default for KiCad {
 }
 
 impl EngineeringTool for KiCad {
+    /// Objects other than the board are answered before anything is
+    /// looked up or run, so their reason is never hidden behind one for
+    /// the whole file. That reason is then the board's alone, unless the
+    /// board is all that was asked for.
     fn read(&mut self, file: &Path, wanted: &Wanted) -> Result<Answer, String> {
-        let executable = self.executable.clone()?;
-        let pcb = file.with_extension("kicad_pcb");
-        for needed in [file, &file.with_extension("kicad_sch"), &pcb] {
-            if !needed.is_file() {
-                return Err(format!("file {} not found", needed.display()));
-            }
-        }
-        let major = self.check_version(&executable)?;
-        let board = wanted.get(BOARD);
-        let wants = |dimensions: bool| {
-            board.is_some_and(|properties| {
-                properties
-                    .iter()
-                    .any(|property| dimension_key(property).is_some() == dimensions)
-            })
-        };
-        let (statistics, placed) = self.export(
-            &executable,
-            major,
-            wants(true).then_some(pcb.as_path()),
-            wants(false).then(|| file.with_extension("kicad_sch")),
-        );
-        Ok(wanted
+        let mut answer: Answer = wanted
             .iter()
+            .filter(|(object, _)| *object != BOARD)
             .map(|(object, properties)| {
+                let reason = format!("only {BOARD} can be linked in KiCad for now, not '{object}'");
                 let answers = properties
                     .iter()
-                    .map(|property| {
-                        let value = if object != BOARD {
-                            Err(format!(
-                                "only {BOARD} can be linked in KiCad for now, not '{object}'"
-                            ))
-                        } else if let Some(key) = dimension_key(property) {
-                            exported(&statistics).and_then(|statistics| dimension(statistics, key))
-                        } else {
-                            exported(&placed).and_then(|placed| from_parts(placed, property))
-                        };
-                        (property.clone(), value)
-                    })
+                    .map(|property| (property.clone(), Err(reason.clone())))
                     .collect();
                 (object.clone(), answers)
             })
-            .collect())
+            .collect();
+        let Some(properties) = wanted.get(BOARD) else {
+            return Ok(answer);
+        };
+        let board = match self.read_board(file, properties) {
+            Ok(board) => board,
+            Err(reason) if answer.is_empty() => return Err(reason),
+            Err(reason) => properties
+                .iter()
+                .map(|property| (property.clone(), Err(reason.clone())))
+                .collect(),
+        };
+        answer.insert(BOARD.into(), board);
+        Ok(answer)
     }
 
     /// Every schematic and board file in the project's folder and the
