@@ -47,10 +47,11 @@ jobs:
       - name: Test against sysml-grpc
         run: cargo test --workspace --locked -- --ignored
 
-  # The real-KiCad tests run against kicad-cli from the KiCad 10 release
-  # PPA, headless: the runner sets no display. Without KiCad those tests
-  # print "note: skipping" and pass, so this job fails on that note. The
-  # pinned package is built for Ubuntu 24.04, hence the pinned runner.
+  # The workspace tests run with SYSML_VIEWER_KICAD naming kicad-cli from
+  # the KiCad 10 release PPA, headless: the runner sets no display.
+  # Without KiCad the real-KiCad tests print "note: skipping" and pass, so
+  # this job fails on that note. The pinned package is built for Ubuntu
+  # 24.04, hence the pinned runner.
   kicad:
     name: KiCad tests (kicad-cli 10.0.7)
     runs-on: ubuntu-24.04
@@ -64,9 +65,14 @@ jobs:
           sudo add-apt-repository --yes ppa:kicad/kicad-10.0-releases
           sudo apt-get install --yes --no-install-recommends kicad=10.0.7~ubuntu24.04.1
           kicad-cli version
+      - name: Test the workspace against KiCad
+        env:
+          SYSML_VIEWER_KICAD: /usr/bin/kicad-cli
+        run: cargo test --workspace --locked
       # A passing test's output is captured, so --nocapture lets the
-      # skip note reach the log.
-      - name: Test against KiCad
+      # skip note reach the log. Only the real-KiCad tests are gated:
+      # FreeCAD isn't installed here, so its tests skip.
+      - name: Check the real-KiCad tests ran
         shell: bash
         env:
           SYSML_VIEWER_KICAD: /usr/bin/kicad-cli
