@@ -49,6 +49,16 @@ pub const BOARD: &str = "board";
 /// `@ToolProperty { name = "ComponentCount"; }`.
 pub const COMPONENT_COUNT: &str = "ComponentCount";
 
+/// How `kicad-cli` is looked for: in an install folder, under
+/// `KiCad/<version>/bin` or in the app bundle `KiCad/KiCad.app`.
+const KICAD_CLI: process::Executable = process::Executable {
+    tool: NAME,
+    variable: EXECUTABLE_VARIABLE,
+    names: &["kicad-cli"],
+    installs_in: |dir| process::entries(&dir.join("KiCad")),
+    bins: &["bin", "Contents/MacOS"],
+};
+
 /// The oldest KiCad whose `kicad-cli` has `pcb export stats`.
 const OLDEST_VERSION: u64 = 10;
 
@@ -101,57 +111,12 @@ impl Machine {
     /// `SYSML_VIEWER_KICAD` is final: when it names nothing, `PATH` is not
     /// searched, so a mistyped setting isn't hidden by another install.
     fn find(&self) -> Result<PathBuf, String> {
-        if let Some(executable) = &self.executable {
-            let executable = PathBuf::from(executable);
-            return if executable.is_file() {
-                Ok(executable)
-            } else {
-                Err(format!(
-                    "KiCad not available: {EXECUTABLE_VARIABLE} names {}, which does not exist",
-                    executable.display()
-                ))
-            };
-        }
-        self.on_path().or_else(|| self.installed()).ok_or_else(|| {
-            format!(
-                "KiCad not available: no kicad-cli in {EXECUTABLE_VARIABLE}, on PATH \
-                     or in the usual install locations"
-            )
-        })
+        KICAD_CLI.find(
+            self.executable.as_ref(),
+            self.path.as_ref(),
+            &self.install_dirs,
+        )
     }
-
-    fn on_path(&self) -> Option<PathBuf> {
-        let path = self.path.as_ref()?;
-        std::env::split_paths(path).find_map(|dir| executable_in(&dir))
-    }
-
-    /// The newest install in the install folders, by the version numbers
-    /// in its folder's name: `KiCad/10.0` before `KiCad/9.0`.
-    fn installed(&self) -> Option<PathBuf> {
-        self.install_dirs.iter().find_map(|dir| {
-            let mut installs: Vec<PathBuf> = std::fs::read_dir(dir.join("KiCad"))
-                .ok()?
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.path())
-                .collect();
-            installs.sort_by_cached_key(|install| {
-                process::version_numbers(&install.file_name().unwrap_or_default().to_string_lossy())
-            });
-            installs.iter().rev().find_map(|install| {
-                ["bin", "Contents/MacOS"]
-                    .iter()
-                    .find_map(|bin| executable_in(&install.join(bin)))
-            })
-        })
-    }
-}
-
-/// `kicad-cli` (or `kicad-cli.exe`) in `dir`.
-fn executable_in(dir: &Path) -> Option<PathBuf> {
-    ["kicad-cli", "kicad-cli.exe"]
-        .iter()
-        .map(|name| dir.join(name))
-        .find(|candidate| candidate.is_file())
 }
 
 /// The KiCad Engineering Tool, which a backend is given under [`NAME`]

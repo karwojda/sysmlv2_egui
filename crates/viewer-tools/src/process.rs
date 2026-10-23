@@ -5,7 +5,7 @@
 
 use std::ffi::OsString;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -31,6 +31,100 @@ impl Output {
                 .find(|line| !line.is_empty())
         })
     }
+}
+
+/// How one tool's executable is looked for on a machine, and what the
+/// reasons for not finding it say.
+pub(crate) struct Executable {
+    /// The tool as reasons name it: `KiCad not available: …`.
+    pub tool: &'static str,
+    /// The variable naming the executable, `SYSML_VIEWER_KICAD`.
+    pub variable: &'static str,
+    /// The names it goes by, each also with `.exe`; reasons give the
+    /// first: `kicad-cli`.
+    pub names: &'static [&'static str],
+    /// The installs in a folder installs go into, each a folder named
+    /// for its version: `KiCad/10.0` in `/mnt/c/Program Files`.
+    pub installs_in: fn(&Path) -> Vec<PathBuf>,
+    /// The folders in an install that may hold it: `bin`,
+    /// `Contents/MacOS`.
+    pub bins: &'static [&'static str],
+}
+
+impl Executable {
+    /// The executable to run, or why there is none: the one `named` by
+    /// the variable, else the first on `path`, else the newest install in
+    /// `install_dirs`. A set variable is final: when it names nothing,
+    /// `PATH` is not searched, so a mistyped setting isn't hidden by
+    /// another install.
+    pub fn find(
+        &self,
+        named: Option<&OsString>,
+        path: Option<&OsString>,
+        install_dirs: &[PathBuf],
+    ) -> Result<PathBuf, String> {
+        let Self { tool, variable, .. } = self;
+        if let Some(named) = named {
+            let named = PathBuf::from(named);
+            return if named.is_file() {
+                Ok(named)
+            } else {
+                Err(format!(
+                    "{tool} not available: {variable} names {}, which does not exist",
+                    named.display()
+                ))
+            };
+        }
+        let on_path = || std::env::split_paths(path?).find_map(|dir| self.in_dir(&dir));
+        on_path()
+            .or_else(|| self.installed(install_dirs))
+            .ok_or_else(|| {
+                format!(
+                    "{tool} not available: no {} in {variable}, on PATH \
+                     or in the usual install locations",
+                    self.names[0]
+                )
+            })
+    }
+
+    /// The newest install in the first of `install_dirs` that has one, by
+    /// the version numbers in its folder's name: `KiCad/10.0` before
+    /// `KiCad/9.0`, `FreeCAD 1.10` before `FreeCAD 1.9`.
+    fn installed(&self, install_dirs: &[PathBuf]) -> Option<PathBuf> {
+        install_dirs.iter().find_map(|dir| {
+            let mut installs = (self.installs_in)(dir);
+            installs.sort_by_cached_key(|install| {
+                version_numbers(&install.file_name().unwrap_or_default().to_string_lossy())
+            });
+            installs.iter().rev().find_map(|install| {
+                self.bins
+                    .iter()
+                    .find_map(|bin| self.in_dir(&install.join(bin)))
+            })
+        })
+    }
+
+    /// The executable in `dir`, by any of its names, with or without
+    /// `.exe`.
+    fn in_dir(&self, dir: &Path) -> Option<PathBuf> {
+        self.names
+            .iter()
+            .flat_map(|name| [PathBuf::from(name), PathBuf::from(format!("{name}.exe"))])
+            .map(|name| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    }
+}
+
+/// What is in `dir`: nothing when it can't be read.
+pub(crate) fn entries(dir: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The version numbers in a name, in order: `FreeCAD 1.10` is `[1, 10]`,
