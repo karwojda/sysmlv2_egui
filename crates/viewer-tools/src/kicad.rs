@@ -285,13 +285,13 @@ impl KiCad {
         executable: &Path,
         major: u64,
         pcb: Option<&Path>,
-        sch: Option<PathBuf>,
+        sch: Option<&Path>,
     ) -> (Exported<Value>, Exported<Vec<Part>>) {
         std::thread::scope(|scope| {
             let statistics =
                 pcb.map(|pcb| scope.spawn(move || self.board_statistics(executable, major, pcb)));
             let placed =
-                sch.map(|sch| scope.spawn(move || self.placed_parts(executable, major, &sch)));
+                sch.map(|sch| scope.spawn(move || self.placed_parts(executable, major, sch)));
             (statistics.map(finished), placed.map(finished))
         })
     }
@@ -330,23 +330,22 @@ impl KiCad {
         properties: &BTreeSet<String>,
     ) -> Result<BTreeMap<String, Result<ReadValue, String>>, String> {
         let executable = self.executable.clone()?;
+        let sch = file.with_extension("kicad_sch");
         let pcb = file.with_extension("kicad_pcb");
-        for needed in [file, &file.with_extension("kicad_sch"), &pcb] {
+        for needed in [file, &sch, &pcb] {
             if !needed.is_file() {
                 return Err(format!("file {} not found", needed.display()));
             }
         }
         let major = self.check_version(&executable)?;
-        let wants = |dimensions: bool| {
-            properties
-                .iter()
-                .any(|property| dimension_key(property).is_some() == dimensions)
-        };
+        let is_dimension = |property: &String| dimension_key(property).is_some();
+        let wants_dimensions = properties.iter().any(is_dimension);
+        let wants_parts = !properties.iter().all(is_dimension);
         let (statistics, placed) = self.export(
             &executable,
             major,
-            wants(true).then_some(pcb.as_path()),
-            wants(false).then(|| file.with_extension("kicad_sch")),
+            wants_dimensions.then_some(pcb.as_path()),
+            wants_parts.then_some(sch.as_path()),
         );
         Ok(properties
             .iter()
