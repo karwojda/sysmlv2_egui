@@ -19,11 +19,11 @@ See `.scratch/kicad-tracer/spec.md` (stories 5–17, 29, 37), ADRs 0005 (amendme
 
 **Blocked by:** 01 (Summed Design Values from a fake tool), 02 (Board envelope from KiCad)
 
-**Status:** ready-for-human
+**Status:** done
 
 - [x] Stub `kicad-cli` with a recorded netlist: `ComponentCount`; sums with mixed prefixes; a bare sum; mixed kinds; missing, empty and unreadable fields; DNP and excluded-from-BOM parts; no part with the field
 - [x] Only the needed export runs: with only sums wanted, a stub that fails on `pcb export stats` still answers, and vice versa
 - [x] Real `kicad-cli` on the example: the count and the `Power`/`Price` sums with their uncounted parts; skipped with a note when KiCad can't be found
 - [x] `sysml-viewer check examples/feather-budget` judges power, cost, count and envelope from KiCad and lists the uncounted parts
-- [ ] Human: open the edited Feather project in KiCad once and confirm it loads with no errors and the added fields show
+- [x] Human: open the edited Feather project in KiCad once and confirm it loads with no errors and the added fields show
 - [x] `docs/engineering-tools.md` describes the KiCad adapter as built
