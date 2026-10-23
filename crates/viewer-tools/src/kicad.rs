@@ -580,6 +580,11 @@ const PREFIXES: [(char, f64); 9] = [
     ('G', 1e9),
 ];
 
+/// Unit symbols that start with a prefix letter but have no prefix:
+/// `5 mol` is 5 in `mol`, not 0.005 in `ol`. With a prefix in front they
+/// are prefixed as usual: `2 mmol` is 0.002 in `mol`.
+const WHOLE_SYMBOLS: [&str; 5] = ["mol", "kat", "Gy", "min", "mil"];
+
 /// A field read as a number with an optional unit, given in the unit's
 /// base symbol: `45mW` is 0.045 in `W`, `0.12` is 0.12 with no unit.
 /// `None` when it can't be read (`lots`, `TBD`, `1,5 W`).
@@ -597,6 +602,9 @@ fn quantity(text: &str) -> Option<(f64, Option<String>)> {
     }
     if !unit.chars().all(char::is_alphabetic) {
         return None;
+    }
+    if WHOLE_SYMBOLS.contains(&unit) {
+        return Some((number, Some(unit.to_string())));
     }
     let mut chars = unit.chars();
     let first = chars.next()?;

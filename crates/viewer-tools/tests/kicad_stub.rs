@@ -356,6 +356,46 @@ fn a_field_is_summed_over_the_placed_parts_in_its_base_unit() {
 }
 
 #[test]
+fn a_unit_starting_with_a_prefix_letter_is_kept_whole() {
+    let read = board_of(
+        &[
+            (
+                "U1",
+                &[
+                    ("Amount", "5 mol"),
+                    ("Activity", "2 kat"),
+                    ("Dose", "1Gy"),
+                    ("Settling", "3 min"),
+                ],
+                &[],
+            ),
+            (
+                "U2",
+                &[
+                    ("Amount", "2 mmol"),
+                    ("Activity", "1 kat"),
+                    ("Dose", "500 mGy"),
+                    ("Settling", "1 min"),
+                ],
+                &[],
+            ),
+        ],
+        &["Amount", "Activity", "Dose", "Settling"],
+    );
+
+    let sum = |value: &str| {
+        Ok(ReadValue::summed(
+            value,
+            Parts::new(["U1", "U2"], [] as [&str; 0]),
+        ))
+    };
+    assert_eq!(read["board"]["Amount"], sum("5.002 [mol]"));
+    assert_eq!(read["board"]["Activity"], sum("3.0 [kat]"));
+    assert_eq!(read["board"]["Dose"], sum("1.5 [Gy]"));
+    assert_eq!(read["board"]["Settling"], sum("4.0 [min]"));
+}
+
+#[test]
 fn bare_numbers_give_a_sum_with_no_unit() {
     let read = board_of(
         &[
