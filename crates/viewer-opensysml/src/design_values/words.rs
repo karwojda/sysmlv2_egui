@@ -12,12 +12,12 @@ use crate::checks::{Checker, ClaimOutcome, PartCheck};
 
 /// Checks with `checker`, a Model with the Design Values of `written`
 /// written into it, putting what its reasons say about them in words.
-pub(crate) struct Worded<'a, C> {
-    pub checker: C,
+pub(super) struct Worded<'a> {
+    pub checker: &'a dyn Checker,
     pub written: &'a Written,
 }
 
-impl<C: Checker> Worded<'_, C> {
+impl Worded<'_> {
     /// `result`, its reason in words when it is Undecided; `within` is the
     /// part the check was about, if known.
     fn result(&self, result: ClaimResult, within: Option<&QualifiedName>) -> ClaimResult {
@@ -36,7 +36,7 @@ impl<C: Checker> Worded<'_, C> {
     }
 }
 
-impl<C: Checker> Checker for Worded<'_, C> {
+impl Checker for Worded<'_> {
     fn verify_claims(&self) -> Result<Vec<ClaimOutcome>, String> {
         let outcomes = self
             .checker

@@ -1,4 +1,5 @@
-//! The checks, across `run`, with a test `Checker` answering from tables.
+//! The checks, across `run`, with a test `Checker` answering from tables
+//! (`Answers`, which the Design Values tests use too).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -11,11 +12,11 @@ use viewer_core::settings::{self, Settings};
 
 use super::*;
 
-fn qn(s: &str) -> QualifiedName {
+pub(crate) fn qn(s: &str) -> QualifiedName {
     QualifiedName::new(s)
 }
 
-fn violated(condition: &str) -> ClaimResult {
+pub(crate) fn violated(condition: &str) -> ClaimResult {
     ClaimResult::Violated {
         condition: condition.to_owned(),
     }
@@ -29,13 +30,13 @@ fn unchecked(reason: &str) -> ClaimResult {
 
 /// Answers from tables, and remembers what it was asked.
 #[derive(Default)]
-struct Answers {
-    claims: Option<Result<Vec<ClaimOutcome>, String>>,
-    parts: BTreeMap<QualifiedName, Result<PartCheck, String>>,
-    analyses: BTreeMap<QualifiedName, Result<AnalysisResult, String>>,
+pub(crate) struct Answers {
+    pub claims: Option<Result<Vec<ClaimOutcome>, String>>,
+    pub parts: BTreeMap<QualifiedName, Result<PartCheck, String>>,
+    pub analyses: BTreeMap<QualifiedName, Result<AnalysisResult, String>>,
     /// How long each analysis run claims to take.
-    run_time: Duration,
-    asked: RefCell<Vec<String>>,
+    pub run_time: Duration,
+    pub asked: RefCell<Vec<String>>,
 }
 
 impl Checker for Answers {
@@ -68,10 +69,10 @@ impl Checker for Answers {
 
 /// A Model's elements, built up one at a time.
 #[derive(Default)]
-struct Elements(BTreeMap<QualifiedName, Element>);
+pub(crate) struct Elements(pub BTreeMap<QualifiedName, Element>);
 
 impl Elements {
-    fn add(mut self, name: &str, kind: ElementKind, f: impl FnOnce(&mut Element)) -> Self {
+    pub fn add(mut self, name: &str, kind: ElementKind, f: impl FnOnce(&mut Element)) -> Self {
         let mut element = Element::new(qn(name), kind);
         element.owner = qn(name).parent();
         f(&mut element);
@@ -79,26 +80,26 @@ impl Elements {
         self
     }
 
-    fn package(self, name: &str) -> Self {
+    pub fn package(self, name: &str) -> Self {
         self.add(name, ElementKind::Package, |_| {})
     }
 
-    fn part(self, name: &str) -> Self {
+    pub fn part(self, name: &str) -> Self {
         self.add(name, ElementKind::PartUsage, |_| {})
     }
 
-    fn claim(self, name: &str, requirement: &str, satisfier: &str) -> Self {
+    pub fn claim(self, name: &str, requirement: &str, satisfier: &str) -> Self {
         self.add(name, ElementKind::SatisfyRequirement, |c| {
             c.satisfies = Some(qn(requirement));
             c.satisfier = Some(qn(satisfier));
         })
     }
 
-    fn asserted(self, name: &str) -> Self {
+    pub fn asserted(self, name: &str) -> Self {
         self.add(name, ElementKind::ConstraintUsage, |c| c.is_asserted = true)
     }
 
-    fn analysis(self, name: &str) -> Self {
+    pub fn analysis(self, name: &str) -> Self {
         self.add(name, ElementKind::AnalysisUsage, |_| {})
     }
 }

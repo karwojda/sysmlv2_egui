@@ -21,10 +21,10 @@ use std::path::{Path, PathBuf};
 
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
 use viewer_core::backend::Analyses;
-use viewer_core::engineering_tools::{DesignValue, EngineeringTool};
+use viewer_core::engineering_tools::EngineeringTool;
 use viewer_core::model::{
-    ClaimResult, Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName,
-    Severity, SourceLocation,
+    Diagnostic, Direction, Element, ElementKind, Model, Multiplicity, QualifiedName, Severity,
+    SourceLocation,
 };
 use viewer_core::{BackendError, ModelBackend};
 
@@ -204,8 +204,8 @@ impl ModelBackend for OpenSysmlBackend {
         }
         let mut diagnostics: Vec<Diagnostic> =
             parsed.diagnostics().iter().map(diagnostic).collect();
-        let (failures, tool_links) = api_json::enrich(&connection, &parsed, &mut elements);
-        for (document, error) in failures {
+        let enriched = api_json::enrich(&connection, &parsed, &mut elements);
+        for (document, error) in enriched.failures {
             // A file with its own errors already says why; don't repeat it.
             let file = PathBuf::from(&document);
             let has_errors = diagnostics.iter().any(|d| {
@@ -222,93 +222,18 @@ impl ModelBackend for OpenSysmlBackend {
                 location: Some(SourceLocation { file, line: 0 }),
             });
         }
-        if tool_links.is_empty() {
-            diagnostics.extend(checks::run(
-                &checks::Service::new(&parsed),
-                &mut elements,
-                folder,
-                analyses,
-            ));
-            return Ok(Model::new(elements.into_values(), diagnostics));
-        }
-
-        // The checks run on the Model with its Design Values; the elements
-        // keep what the Model writes, Model Values included.
-        let mut plan = design_values::plan(&tool_links, &mut self.tools, &elements);
-        diagnostics.append(&mut plan.diagnostics);
-        match design_values::with_design_values(&connection, &parsed, &documents, &plan.edits) {
-            Ok(designed) => diagnostics.extend(checks::run(
-                &design_values::Worded {
-                    checker: checks::Service::new(designed.as_ref().unwrap_or(&parsed)),
-                    written: &plan.written,
-                },
-                &mut elements,
-                folder,
-                analyses,
-            )),
-            Err(error) => {
-                // Without its Design Values the Model holds only Model
-                // Values, and which checks rest on the linked features
-                // can't be told: none is judged.
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    message: format!("Design Values could not be written into the Model: {error}"),
-                    location: None,
-                });
-                diagnostics.extend(checks::run(
-                    &checks::Service::new(&parsed),
-                    &mut elements,
-                    folder,
-                    analyses,
-                ));
-                let reason = format!("could not be written into the Model: {error}");
-                not_judged(
-                    &mut elements,
-                    &format!("Design Values {reason}, so nothing was judged"),
-                );
-                for outcome in &mut plan.outcomes {
-                    if let DesignValue::Read { .. } = outcome.design_value {
-                        outcome.design_value = DesignValue::Missing {
-                            reason: reason.clone(),
-                        };
-                    }
-                }
-            }
-        }
+        let checked = design_values::check(
+            &mut design_values::Parsed::new(&connection, &parsed, &documents),
+            &enriched.tool_links,
+            &mut self.tools,
+            &mut elements,
+            folder,
+            analyses,
+        );
+        diagnostics.extend(checked.diagnostics);
         Ok(Model::new(elements.into_values(), diagnostics)
-            .with_design_values(plan.tool_links, plan.outcomes))
+            .with_design_values(checked.tool_links, checked.outcomes))
     }
-}
-
-/// Makes every check result on `elements` Undecided with `reason`, and
-/// drops every value the checks computed: none of them can be trusted.
-fn not_judged(elements: &mut BTreeMap<QualifiedName, Element>, reason: &str) {
-    for element in elements.values_mut() {
-        element.computed.clear();
-        if let Some(analysis) = &mut element.analysis_result {
-            analysis.outputs.clear();
-        }
-        for result in check_results(element) {
-            *result = ClaimResult::Undecided {
-                reason: reason.to_owned(),
-            };
-        }
-    }
-}
-
-/// Every check result recorded on `element`: its claim's, its constraint
-/// checks', its analysis objective's.
-fn check_results(element: &mut Element) -> impl Iterator<Item = &mut ClaimResult> {
-    element
-        .claim_result
-        .iter_mut()
-        .chain(element.checks.iter_mut().map(|c| &mut c.result))
-        .chain(
-            element
-                .analysis_result
-                .iter_mut()
-                .flat_map(|a| a.objective.as_mut()),
-        )
 }
 
 /// Converts `symbol` and its descendants. Each document's root namespace has

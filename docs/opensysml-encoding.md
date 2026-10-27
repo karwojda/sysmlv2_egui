@@ -1,6 +1,6 @@
 # How OpenSysML encodes a Model
 
-What the backend reads from the sysml-grpc service, where each fact comes from, and the quirks that cost a probe to find. The code that reads it is `crates/viewer-opensysml/src/lib.rs` (`collect`), `api_json.rs`, `expression.rs` and `checks/service.rs`.
+What the backend reads from the sysml-grpc service, where each fact comes from, and the quirks that cost a probe to find. The code that reads it is `crates/viewer-opensysml/src/lib.rs` (`collect`), `api_json.rs`, `expression.rs`, `checks/service.rs` and `design_values/` (`Parsed`, `edit.rs`, `words.rs`).
 
 ## Probe first
 
