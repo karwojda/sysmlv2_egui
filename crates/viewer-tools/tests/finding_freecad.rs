@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use viewer_core::engineering_tools::{EngineeringTool, Wanted};
-use viewer_tools::{FreeCad, Machine};
+use viewer_tools::freecad::{FreeCad, Machine};
 
 /// A shell script at `path` running `body`, made executable.
 fn stub(path: &Path, body: &str) -> PathBuf {
@@ -169,6 +169,13 @@ fn a_missing_file_is_named() {
     .unwrap_err();
 
     assert_eq!(reason, format!("file {} not found", file.display()));
+}
+
+#[test]
+fn an_answer_depends_on_its_own_file_only() {
+    let freecad = FreeCad::from_machine(Machine::default());
+
+    assert_eq!(freecad.dependent_files(&parts()), vec![parts()]);
 }
 
 #[test]

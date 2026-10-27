@@ -4,7 +4,7 @@ mod common;
 
 use std::path::Path;
 
-use viewer_core::engineering_tools::DesignValue;
+use viewer_core::engineering_tools::{DesignValue, Parts};
 use viewer_core::model::Direction;
 use viewer_core::properties::{Property, properties};
 use viewer_core::{FakeBackend, Model, ModelBackend, QualifiedName};
@@ -213,6 +213,7 @@ fn linked_drive() -> Model {
             "Volume",
             DesignValue::Read {
                 value: "1000000.0 [mm^3]".to_owned(),
+                parts: None,
             },
         )
         .part("Drive::drive::gearbox")
@@ -310,5 +311,38 @@ fn unlinked_elements_show_their_plain_value_and_no_tool_link() {
         !rows_of(&model, "Drive::drive::spare")
             .iter()
             .any(|(label, _)| *label == "Tool Link")
+    );
+}
+
+#[test]
+fn a_summed_design_value_says_how_many_parts_it_counted_and_lists_every_uncounted_one() {
+    let model = Model::builder()
+        .package("Board")
+        .part("Board::board")
+        .tool_link("KiCad", "ecad/board.kicad_pro", "board")
+        .attribute("Board::board::power")
+        .value("0.4 [W]")
+        .design_value(
+            "Power",
+            DesignValue::Read {
+                value: "0.612 [W]".to_owned(),
+                parts: Some(Parts::new(["U1", "D1"], ["R1", "C10", "C2"])),
+            },
+        )
+        .build();
+    let model = FakeBackend::new(model).load(Path::new("board")).unwrap();
+
+    assert_eq!(
+        rows_of(&model, "Board::board::power")[4..],
+        [
+            (
+                "Design Value",
+                "0.612 [W]  ⚙ KiCad board.Power  summed 2 of 5 parts".to_owned()
+            ),
+            ("Uncounted", "C2".to_owned()),
+            ("Uncounted", "C10".to_owned()),
+            ("Uncounted", "R1".to_owned()),
+            ("Model Value", "0.4 [W]".to_owned()),
+        ]
     );
 }

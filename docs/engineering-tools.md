@@ -1,6 +1,6 @@
 # Engineering Tools: design
 
-How this tool reads values from an Engineering Tool (FreeCAD first, KiCad later) into its checks. The decisions are in ADRs 0003 to 0005; the reasoning, measurements and prototypes are in the wayfinder map `.scratch/engineering-tools/map.md` and its tickets. This note is the input for specifying a FreeCAD tracer build.
+How this tool reads values from an Engineering Tool (FreeCAD and KiCad) into its checks. The decisions are in ADRs 0003 to 0006; the reasoning, measurements and prototypes are in the wayfinder map `.scratch/engineering-tools/map.md` and its tickets. This note is the input for specifying a FreeCAD tracer build.
 
 ## In one paragraph
 
@@ -24,7 +24,7 @@ The list of `(feature qualified name, value text)` from step 4 is the store-neut
 - `viewer-core`: the `EngineeringTool` trait (a file, and per object the properties wanted, in; per property a value with unit or a reason, out), and on the `Model` the Tool Links and Design Value outcomes (Design Value, Model Value, source, or reason). No OpenSysML.
 - `viewer-tools` (new): the adapters. Knows nothing of SysML.
   - **FreeCAD**: runs `freecadcmd` with an embedded script (`include_str!`, written to a temp dir) that opens the `.FCStd`, resolves each object by `Name` or assembly path (`getSubObject`), and prints JSON. Properties: `Volume` [mm³], `Area` [mm²], `CenterOfMass.x|y|z` [mm], `Mass` [kg] only when the object has a real material (not "Default", found in the local library), otherwise a reason. Check that the first object of an assembly path exists, for a clean reason.
-  - **KiCad** (later): `kicad-cli` netlist export and `pcb export stats`; see "Does the design hold for KiCad?".
+  - **KiCad**: runs `kicad-cli` (10 or newer) on the `.kicad_sch` and `.kicad_pcb` named like the linked `.kicad_pro`; see "KiCad adapter" below.
 - `viewer-opensysml`: steps 2, 4 and 5, given the adapters.
 - GUI and CLI build the backend with the adapters; tests use a fake tool.
 
@@ -61,6 +61,23 @@ Where the tracer build differs from, or adds to, the design above:
 - **One FreeCAD run per file, not per load.** The adapter is called once per tool and file, so a Model whose links reach three `.FCStd` files starts FreeCAD three times; story 27 of the tracer spec asks for one run per load. Each run costs about 0.6–0.75 s, mostly startup. Batching every file of a load into one run needs the script to take several documents; it is left for when Models link many files.
 - **`export` and unreadable links.** `sysml-viewer export` loads Design Values like every other command, so a Diagram showing Verdicts shows the design's. When a Tool Link can't be read there, the affected Verdicts draw as Undecided, and `export` prints no warning and still succeeds: the planned `export` warning is out of the tracer's scope.
 - **A timed-out Windows FreeCAD.** Under WSL the adapter runs `freecadcmd.exe` through the interop process and kills that process on timeout. Tried against FreeCAD 1.1 at `C:\Program Files\FreeCAD 1.1` with a script that sleeps: killing the interop process ends the Windows `freecadcmd.exe` too (`tasklist.exe` no longer lists it), so no `taskkill.exe` is needed. A process FreeCAD itself starts would not be covered; `freecadcmd` starts none for the `Volume` query.
+
+## KiCad adapter
+
+As built in the KiCad tracer (`.scratch/kicad-tracer/spec.md`, ADR 0006, the amendment to ADR 0005), in `crates/viewer-tools/src/kicad.rs`. Example: `examples/feather-budget/`.
+
+- **Link:** `@ToolLink { tool = "KiCad"; file = "ecad/board.kicad_pro"; object = "board"; }`. The adapter uses the `.kicad_sch` and `.kicad_pcb` of the same name beside the `.kicad_pro`, and names whichever is missing. `board` is the only object; any other gets a reason saying so.
+- **Properties of `board`:**
+  - `Width`, `Height`, `Thickness`, `Area` from `pcb export stats --format json --units mm` (`board.width`, …, `"58.4200 mm"` becomes `58.42 [mm]`, `mm²` becomes `mm^2`).
+  - `ComponentCount`, the number of placed parts, unitless, from `sch export netlist --format kicadxml`.
+  - Any other name is a symbol field, matched exactly, case included, and added up over the placed parts into a **Summed Design Value** that carries its counted and uncounted parts (ADR 0006).
+- **Placed parts** are the netlist's components on every sheet that are neither `dnp` nor `exclude_from_bom`. Parts that aren't placed are neither counted nor uncounted.
+- **Summing a field:** a missing or empty field leaves its part uncounted. A present field reads as a number with an optional unit made of an SI prefix (`p n u µ m k M G`) and a base symbol (`45mW`, `1.2 W`, `350µW`). The sum is in the base unit (`0.060953 [W]`), or unitless when every field is a bare number (prices). An unreadable field (`lots`, `1,5 W`), two base symbols (`mW` and `mA`), or bare numbers mixed with units leave no Design Value, with a reason naming the parts. When no placed part has the field, the sum is 0 with every placed part uncounted.
+- **Runs:** only the exports the wanted properties need are run (the netlist for sums and the count, the statistics for dimensions), side by side; one export failing leaves only its own properties without a value. Before them, `kicad-cli version` must say 10 or newer (`KiCad 10 or newer needed; found 9.0.3`), since `pcb export stats` is new in 10. Each run is killed after `SYSML_VIEWER_KICAD_TIMEOUT` seconds, 30 by default. About 1.5 to 2.5 s per export from WSL.
+- **Finding it:** `SYSML_VIEWER_KICAD` (final when set), then `PATH`, then `KiCad/<version>/bin` under `/mnt/c/Program Files`, `/Applications` (`KiCad.app`) and `%ProgramFiles%`, newest version first.
+- **Language:** every run gets a fresh `KICAD_CONFIG_HOME` (passed through `WSLENV` to a Windows `kicad-cli.exe`) whose `10.0/kicad_common.json` sets the language to English. A KiCad left on its default language writes the statistics with that locale's decimal commas and keys, and locale variables don't change it. The user's own KiCad config is never read or written.
+- **Dependent files:** every `.kicad_sch` and `.kicad_pcb` in the project's folder and below it, for watching linked files when that is built.
+- **Not yet:** single components as objects, `Value` fields as quantities, variants, nets, simulation (`kicad-cli` has none).
 
 Reference Models and code: branches `prototype/live-freecad` (the pipeline as one program, `prototypes/live-freecad/`) and `prototype/design-values-ui` (the GUI variants).
 

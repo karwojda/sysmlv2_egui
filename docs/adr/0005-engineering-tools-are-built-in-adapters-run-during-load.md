@@ -7,3 +7,4 @@ Each Engineering Tool is reached through an adapter built into this program behi
 - The list of Design Values is a store-neutral change set (feature qualified name, value text). A future write to the Model applies the same change set and saves the edited text instead of only re-parsing it; that needs a new ADR amending ADR 0002.
 - Adapters know nothing of SysML; the edit, the "no Design Value" marker and the re-parse are OpenSysML-specific and stay in the OpenSysML backend.
 - A Model with Tool Links loads about 0.7 s slower (one FreeCAD run); one without loads as before.
+- Amended for KiCad: a tool may run more than one process per load when it has no single command for everything linked (`kicad-cli` exports the netlist and the board stats separately). The adapter runs only the exports its linked properties need, in parallel, so a load is slowed by the slowest one, not the sum.

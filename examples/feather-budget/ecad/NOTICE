@@ -1,0 +1,27 @@
+RoyalBlue54L Feather
+
+This folder is the RoyalBlue54L Feather by Lord's Boards
+(https://github.com/LordsBoards), as KiCad 10.0.7 ships it among its demo
+projects (share/kicad/demos/royalblue54L_feather). It is licensed under
+the CERN Open Hardware Licence Version 2 - Permissive (CERN-OHL-P-2.0);
+see LICENSE in this folder.
+
+Changes made for the sysmlv2_egui example:
+- img/ (the board photographs README.md refers to) is left out.
+- .gitmodules, which names library submodules the demo does not include,
+  is left out.
+- Two hidden symbol fields, Power and Price, are added to the seven
+  active parts, and to no other part:
+    sch/nRF54L15.kicad_sch  U1 (BM15x, the nRF54L15 module)  9.6mW   6.50
+                            D1 (LED_Small)                   6mW     0.05
+                            Y1 (32.768 kHz crystal)          1uW     0.20
+    sch/Debugger.kicad_sch  U5 (nRF52833, the debugger MCU)  15 mW   3.10
+                            Y2 (32 MHz crystal)              2uW     0.30
+    sch/nPM1300.kicad_sch   U2 (nPM1300)                     350µW   2.40
+                            D3 (LED_ARGB)                    0.03W   0.25
+  The figures are illustrative: plausible values in the style of
+  datasheets and distributor prices (Price in US dollars), not
+  measurements or quotes, written in mixed units on purpose. They are not
+  part of the original design.
+
+No other design file is modified.

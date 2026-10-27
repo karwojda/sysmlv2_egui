@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use viewer_core::engineering_tools::{
-    Answer, DesignValue, DesignValueOutcome, DesignValueSource, EngineeringTool, ToolLink, Wanted,
+    Answer, DesignValue, DesignValueOutcome, DesignValueSource, EngineeringTool, Parts, ReadValue,
+    ToolLink, Wanted,
 };
 use viewer_core::verdict::Status;
 use viewer_core::{Model, ModelBackend, QualifiedName, Severity};
@@ -51,7 +52,7 @@ impl EngineeringTool for FakeTool {
                     .volumes
                     .iter()
                     .find(|(o, _)| o == object)
-                    .map(|(_, v)| v.to_string())
+                    .map(|(_, v)| ReadValue::new(*v))
                     .ok_or_else(|| format!("no object {object}"));
                 let answers = properties
                     .iter()
@@ -180,6 +181,7 @@ fn the_model_records_its_tool_links_and_each_feature_s_design_value_with_its_mod
             },
             design_value: DesignValue::Read {
                 value: value.to_owned(),
+                parts: None,
             },
             model_value: Some(model_value.to_owned()),
         };
@@ -343,6 +345,7 @@ fn valueless_features_are_recorded_by_their_resolved_names_with_the_model_value_
             },
             design_value: DesignValue::Read {
                 value: value.to_owned(),
+                parts: None,
             },
             model_value: model_value.map(str::to_owned),
         };
@@ -679,4 +682,127 @@ fn a_named_feature_after_text_that_is_not_ascii_on_its_line_takes_the_design_val
     let welle = "drive::Welle⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙⚙";
     let bore = element(&model, &format!("{welle}::bore"));
     assert_eq!(bore.computed, ["8.0 [mm]"]);
+}
+
+/// Answers each property of every object from a fixed table, as KiCad
+/// adds a field up over a board's parts.
+struct SummedTool {
+    board: Vec<(&'static str, Result<ReadValue, String>)>,
+}
+
+impl EngineeringTool for SummedTool {
+    fn read(&mut self, _: &Path, wanted: &Wanted) -> Result<Answer, String> {
+        Ok(wanted
+            .iter()
+            .map(|(object, properties)| {
+                let answers = properties
+                    .iter()
+                    .map(|p| {
+                        let answer = self
+                            .board
+                            .iter()
+                            .find(|(name, _)| name == p)
+                            .map(|(_, a)| a.clone())
+                            .unwrap_or_else(|| Err(format!("no property {p}")));
+                        (p.clone(), answer)
+                    })
+                    .collect();
+                (object.clone(), answers)
+            })
+            .collect())
+    }
+}
+
+/// The board's Power summed over three parts, with three left uncounted.
+fn summed_power(value: &str) -> Result<ReadValue, String> {
+    Ok(ReadValue::summed(
+        value,
+        Parts::new(["U1", "U2", "D1"], ["R1", "C10", "C2"]),
+    ))
+}
+
+/// `fixtures/summed_design_values`, its board answering as given.
+fn load_board(board: Vec<(&'static str, Result<ReadValue, String>)>) -> Model {
+    let model = OpenSysmlBackend::new()
+        .with_tool("KiCad", SummedTool { board })
+        .load(&fixture("summed_design_values"))
+        .unwrap();
+    assert!(model.diagnostics().is_empty(), "{:?}", model.diagnostics());
+    model
+}
+
+/// The Verdict of `Board::<name>`, and why when Undecided.
+fn board_requirement(model: &Model, name: &str) -> (Status, Option<String>) {
+    let requirement = model
+        .element(&QualifiedName::new(format!("Board::{name}")))
+        .unwrap_or_else(|| panic!("no Board::{name}"));
+    let verdict = viewer_core::verdict::of(model, requirement).unwrap();
+    let detail = verdict.findings.first().and_then(|f| f.detail.clone());
+    (
+        verdict.status,
+        detail.filter(|_| verdict.status == Status::Undecided),
+    )
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_summed_design_value_replaces_the_model_value_and_records_its_parts() {
+    // The estimates, 0.4 W and 9.5, hold both budgets.
+    let estimated = load_board(vec![
+        ("Power", Ok(ReadValue::new("0.4 [W]"))),
+        ("Price", Ok(ReadValue::new("9.5"))),
+    ]);
+    assert_eq!(
+        board_requirement(&estimated, "powerBudget"),
+        (Status::Holds, None)
+    );
+
+    // The parts the design counts draw 0.612 W, over the 0.5 W budget.
+    let designed = load_board(vec![
+        ("Power", summed_power("0.612 [W]")),
+        ("Price", Ok(ReadValue::new("9.5"))),
+    ]);
+
+    assert_eq!(
+        board_requirement(&designed, "powerBudget"),
+        (Status::Violated, None)
+    );
+    let power = &designed
+        .design_value(&QualifiedName::new("Board::board::power"))
+        .unwrap()
+        .design_value;
+    let DesignValue::Read {
+        value,
+        parts: Some(parts),
+    } = power
+    else {
+        panic!("not a Summed Design Value: {power:?}");
+    };
+    assert_eq!(value, "0.612 [W]");
+    assert_eq!(parts.counted(), ["D1", "U1", "U2"]);
+    assert_eq!(parts.uncounted(), ["C2", "C10", "R1"]);
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn a_reason_for_one_summed_property_leaves_only_its_dependent_checks_undecided() {
+    let model = load_board(vec![
+        ("Power", summed_power("0.612 [W]")),
+        ("Price", Err("Price of U3 is unreadable: lots".to_owned())),
+    ]);
+
+    assert_eq!(
+        board_requirement(&model, "costLimit"),
+        (
+            Status::Undecided,
+            Some(
+                "no Design Value for Board::board::price (KiCad: Price of U3 is unreadable: lots)"
+                    .to_owned()
+            )
+        )
+    );
+    assert_eq!(
+        board_requirement(&model, "powerBudget"),
+        (Status::Violated, None)
+    );
 }

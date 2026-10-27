@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use viewer_core::engineering_tools::{Answer, EngineeringTool, Wanted};
-use viewer_tools::{FreeCad, Machine};
+use viewer_tools::freecad::{FreeCad, Machine};
 
 fn parts() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/parts.FCStd")
@@ -38,7 +38,10 @@ fn wanted(objects: &[(&str, &[&str])]) -> Wanted {
 }
 
 fn answer(answer: &Answer, object: &str, property: &str) -> Result<String, String> {
-    answer[object][property].clone()
+    answer[object][property].clone().map(|read| {
+        assert_eq!(read.parts, None, "FreeCAD sums no parts");
+        read.value
+    })
 }
 
 #[test]

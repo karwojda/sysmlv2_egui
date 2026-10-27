@@ -46,3 +46,39 @@ jobs:
           key: sysml-grpc-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Test against sysml-grpc
         run: cargo test --workspace --locked -- --ignored
+
+  # The workspace tests run with SYSML_VIEWER_KICAD naming kicad-cli from
+  # the KiCad 10 release PPA, headless: the runner sets no display.
+  # Without KiCad the real-KiCad tests print "note: skipping" and pass, so
+  # this job fails on that note. The pinned package is built for Ubuntu
+  # 24.04, hence the pinned runner.
+  kicad:
+    name: KiCad tests (kicad-cli 10.0.7)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Install KiCad 10.0.7
+        run: |
+          sudo add-apt-repository --yes ppa:kicad/kicad-10.0-releases
+          sudo apt-get install --yes --no-install-recommends kicad=10.0.7~ubuntu24.04.1
+          kicad-cli version
+      - name: Test the workspace against KiCad
+        env:
+          SYSML_VIEWER_KICAD: /usr/bin/kicad-cli
+        run: cargo test --workspace --locked
+      # A passing test's output is captured, so --nocapture lets the
+      # skip note reach the log. Only the real-KiCad tests are gated:
+      # FreeCAD isn't installed here, so its tests skip.
+      - name: Check the real-KiCad tests ran
+        shell: bash
+        env:
+          SYSML_VIEWER_KICAD: /usr/bin/kicad-cli
+        run: |
+          cargo test -p viewer-tools --test kicad --locked -- --nocapture 2>&1 | tee kicad-tests.log
+          if grep -q 'note: skipping' kicad-tests.log; then
+            echo "::error::The KiCad tests skipped instead of running against kicad-cli"
+            exit 1
+          fi
