@@ -1568,30 +1568,14 @@ fn open_in_editor(source: &viewer_core::SourceLocation) -> Result<(), String> {
         .map_err(|e| format!("Could not open {target} with `code -g` ({e}). Is VS Code's `code` command on your PATH?"))
 }
 
-/// `file:line: severity: message`, with the file relative to the Model
-/// folder. Line 0 means the whole file.
+/// The diagnostic as one line (see [`Diagnostic::line`]), with the file
+/// relative to the Model folder, in its severity's color.
 fn diagnostic_line(ui: &mut egui::Ui, diagnostic: &Diagnostic, folder: Option<&Path>) {
-    let (severity, color) = match diagnostic.severity {
-        Severity::Error => ("error", ui.visuals().error_fg_color),
-        Severity::Warning => ("warning", ui.visuals().warn_fg_color),
+    let color = match diagnostic.severity {
+        Severity::Error => ui.visuals().error_fg_color,
+        Severity::Warning => ui.visuals().warn_fg_color,
     };
-    let location = diagnostic
-        .location
-        .as_ref()
-        .map(|l| {
-            let file = folder
-                .and_then(|f| l.file.strip_prefix(f).ok())
-                .unwrap_or(&l.file);
-            match l.line {
-                0 => format!("{}: ", file.display()),
-                line => format!("{}:{line}: ", file.display()),
-            }
-        })
-        .unwrap_or_default();
-    ui.colored_label(
-        color,
-        format!("{location}{severity}: {}", diagnostic.message),
-    );
+    ui.colored_label(color, diagnostic.line(folder));
 }
 
 impl eframe::App for ViewerApp {

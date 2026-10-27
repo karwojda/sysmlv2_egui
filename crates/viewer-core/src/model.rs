@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::engineering_tools::{DesignValue, DesignValueOutcome, DesignValueSource, ToolLink};
 
@@ -411,6 +411,32 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub message: String,
     pub location: Option<SourceLocation>,
+}
+
+impl Diagnostic {
+    /// `file:line: severity: message`, the form editors and CI logs link
+    /// up, with the file relative to `folder` when it is inside it. Line 0
+    /// means the whole file: `file: severity: message`.
+    pub fn line(&self, folder: Option<&Path>) -> String {
+        let location = self.location.as_ref().map(|l| {
+            let file = folder
+                .and_then(|f| l.file.strip_prefix(f).ok())
+                .unwrap_or(&l.file);
+            match l.line {
+                0 => format!("{}: ", file.display()),
+                line => format!("{}:{line}: ", file.display()),
+            }
+        });
+        let severity = match self.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        };
+        format!(
+            "{}{severity}: {}",
+            location.unwrap_or_default(),
+            self.message
+        )
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
