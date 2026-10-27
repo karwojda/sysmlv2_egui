@@ -7,9 +7,11 @@
 //! decimal commas. It refuses to run without `KICAD_CONFIG_HOME`.
 #![cfg(unix)]
 
-use std::os::unix::fs::PermissionsExt;
+mod common;
+
 use std::path::{Path, PathBuf};
 
+use common::script;
 use viewer_core::engineering_tools::{Answer, EngineeringTool, Parts, ReadValue, Wanted};
 use viewer_tools::kicad::{KiCad, Machine};
 
@@ -17,14 +19,6 @@ fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/kicad")
         .join(name)
-}
-
-/// A shell script at `path` running `body`, made executable.
-fn script(path: &Path, body: &str) -> PathBuf {
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    path.to_path_buf()
 }
 
 /// A stub `kicad-cli` in `dir` that says it is KiCad `version` and

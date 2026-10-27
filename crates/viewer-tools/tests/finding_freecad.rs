@@ -3,20 +3,14 @@
 //! install folders; and the timeout.
 #![cfg(unix)]
 
-use std::os::unix::fs::PermissionsExt;
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use common::script;
 use viewer_core::engineering_tools::{EngineeringTool, Wanted};
 use viewer_tools::freecad::{FreeCad, Machine};
-
-/// A shell script at `path` running `body`, made executable.
-fn stub(path: &Path, body: &str) -> PathBuf {
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    path.to_path_buf()
-}
 
 fn found(machine: Machine) -> PathBuf {
     FreeCad::from_machine(machine)
@@ -46,9 +40,9 @@ fn without_freecad_every_read_says_freecad_is_not_available() {
 #[test]
 fn the_variable_comes_before_path_and_install_folders() {
     let dir = tempfile::tempdir().unwrap();
-    let named = stub(&dir.path().join("mine/freecadcmd"), "true");
-    stub(&dir.path().join("bin/freecadcmd"), "true");
-    stub(&dir.path().join("opt/FreeCAD 1.1/bin/freecadcmd"), "true");
+    let named = script(&dir.path().join("mine/freecadcmd"), "true");
+    script(&dir.path().join("bin/freecadcmd"), "true");
+    script(&dir.path().join("opt/FreeCAD 1.1/bin/freecadcmd"), "true");
 
     let executable = found(Machine {
         executable: Some(named.clone().into()),
@@ -63,7 +57,7 @@ fn the_variable_comes_before_path_and_install_folders() {
 #[test]
 fn a_variable_naming_nothing_is_not_passed_over_for_path() {
     let dir = tempfile::tempdir().unwrap();
-    stub(&dir.path().join("bin/freecadcmd"), "true");
+    script(&dir.path().join("bin/freecadcmd"), "true");
     let missing = dir.path().join("nowhere/freecadcmd");
 
     let freecad = FreeCad::from_machine(Machine {
@@ -86,7 +80,7 @@ fn a_variable_naming_nothing_is_not_passed_over_for_path() {
 fn path_is_searched_for_either_name() {
     for name in ["freecadcmd", "FreeCADCmd"] {
         let dir = tempfile::tempdir().unwrap();
-        let on_path = stub(&dir.path().join("second").join(name), "true");
+        let on_path = script(&dir.path().join("second").join(name), "true");
         std::fs::create_dir(dir.path().join("first")).unwrap();
         let path =
             std::env::join_paths([dir.path().join("first"), dir.path().join("second")]).unwrap();
@@ -103,8 +97,8 @@ fn path_is_searched_for_either_name() {
 #[test]
 fn path_comes_before_install_folders() {
     let dir = tempfile::tempdir().unwrap();
-    let on_path = stub(&dir.path().join("bin/freecadcmd"), "true");
-    stub(&dir.path().join("opt/FreeCAD 1.1/bin/freecadcmd"), "true");
+    let on_path = script(&dir.path().join("bin/freecadcmd"), "true");
+    script(&dir.path().join("opt/FreeCAD 1.1/bin/freecadcmd"), "true");
 
     let executable = found(Machine {
         path: Some(dir.path().join("bin").into()),
@@ -120,11 +114,11 @@ fn the_newest_install_is_found_including_a_windows_one_seen_from_wsl() {
     // As `/mnt/c/Program Files` looks from WSL.
     let dir = tempfile::tempdir().unwrap();
     let program_files = dir.path().join("Program Files");
-    stub(
+    script(
         &program_files.join("FreeCAD 1.0/bin/freecadcmd.exe"),
         "true",
     );
-    let newest = stub(
+    let newest = script(
         &program_files.join("FreeCAD 1.1/bin/freecadcmd.exe"),
         "true",
     );
@@ -142,10 +136,10 @@ fn the_newest_install_is_found_including_a_windows_one_seen_from_wsl() {
 fn the_newest_install_is_found_by_its_version_numbers_not_its_spelling() {
     let dir = tempfile::tempdir().unwrap();
     let opt = dir.path().join("opt");
-    stub(&opt.join("FreeCAD 1.9/bin/freecadcmd"), "true");
-    let newest = stub(&opt.join("FreeCAD 1.10/bin/freecadcmd"), "true");
-    stub(&opt.join("FreeCAD 1.2/bin/freecadcmd"), "true");
-    stub(&opt.join("FreeCAD/bin/freecadcmd"), "true");
+    script(&opt.join("FreeCAD 1.9/bin/freecadcmd"), "true");
+    let newest = script(&opt.join("FreeCAD 1.10/bin/freecadcmd"), "true");
+    script(&opt.join("FreeCAD 1.2/bin/freecadcmd"), "true");
+    script(&opt.join("FreeCAD/bin/freecadcmd"), "true");
 
     let executable = found(Machine {
         install_dirs: vec![opt],
@@ -158,7 +152,7 @@ fn the_newest_install_is_found_by_its_version_numbers_not_its_spelling() {
 #[test]
 fn a_missing_file_is_named() {
     let dir = tempfile::tempdir().unwrap();
-    let freecad = stub(&dir.path().join("freecadcmd"), "true");
+    let freecad = script(&dir.path().join("freecadcmd"), "true");
     let file = dir.path().join("cad/engine.FCStd");
 
     let reason = FreeCad::from_machine(Machine {
@@ -194,7 +188,7 @@ fn a_run_may_take_30_seconds_unless_the_machine_says_otherwise() {
 #[test]
 fn a_run_that_does_not_answer_in_time_is_killed() {
     let dir = tempfile::tempdir().unwrap();
-    let hanging = stub(&dir.path().join("freecadcmd"), "exec sleep 30");
+    let hanging = script(&dir.path().join("freecadcmd"), "exec sleep 30");
     let mut freecad = FreeCad::from_machine(Machine {
         executable: Some(hanging.into()),
         timeout: Some("1".into()),
@@ -214,7 +208,7 @@ fn a_run_that_does_not_answer_in_time_is_killed() {
 #[test]
 fn a_timeout_that_is_not_a_number_of_seconds_is_a_reason() {
     let dir = tempfile::tempdir().unwrap();
-    let freecad = stub(&dir.path().join("freecadcmd"), "true");
+    let freecad = script(&dir.path().join("freecadcmd"), "true");
     let mut freecad = FreeCad::from_machine(Machine {
         executable: Some(freecad.into()),
         timeout: Some("soon".into()),
@@ -232,7 +226,7 @@ fn a_timeout_that_is_not_a_number_of_seconds_is_a_reason() {
 #[test]
 fn a_run_that_prints_no_answer_says_what_freecad_said() {
     let dir = tempfile::tempdir().unwrap();
-    let broken = stub(
+    let broken = script(
         &dir.path().join("freecadcmd"),
         "echo 'ModuleNotFoundError: No module named Part' >&2; exit 1",
     );
