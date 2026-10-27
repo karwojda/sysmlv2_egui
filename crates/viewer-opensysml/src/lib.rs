@@ -19,7 +19,6 @@ mod expression;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use design_values::{EditorEdit, ValueEdit, ValuePlace};
 use opensysml::{Connection, SourceDocument, SourcesOptions, Symbol};
 use viewer_core::backend::Analyses;
 use viewer_core::engineering_tools::{DesignValue, EngineeringTool};
@@ -237,12 +236,12 @@ impl ModelBackend for OpenSysmlBackend {
         // keep what the Model writes, Model Values included.
         let mut plan = design_values::plan(&tool_links, &mut self.tools, &elements);
         diagnostics.append(&mut plan.diagnostics);
-        match with_design_values(&connection, &parsed, &documents, &plan.edits) {
+        match design_values::with_design_values(&connection, &parsed, &documents, &plan.edits) {
             Ok(designed) => diagnostics.extend(checks::run(
-                &checks::Service::with_design_values(
-                    designed.as_ref().unwrap_or(&parsed),
-                    &plan.written,
-                ),
+                &design_values::Worded {
+                    checker: checks::Service::new(designed.as_ref().unwrap_or(&parsed)),
+                    written: &plan.written,
+                },
                 &mut elements,
                 folder,
                 analyses,
@@ -310,110 +309,6 @@ fn check_results(element: &mut Element) -> impl Iterator<Item = &mut ClaimResult
                 .iter_mut()
                 .flat_map(|a| a.objective.as_mut()),
         )
-}
-
-/// `parsed` with `edits` made in memory, one editor per document, and
-/// parsed again: the edited documents inline, the rest from `documents`.
-/// `None` when there is nothing to edit. The files are never written.
-fn with_design_values(
-    connection: &Connection,
-    parsed: &opensysml::Model,
-    documents: &[SourceDocument],
-    edits: &[ValueEdit],
-) -> Result<Option<opensysml::Model>, String> {
-    if edits.is_empty() {
-        return Ok(None);
-    }
-    let mut in_text: Vec<(&ValueEdit, (u32, u32))> = Vec::new();
-    let mut per_document: BTreeMap<&str, Vec<(&ValueEdit, &EditorEdit)>> = BTreeMap::new();
-    for edit in edits {
-        match &edit.place {
-            ValuePlace::InText { at } => in_text.push((edit, *at)),
-            ValuePlace::Editor(editor_edit) => per_document
-                .entry(&edit.document)
-                .or_default()
-                .push((edit, editor_edit)),
-        }
-    }
-    // The values the service won't write go into the text first, the last
-    // in each document first, so the places of the others stay as parsed.
-    in_text.sort_by(|(a, at_a), (b, at_b)| (&b.document, at_b).cmp(&(&a.document, at_a)));
-    let mut edited: BTreeMap<String, String> = BTreeMap::new();
-    for (edit, at) in in_text {
-        let text = match edited.remove(&edit.document) {
-            Some(text) => text,
-            None => std::fs::read_to_string(&edit.document)
-                .map_err(|e| format!("cannot read {}: {e}", edit.document))?,
-        };
-        let written = design_values::write_value(&text, at, &edit.value).ok_or_else(|| {
-            format!(
-                "no declaration of {} at line {}, column {} of {}",
-                edit.feature, at.0, at.1, edit.document
-            )
-        })?;
-        edited.insert(edit.document.clone(), written);
-    }
-    let reparsed = match edited.is_empty() {
-        true => None,
-        false => Some(
-            connection
-                .parse_sources(&with_edited(documents, &edited), &SourcesOptions::default())
-                .map_err(|e| e.to_string())?,
-        ),
-    };
-    let base = reparsed.as_ref().unwrap_or(parsed);
-
-    if per_document.is_empty() {
-        return Ok(reparsed);
-    }
-    for (document, edits) in per_document {
-        let mut editor = base.edit();
-        editor.in_document(document);
-        for (edit, editor_edit) in edits {
-            match editor_edit {
-                EditorEdit::SetValue => {
-                    editor.set_value(edit.feature.as_str(), &edit.value);
-                }
-                EditorEdit::Redefine { owner, redefines } => {
-                    editor.delete(edit.feature.as_str(), false);
-                    editor.add_member(
-                        owner.as_str(),
-                        "attribute",
-                        "",
-                        opensysml::MemberOptions {
-                            value: Some(edit.value.clone()),
-                            redefines: vec![redefines.clone()],
-                            ..opensysml::MemberOptions::new()
-                        },
-                    );
-                }
-            }
-        }
-        for result in editor.apply().map_err(|e| e.to_string())?.documents {
-            edited.insert(result.name, result.content);
-        }
-    }
-    connection
-        .parse_sources(&with_edited(documents, &edited), &SourcesOptions::default())
-        .map(Some)
-        .map_err(|e| e.to_string())
-}
-
-/// `documents`, those in `edited` with their edited text inline.
-fn with_edited(
-    documents: &[SourceDocument],
-    edited: &BTreeMap<String, String>,
-) -> Vec<SourceDocument> {
-    documents
-        .iter()
-        .map(|d| {
-            let name = d.document_name();
-            match edited.get(&name) {
-                Some(content) => SourceDocument::inline(name, content.clone()),
-                None => d.clone(),
-            }
-        })
-        .collect()
 }
 
 /// Converts `symbol` and its descendants. Each document's root namespace has
