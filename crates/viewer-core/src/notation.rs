@@ -129,11 +129,11 @@ const BADGE_SIZE: f32 = 16.0;
 const BADGE_INSET: f32 = 5.0;
 
 /// The compartments a node lists, in order, with the kinds of owned
-/// feature each one holds.
-const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
-    ("attributes", &[ElementKind::AttributeUsage]),
-    ("ports", &[ElementKind::PortUsage]),
-    ("parts", &[ElementKind::PartUsage]),
+/// feature each one holds, and whether it lists Inherited Members too.
+const COMPARTMENTS: [(&str, &[ElementKind], bool); 5] = [
+    ("attributes", &[ElementKind::AttributeUsage], true),
+    ("ports", &[ElementKind::PortUsage], true),
+    ("parts", &[ElementKind::PartUsage], true),
     (
         "connections",
         &[
@@ -142,12 +142,10 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
             ElementKind::FlowUsage,
             ElementKind::BindingConnection,
         ],
+        false,
     ),
-    ("requirements", &[ElementKind::RequirementUsage]),
+    ("requirements", &[ElementKind::RequirementUsage], false),
 ];
-
-/// The compartments that list Inherited Members too.
-const INHERITED_SHOWN: [&str; 3] = ["attributes", "ports", "parts"];
 
 /// What marks an inherited row (`^mass`), drawn in italics.
 pub(crate) const INHERITED: &str = "^";
@@ -180,10 +178,8 @@ pub fn node_content(
     } else {
         Vec::new()
     };
-    let features = COMPARTMENTS
-        .iter()
-        .filter(|_| compartments)
-        .filter_map(|(title, kinds)| {
+    let features = COMPARTMENTS.iter().filter(|_| compartments).filter_map(
+        |(title, kinds, lists_inherited)| {
             let mut rows: Vec<String> = model
                 .owned_members(&element.qualified_name)
                 .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
@@ -194,19 +190,22 @@ pub fn node_content(
                     None => feature_row(m),
                 })
                 .collect();
-            // Inherited Members follow, marked; they are never nodes.
-            if INHERITED_SHOWN.contains(title) {
+            // Inherited Members follow, marked; they are never nodes. They
+            // carry no Verdict mark: a check found it for the definition's
+            // member, not this element's.
+            if *lists_inherited {
                 rows.extend(
                     inherited
                         .iter()
                         .filter(|m| kinds.contains(&m.kind))
                         // Nor is a definition's subject a part of what has it.
-                        .filter(|m| !is_subject(model, m))
+                        .filter(|m| !model.is_subject(m))
                         .map(|m| format!("{INHERITED}{}", feature_row(m))),
                 );
             }
             (!rows.is_empty()).then_some((*title, rows))
-        });
+        },
+    );
     // A requirement names its subject under its title; an analysis lists it.
     let subtitle = element
         .subject
@@ -382,15 +381,6 @@ pub fn node_content(
         usage,
         compartments,
     }
-}
-
-/// Whether `member` is its owner's subject (`subject v : Vehicle`).
-fn is_subject(model: &Model, member: &Element) -> bool {
-    member
-        .owner
-        .as_ref()
-        .and_then(|owner| model.element(owner))
-        .is_some_and(|owner| owner.subject.as_ref() == Some(&member.qualified_name))
 }
 
 /// Whether a value as written is a plain literal (`180.0`, `-1`, `true`,

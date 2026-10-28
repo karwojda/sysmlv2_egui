@@ -160,7 +160,7 @@ fn a_definition_reached_twice_contributes_once() {
 }
 
 #[test]
-fn a_definition_lists_what_it_has_through_the_definitions_it_specialises() {
+fn a_definition_lists_what_it_has_through_the_definitions_it_specializes() {
     let model = snippet().build();
     let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
 
@@ -179,6 +179,28 @@ fn a_general_diagram_of_a_usage_draws_the_usage_on_top_of_its_own_members() {
     assert_eq!(nodes(&scene), ["P::specialised", "P::specialised::own"]);
     let texts = texts_of(&scene, "P::specialised");
     assert_eq!(compartment(&texts, "ports"), [row("^outer:PD", true)]);
+    assert_eq!(compartment(&texts, "attributes"), [row("^mass", true)]);
+    // `own` is a node here, so not a row.
+    assert_eq!(compartment(&texts, "parts"), [row("^inner:Inner", true)]);
+}
+
+#[test]
+fn a_cycle_of_specializations_ends() {
+    let model = Model::builder()
+        .package("P")
+        .part_def("P::A")
+        .specializes("P::B")
+        .attribute("P::A::a")
+        .part_def("P::B")
+        .specializes("P::A")
+        .attribute("P::B::b")
+        .build();
+    let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
+
+    assert_eq!(
+        compartment(&texts_of(&scene, "P::A"), "attributes"),
+        [row("a", false), row("^b", true)]
+    );
 }
 
 #[test]

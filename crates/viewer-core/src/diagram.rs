@@ -25,7 +25,9 @@ impl DiagramKind {
     /// How the kind reads in a sentence, e.g. "an Interconnection Diagram".
     pub fn description(self) -> &'static str {
         match self {
-            DiagramKind::General => "a General Diagram (it must be a package, definition or usage)",
+            DiagramKind::General => {
+                "a General Diagram (it must be a package, a definition, or a part, attribute, port, requirement, constraint or analysis)"
+            }
             DiagramKind::Interconnection => {
                 "an Interconnection Diagram (it must be a part or part def)"
             }
@@ -51,10 +53,11 @@ impl DiagramKind {
     /// Interconnection Diagram for a part, otherwise a General Diagram
     /// where one fits.
     pub fn default_for(element: &Element) -> Option<DiagramKind> {
-        [DiagramKind::Interconnection, DiagramKind::General]
-            .into_iter()
-            .filter(|kind| *kind == DiagramKind::General || element.kind == ElementKind::PartUsage)
-            .find(|kind| kind.accepts_root(element))
+        if element.kind == ElementKind::PartUsage {
+            Some(DiagramKind::Interconnection)
+        } else {
+            Some(DiagramKind::General).filter(|kind| kind.accepts_root(element))
+        }
     }
 }
 

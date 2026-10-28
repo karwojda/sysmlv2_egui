@@ -540,8 +540,8 @@ impl Model {
 
     /// `element`'s Inherited Members (`CONTEXT.md`): what it has through
     /// its definition (a usage's `typed_by`) or the definitions it
-    /// specialises (a definition's), and through every definition those
-    /// specialise, nearest definition first and each definition once. A
+    /// specializes (a definition's), and through every definition those
+    /// specialize, nearest definition first and each definition once. A
     /// member is hidden by a nearer one that redefines it; until
     /// redefinitions are recorded, by a nearer one of the same name, the
     /// element's own members included. For `part specialised : Design`
@@ -572,6 +572,15 @@ impl Model {
             next.extend(&definition.specializes);
         }
         inherited
+    }
+
+    /// Whether `member` is its owner's subject (`subject v : Vehicle`).
+    pub fn is_subject(&self, member: &Element) -> bool {
+        member
+            .owner
+            .as_ref()
+            .and_then(|owner| self.element(owner))
+            .is_some_and(|owner| owner.subject.as_ref() == Some(&member.qualified_name))
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {
