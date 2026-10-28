@@ -1,8 +1,6 @@
-//! Design Values (ADR-0003 to ADR-0005): from the Tool Links a Model
-//! writes, asks each Engineering Tool once per file for what is linked to
-//! it, and says which feature takes which value. The edit that puts those
-//! values into the Model in memory is the service's, in `lib.rs`; putting
-//! the service's reasons about them into words is `checks/service.rs`'s.
+//! The plan: from the Tool Links a Model writes, asks each Engineering
+//! Tool once per file for what is linked to it, and says which feature
+//! takes which value, or a marker where there is none.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -128,8 +126,8 @@ pub(crate) struct Plan {
     pub written: Written,
 }
 
-/// What the values a plan writes mean in words, so the service's adapter
-/// can put a check's reason about one into words.
+/// What the values a plan writes mean in words, so a check's reason
+/// about one can be put into words (see `words.rs`).
 #[derive(Debug, Default)]
 pub(crate) struct Written {
     /// Each marker written in place of a missing Design Value
@@ -315,51 +313,6 @@ fn place(property: &LinkedProperty) -> ValuePlace {
     })
 }
 
-/// `text` with ` = <value>` written into the declaration beginning at
-/// `at` (line from 1, column from 1 in UTF-8 bytes, as the service counts
-/// it), before its body or its terminating `;`.
-/// `None` when neither follows: `at` is no declaration of this text.
-pub(crate) fn write_value(text: &str, at: (u32, u32), value: &str) -> Option<String> {
-    let (line, column) = at;
-    let line_start = match line {
-        0 => return None,
-        1 => 0,
-        _ => text.match_indices('\n').nth(line as usize - 2)?.0 + 1,
-    };
-    // The service counts the column in UTF-8 bytes, not characters.
-    let start = line_start + column.checked_sub(1)? as usize;
-    if !text.is_char_boundary(start) || text[line_start..start].contains('\n') {
-        return None;
-    }
-    // The header runs to the body's `{` or the `;`; neither counts inside
-    // a string, a quoted name or a comment.
-    let header = &text[start..];
-    let mut chars = header.char_indices();
-    let end = loop {
-        let (i, c) = chars.next()?;
-        match c {
-            '{' | ';' => break start + i,
-            '"' | '\'' => {
-                chars.by_ref().find(|&(_, n)| n == c)?;
-            }
-            '/' if header[i..].starts_with("//") => {
-                chars.by_ref().find(|&(_, n)| n == '\n')?;
-            }
-            '/' if header[i..].starts_with("/*") => {
-                chars.next();
-                chars
-                    .by_ref()
-                    .find(|&(j, _)| header[j..].starts_with("*/"))?;
-                chars.next();
-            }
-            _ => {}
-        }
-    };
-    // Not past a line break, which may end a `//` comment.
-    let head = text[..end].trim_end_matches([' ', '\t']);
-    Some(format!("{head} = {value} {}", &text[end..]))
-}
-
 /// `volume` of `Drive::drive::engine::volume`.
 fn last_segment(name: &QualifiedName) -> &str {
     let name = name.as_str();
@@ -374,53 +327,4 @@ fn resolve(document: &str, file: &str) -> PathBuf {
         .unwrap_or(Path::new(""))
         .join(file);
     std::path::absolute(&joined).unwrap_or(joined)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::write_value;
-
-    #[test]
-    fn a_value_is_written_before_the_body() {
-        let text =
-            "part p {\n    attribute bore : LengthValue { @ToolProperty { name = \"D\"; } }\n}\n";
-        assert_eq!(
-            write_value(text, (2, 5), "8.0 [mm]").as_deref(),
-            Some(
-                "part p {\n    attribute bore : LengthValue = 8.0 [mm] { @ToolProperty { name = \"D\"; } }\n}\n"
-            )
-        );
-    }
-
-    #[test]
-    fn a_value_is_written_before_the_semicolon_of_a_declaration_without_a_body() {
-        assert_eq!(
-            write_value(
-                "attribute bore : LengthValue;",
-                (1, 1),
-                "\"no Design Value #0#\""
-            )
-            .as_deref(),
-            Some("attribute bore : LengthValue = \"no Design Value #0#\" ;")
-        );
-    }
-
-    #[test]
-    fn braces_in_quoted_names_and_comments_are_not_the_body() {
-        let text = "attribute 'b{re' /* { */ : LengthValue // {\n    { }";
-        assert_eq!(
-            write_value(text, (1, 1), "1 [mm]").as_deref(),
-            Some("attribute 'b{re' /* { */ : LengthValue // {\n = 1 [mm] { }")
-        );
-    }
-
-    #[test]
-    fn a_place_that_starts_no_declaration_writes_nothing() {
-        assert_eq!(
-            write_value("attribute bore : LengthValue", (1, 1), "1"),
-            None
-        );
-        assert_eq!(write_value("attribute bore;", (3, 1), "1"), None);
-        assert_eq!(write_value("attribute bore;", (1, 40), "1"), None);
-    }
 }

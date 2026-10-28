@@ -5,7 +5,7 @@ The judgement calls a reviewer checks a change against. Formatting and lints are
 ## Words
 
 - **Domain terms.** Names, doc comments, messages and test names use the terms in `CONTEXT.md` in the sense it gives them, and none of its _Avoid_ words. A Verdict is what an element shows; what one check found is its result or outcome. A change that introduces a new concept adds its term to `CONTEXT.md` in the same change.
-- **Service vocabulary stays in its adapters.** `opensysml` types and the service's own words (its verdicts, symbol kinds such as `partDef`, JSON `@type` strings) appear only where the service is read: `lib.rs` (`collect`), `api_json.rs`, `expression.rs` and `checks/service.rs` in `viewer-opensysml`. Everything else speaks the Model's terms (ADR-0001).
+- **Service vocabulary stays in its adapters.** `opensysml` types and the service's own words (its verdicts, symbol kinds such as `partDef`, JSON `@type` strings) appear only where the service is read: `lib.rs` (`collect`), `api_json.rs`, `expression.rs`, `checks/service.rs` and, for writing Design Values in and reading the service's reasons about them, `design_values/` (`Parsed`, `edit.rs`, `words.rs`) in `viewer-opensysml`. Everything else speaks the Model's terms (ADR-0001).
 
 ## Shape
 

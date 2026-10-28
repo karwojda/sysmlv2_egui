@@ -10,7 +10,7 @@ mod claims;
 mod parts;
 mod service;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::BTreeMap;
 use std::path::Path;
