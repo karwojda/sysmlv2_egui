@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::backend::Analyses;
 use viewer_core::engineering_tools::{self, DesignValue, DesignValueSource, Parts, ToolLink};
-use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::model::{Element, ElementKind};
 use viewer_core::satisfaction;
 use viewer_core::style::{self, Style};
@@ -802,7 +801,7 @@ fn load_model_for(
         .load_with(model_folder, analyses)
         .map_err(|e| Failure(e.to_string()))?;
     for diagnostic in model.diagnostics() {
-        let _ = writeln!(stderr, "{}", DiagnosticLine(diagnostic));
+        let _ = writeln!(stderr, "{}", diagnostic.line(None));
     }
     if model.has_errors() {
         return Err(Failure(format!("the Model has errors; {outcome}")));
@@ -847,21 +846,5 @@ struct Failure(String);
 impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
-    }
-}
-
-/// `file:line: error: message`, the form editors and CI logs link up.
-struct DiagnosticLine<'a>(&'a Diagnostic);
-
-impl fmt::Display for DiagnosticLine<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(location) = &self.0.location {
-            write!(f, "{}:{}: ", location.file.display(), location.line)?;
-        }
-        let severity = match self.0.severity {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-        };
-        write!(f, "{severity}: {}", self.0.message)
     }
 }
