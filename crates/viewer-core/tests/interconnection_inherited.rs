@@ -118,3 +118,60 @@ fn a_closed_part_shows_the_ports_its_definition_inherits() {
 
     assert_eq!(ports_on(&scene, "P::Rack::unit"), ["outer", "side"]);
 }
+
+#[test]
+fn a_part_s_own_port_hides_the_one_of_its_definition_it_redefines() {
+    let model = snippet()
+        .part_def("P::Rack")
+        .part("P::Rack::unit")
+        .typed_by("P::Design")
+        .port("P::Rack::unit::outer")
+        .typed_by("P::PD")
+        .build();
+    let scene = interconnection(&model, "P::Rack");
+
+    let outers = scene
+        .items
+        .iter()
+        .filter(|i| matches!(&i.depicts, Depicts::Port { part, port, .. } if *part == qn("P::Rack::unit") && port.simple_name() == "outer"))
+        .filter(|i| matches!(i.shape, viewer_core::scene::Shape::Rect { .. }))
+        .count();
+    assert_eq!(outers, 1);
+}
+
+#[test]
+fn an_end_reaches_only_a_feature_that_redefines_it() {
+    // `Other::outer` shares the name but is no supertype's member.
+    let model = snippet()
+        .part_def("P::Other")
+        .port("P::Other::outer")
+        .typed_by("P::PD")
+        .connection("P::Design::stray")
+        .end(&["P::Other::outer"])
+        .end(&["P::Box::side"])
+        .build();
+    let scene = interconnection(&model, "P::Design");
+
+    assert!(!draws(&scene, Depicts::Connection(qn("P::Design::stray"))));
+}
+
+#[test]
+fn a_nested_port_is_reached_through_the_one_redefining_it() {
+    let model = snippet()
+        .port_def("P::Bus")
+        .port("P::Bus::line")
+        .typed_by("P::PD")
+        .port_def("P::FastBus")
+        .specializes("P::Bus")
+        .port("P::FastBus::line")
+        .typed_by("P::PD")
+        .port("P::Box::bus")
+        .typed_by("P::FastBus")
+        .binding("P::Design::wire")
+        .end(&["P::Box::bus", "P::Bus::line"])
+        .end(&["P::Design::inner", "P::Inner::p"])
+        .build();
+    let scene = interconnection(&model, "P::Design");
+
+    assert!(draws(&scene, Depicts::Connection(qn("P::Design::wire"))));
+}

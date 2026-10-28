@@ -282,11 +282,14 @@ fn closed_box<'a>(
         .then(|| model.owned_members(&element.qualified_name))
         .into_iter()
         .flatten();
+    let own: Vec<&Element> = own.filter(|e| e.kind == ElementKind::PortUsage).collect();
     let ports = definition
         .into_iter()
         .flat_map(|d| members(model, d))
-        .chain(own)
         .filter(|e| e.kind == ElementKind::PortUsage)
+        // A port the usage redefines is drawn as the usage's.
+        .filter(|e| !own.iter().any(|o| model.redefines(o, e)))
+        .chain(own.iter().copied())
         .map(|port| {
             let nested = port
                 .typed_by
@@ -326,8 +329,8 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> V
         .filter(|e| e.kind.is_connection())
         .filter_map(|connection| match &connection.ends[..] {
             [a, b] => {
-                let (a, a_exact) = resolve(node, &a.path)?;
-                let (b, b_exact) = resolve(node, &b.path)?;
+                let (a, a_exact) = resolve(model, node, &a.path)?;
+                let (b, b_exact) = resolve(model, node, &b.path)?;
                 // A binding equates two features: only drawn when both are
                 // drawn exactly (not an attribute inside a part or port).
                 let binding = connection.kind == ElementKind::BindingConnection;
@@ -343,28 +346,31 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> V
 /// innermost closed part on the chain. The flag says whether the end is
 /// exactly the chain's last feature, rather than the nearest drawn box or
 /// port that contains it.
-fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
-    // A feature, or one redefining it: until redefinitions are recorded,
-    // one of the same name, as Inherited Members are hidden.
-    let found = |features: &mut dyn Iterator<Item = &Element>, name: &QualifiedName| {
-        let features: Vec<&Element> = features.collect();
+fn resolve(model: &Model, node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
+    // Where among the drawn `features` the chain's `name` is: itself, or
+    // the feature drawn in its place because it redefines it.
+    let position_of = |features: &[&Element], name: &QualifiedName| {
         features
             .iter()
             .position(|f| &f.qualified_name == name)
-            .or_else(|| features.iter().position(|f| f.name == name.simple_name()))
+            .or_else(|| {
+                let meant = model.element(name)?;
+                features.iter().position(|f| model.redefines(f, meant))
+            })
     };
-    let port_of =
-        |b: &BoxNode, name: &QualifiedName| found(&mut b.ports.iter().map(|s| s.port), name);
-    let child_of =
-        |b: &BoxNode, name: &QualifiedName| found(&mut b.children.iter().map(|c| c.element), name);
+    let port_of = |b: &BoxNode, name: &QualifiedName| {
+        let ports: Vec<&Element> = b.ports.iter().map(|s| s.port).collect();
+        position_of(&ports, name)
+    };
+    let child_of = |b: &BoxNode, name: &QualifiedName| {
+        let children: Vec<&Element> = b.children.iter().map(|c| c.element).collect();
+        position_of(&children, name)
+    };
     let (first, rest) = chain.split_first()?;
     if let Some(port) = port_of(node, first) {
-        let nested = rest.first().and_then(|next| {
-            node.ports[port]
-                .nested
-                .iter()
-                .position(|n| &n.qualified_name == next)
-        });
+        let nested = rest
+            .first()
+            .and_then(|next| position_of(&node.ports[port].nested, next));
         let exact = rest.is_empty() || nested.is_some() && rest.len() == 1;
         return Some((
             End::Port {
@@ -386,12 +392,7 @@ fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
             // The rest of the chain, if any, is inside the port: one of its
             // nested ports, or an item it carries, which isn't drawn.
             let after = rest.get(i + 1);
-            let nested = after.and_then(|next| {
-                current.ports[port]
-                    .nested
-                    .iter()
-                    .position(|n| &n.qualified_name == next)
-            });
+            let nested = after.and_then(|next| position_of(&current.ports[port].nested, next));
             let exact = match nested {
                 Some(_) => i + 2 == rest.len(),
                 None => last,
