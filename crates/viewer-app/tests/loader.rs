@@ -40,6 +40,23 @@ fn delivers_the_loaded_model_for_the_folder_asked_for() {
 }
 
 #[test]
+fn delivers_what_loaded_the_model() {
+    let backend = FakeBackend::new(Model::default()).with_version("OpenSysML sysml-grpc v0.11.0");
+    let (notify, notified) = mpsc::channel();
+    let loader = Loader::new(Box::new(backend), move || {
+        let _ = notify.send(());
+    });
+
+    loader.load(PathBuf::from("models/p"));
+    let loaded = wait_for_load(&loader, &notified);
+
+    assert_eq!(
+        loaded.version.as_deref(),
+        Some("OpenSysML sysml-grpc v0.11.0")
+    );
+}
+
+#[test]
 fn delivers_backend_errors() {
     struct Failing;
     impl ModelBackend for Failing {

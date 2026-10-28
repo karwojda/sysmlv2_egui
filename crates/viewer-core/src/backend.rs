@@ -35,6 +35,13 @@ pub trait ModelBackend {
 
     /// Loads, running the analyses `analyses` asks for.
     fn load_with(&mut self, folder: &Path, analyses: &Analyses) -> Result<Model, BackendError>;
+
+    /// What loaded the last Model, as the user is told it: `OpenSysML
+    /// sysml-grpc v0.11.0`. `None` before a load, or from a backend with
+    /// nothing to name.
+    fn version(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Serves a fixed Model regardless of the folder asked for. Its Analysis
@@ -42,11 +49,21 @@ pub trait ModelBackend {
 /// theirs, as on a real load.
 pub struct FakeBackend {
     model: Model,
+    version: Option<String>,
 }
 
 impl FakeBackend {
     pub fn new(model: Model) -> Self {
-        Self { model }
+        Self {
+            model,
+            version: None,
+        }
+    }
+
+    /// Names itself `version` after every load.
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
     }
 }
 
@@ -69,5 +86,9 @@ impl ModelBackend for FakeBackend {
                 self.model.design_values().to_vec(),
             ),
         )
+    }
+
+    fn version(&self) -> Option<String> {
+        self.version.clone()
     }
 }

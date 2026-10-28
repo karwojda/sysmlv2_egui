@@ -800,6 +800,10 @@ fn load_model_for(
     let model = backend
         .load_with(model_folder, analyses)
         .map_err(|e| Failure(e.to_string()))?;
+    // On stderr, so reports and exit codes stay as they are.
+    if let Some(version) = backend.version() {
+        let _ = writeln!(stderr, "{version}");
+    }
     for diagnostic in model.diagnostics() {
         let _ = writeln!(stderr, "{}", diagnostic.line(None));
     }

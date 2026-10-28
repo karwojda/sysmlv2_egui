@@ -224,6 +224,18 @@ fn reports_syntax_errors_as_diagnostics_with_file_and_line() {
 
 #[test]
 #[ignore = "needs the sysml-grpc service"]
+fn names_the_service_that_loaded_the_model_by_its_reported_version() {
+    let mut backend = OpenSysmlBackend::new();
+    assert_eq!(backend.version(), None, "nothing loaded yet");
+
+    backend.load(&fixture("vehicles")).unwrap();
+
+    let version = backend.version().expect("a version after a load");
+    assert!(version.starts_with("OpenSysML sysml-grpc v0."), "{version}");
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
 fn one_backend_loads_several_models() {
     let mut backend = OpenSysmlBackend::new();
 

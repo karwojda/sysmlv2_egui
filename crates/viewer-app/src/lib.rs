@@ -69,6 +69,8 @@ pub struct ViewerApp {
     export_path: String,
     save_name: String,
     status: Option<String>,
+    /// What loaded the Model: `OpenSysML sysml-grpc v0.11.0`.
+    backend_version: Option<String>,
     drag: Option<Drag>,
     /// What a context menu on the canvas was opened for.
     context_target: ContextTarget,
@@ -178,6 +180,7 @@ impl ViewerApp {
             export_path: String::new(),
             save_name: String::new(),
             status: None,
+            backend_version: None,
             drag: None,
             context_target: ContextTarget::Canvas,
             confirm: None,
@@ -199,6 +202,9 @@ impl ViewerApp {
         while let Some(loaded) = self.loader.poll() {
             if self.loading.as_ref() == Some(&loaded.folder) {
                 self.loading = None;
+            }
+            if loaded.version.is_some() {
+                self.backend_version = loaded.version;
             }
             match loaded.result {
                 Ok(model) => {
@@ -788,7 +794,14 @@ impl ViewerApp {
 
     fn diagnostics(&self, ui: &mut egui::Ui) {
         let diagnostics = &self.diagnostics;
-        ui.label(format!("Diagnostics ({})", diagnostics.len()));
+        ui.horizontal(|ui| {
+            ui.label(format!("Diagnostics ({})", diagnostics.len()));
+            if let Some(version) = &self.backend_version {
+                ui.separator();
+                ui.weak(format!("from {version}"))
+                    .on_hover_text("The service that loaded and checked the Model");
+            }
+        });
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
