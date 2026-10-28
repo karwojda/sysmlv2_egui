@@ -1469,9 +1469,8 @@ fn browser_entry(
     if response.clicked() {
         actions.push(BrowserAction::Select(entry.element.clone()));
     }
-    // Double-click opens a view's Diagram, else a General Diagram where one
-    // fits (packages and definitions), else an Interconnection Diagram
-    // (part usages).
+    // Double-click opens a view's Diagram, else the kind its element opens
+    // as by default.
     let is_view = context
         .model
         .element(&entry.element)
@@ -1479,16 +1478,12 @@ fn browser_entry(
     if response.double_clicked() {
         if is_view {
             actions.push(BrowserAction::OpenView(entry.element.clone()));
-        } else if general {
-            actions.push(BrowserAction::Open(
-                DiagramKind::General,
-                entry.element.clone(),
-            ));
-        } else if interconnection {
-            actions.push(BrowserAction::Open(
-                DiagramKind::Interconnection,
-                entry.element.clone(),
-            ));
+        } else if let Some(kind) = context
+            .model
+            .element(&entry.element)
+            .and_then(DiagramKind::default_for)
+        {
+            actions.push(BrowserAction::Open(kind, entry.element.clone()));
         }
     }
     if general || interconnection {
@@ -1544,17 +1539,10 @@ pub fn startup_kind(
     interconnection: bool,
 ) -> Option<DiagramKind> {
     let element = model.element(root)?;
-    let fits = |kind: DiagramKind| kind.accepts_root(element);
-    match (
-        interconnection,
-        fits(DiagramKind::General),
-        fits(DiagramKind::Interconnection),
-    ) {
-        (true, _, true) => Some(DiagramKind::Interconnection),
-        (_, true, _) => Some(DiagramKind::General),
-        (_, false, true) => Some(DiagramKind::Interconnection),
-        _ => None,
+    if interconnection && DiagramKind::Interconnection.accepts_root(element) {
+        return Some(DiagramKind::Interconnection);
     }
+    DiagramKind::default_for(element)
 }
 
 /// Opens `source` in VS Code at its line.

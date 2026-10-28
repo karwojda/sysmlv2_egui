@@ -538,6 +538,42 @@ impl Model {
             .filter(move |e| e.owner.as_ref() == Some(owner))
     }
 
+    /// `element`'s Inherited Members (`CONTEXT.md`): what it has through
+    /// its definition (a usage's `typed_by`) or the definitions it
+    /// specialises (a definition's), and through every definition those
+    /// specialise, nearest definition first and each definition once. A
+    /// member is hidden by a nearer one that redefines it; until
+    /// redefinitions are recorded, by a nearer one of the same name, the
+    /// element's own members included. For `part specialised : Design`
+    /// with `Design :> Box`: `Design::inner`, then `Box::outer`.
+    pub fn inherited_members<'a>(&'a self, element: &'a Element) -> Vec<&'a Element> {
+        let mut next: std::collections::VecDeque<&QualifiedName> = if element.kind.is_definition() {
+            element.specializes.iter().collect()
+        } else {
+            element.typed_by.iter().collect()
+        };
+        let mut visited: std::collections::HashSet<&QualifiedName> =
+            std::iter::once(&element.qualified_name).collect();
+        let mut names: std::collections::HashSet<&str> = self
+            .owned_members(&element.qualified_name)
+            .map(|m| m.name.as_str())
+            .collect();
+        let mut inherited = Vec::new();
+        while let Some(name) = next.pop_front() {
+            let Some(definition) = self.element(name).filter(|_| visited.insert(name)) else {
+                continue;
+            };
+            let members: Vec<&Element> = self
+                .owned_members(name)
+                .filter(|m| m.name.is_empty() || !names.contains(m.name.as_str()))
+                .collect();
+            names.extend(members.iter().map(|m| m.name.as_str()));
+            inherited.extend(members);
+            next.extend(&definition.specializes);
+        }
+        inherited
+    }
+
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
     }

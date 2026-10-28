@@ -146,6 +146,12 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
     ("requirements", &[ElementKind::RequirementUsage]),
 ];
 
+/// The compartments that list Inherited Members too.
+const INHERITED_SHOWN: [&str; 3] = ["attributes", "ports", "parts"];
+
+/// What marks an inherited row (`^mass`), drawn in italics.
+pub(crate) const INHERITED: &str = "^";
+
 /// Characters per line of a wrapped `doc` compartment.
 const DOC_LINE_CHARS: usize = 40;
 
@@ -169,11 +175,16 @@ pub fn node_content(
         .as_deref()
         .filter(|_| requirement && compartments)
         .map(|text| ("doc", wrap(text, DOC_LINE_CHARS)));
+    let inherited = if compartments {
+        model.inherited_members(element)
+    } else {
+        Vec::new()
+    };
     let features = COMPARTMENTS
         .iter()
         .filter(|_| compartments)
         .filter_map(|(title, kinds)| {
-            let rows: Vec<String> = model
+            let mut rows: Vec<String> = model
                 .owned_members(&element.qualified_name)
                 .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
                 // The subject is on its own line in the header.
@@ -183,6 +194,17 @@ pub fn node_content(
                     None => feature_row(m),
                 })
                 .collect();
+            // Inherited Members follow, marked; they are never nodes.
+            if INHERITED_SHOWN.contains(title) {
+                rows.extend(
+                    inherited
+                        .iter()
+                        .filter(|m| kinds.contains(&m.kind))
+                        // Nor is a definition's subject a part of what has it.
+                        .filter(|m| !is_subject(model, m))
+                        .map(|m| format!("{INHERITED}{}", feature_row(m))),
+                );
+            }
             (!rows.is_empty()).then_some((*title, rows))
         });
     // A requirement names its subject under its title; an analysis lists it.
@@ -309,7 +331,7 @@ pub fn node_content(
                     crate::constraint::checks_on(model, part)
                         .filter(|(c, _)| c.owner.as_ref() != Some(part))
                         .map(|(c, check)| {
-                            format!("^{} {}", row(c), Status::of(&check.result).mark())
+                            format!("{INHERITED}{} {}", row(c), Status::of(&check.result).mark())
                         }),
                 );
             }
@@ -360,6 +382,15 @@ pub fn node_content(
         usage,
         compartments,
     }
+}
+
+/// Whether `member` is its owner's subject (`subject v : Vehicle`).
+fn is_subject(model: &Model, member: &Element) -> bool {
+    member
+        .owner
+        .as_ref()
+        .and_then(|owner| model.element(owner))
+        .is_some_and(|owner| owner.subject.as_ref() == Some(&member.qualified_name))
 }
 
 /// Whether a value as written is a plain literal (`180.0`, `-1`, `true`,
@@ -651,11 +682,19 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
         });
         for row in rows {
             baseline += LINE_GAP + ROW_FONT.size;
+            let font = if row.starts_with(INHERITED) {
+                Font {
+                    italic: true,
+                    ..ROW_FONT
+                }
+            } else {
+                ROW_FONT
+            };
             shapes.push(Shape::Text {
                 position: Point::new(rect.x + PADDING, baseline),
                 text: row.clone(),
                 anchor: TextAnchor::Start,
-                font: ROW_FONT,
+                font,
                 fill: Fill::Stroke,
             });
         }
@@ -840,10 +879,19 @@ fn labelled_arrow(depicts: Depicts, label: &str, dashed: bool, path: Vec<Point>)
 /// keep their labels apart.
 fn label_place(path: &[Point]) -> (Point, TextAnchor) {
     let (first, last) = (path[0], path[path.len() - 1]);
-    let chord_middle = Point::new((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
     if path.len() % 2 == 1 {
         let bend = path[path.len() / 2];
-        let (dx, dy) = (bend.x - chord_middle.x, bend.y - chord_middle.y);
+        // The side the bend bulges to: from the nearest point of the chord,
+        // which, unlike its middle, two fanned edges agree on.
+        let (cx, cy) = (last.x - first.x, last.y - first.y);
+        let along = ((bend.x - first.x) * cx + (bend.y - first.y) * cy) / (cx * cx + cy * cy);
+        let along = if along.is_finite() {
+            along.clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
+        let nearest = Point::new(first.x + along * cx, first.y + along * cy);
+        let (dx, dy) = (bend.x - nearest.x, bend.y - nearest.y);
         if dx.abs() < 0.5 && dy.abs() < 0.5 {
             (
                 Point::new(bend.x, bend.y - LABEL_OFFSET),

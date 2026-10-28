@@ -25,7 +25,7 @@
 <text x="487" y="323" text-anchor="start" font-size="12">fuelMassMax = 45.0</text>
 <polyline points="477,333 686,333" fill="none" stroke="#000000"/>
 <text x="581.5" y="354" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
-<text x="487" y="370" text-anchor="start" font-size="12">^{fuelMass &lt;= fuelMassMax} ✗</text>
+<text x="487" y="370" text-anchor="start" font-size="12" font-style="italic">^{fuelMass &lt;= fuelMassMax} ✗</text>
 <rect x="318" y="252" width="120" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
 <text x="378" y="274" text-anchor="middle" font-size="12">«constraint»</text>
 <text x="378" y="292" text-anchor="middle" font-size="14">heavy</text>
