@@ -180,7 +180,7 @@ fn version_text(reported: &str) -> String {
 impl ModelBackend for OpenSysmlBackend {
     /// The version the running service reports, so an override
     /// (`--sysml-binary`, `--sysml-service`) is named truthfully.
-    fn version(&self) -> Option<String> {
+    fn loaded_by(&self) -> Option<String> {
         self.connection
             .as_ref()
             .map(|connection| version_text(&connection.server_info().version))

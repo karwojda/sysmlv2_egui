@@ -44,7 +44,7 @@ fn run(backend: &mut FakeBackend, command: &[&str]) -> Outcome {
 #[test]
 fn check_says_once_on_stderr_which_backend_loaded_the_model() {
     let mut unnamed = FakeBackend::new(common::requirements());
-    let mut named = FakeBackend::new(common::requirements()).with_version(VERSION);
+    let mut named = FakeBackend::new(common::requirements()).loaded_by(VERSION);
 
     let without = run(&mut unnamed, &["check"]);
     let with = run(&mut named, &["check"]);
@@ -61,7 +61,7 @@ fn requirements_and_export_say_it_too() {
         &["requirements"][..],
         &["export", "--all", "--out-dir", "OUT"][..],
     ] {
-        let mut backend = FakeBackend::new(common::requirements()).with_version(VERSION);
+        let mut backend = FakeBackend::new(common::requirements()).loaded_by(VERSION);
         let outcome = run(&mut backend, command);
         assert_eq!(
             outcome.stderr.matches(VERSION).count(),
@@ -73,10 +73,15 @@ fn requirements_and_export_say_it_too() {
 }
 
 #[test]
-fn a_backend_with_nothing_to_name_says_nothing() {
-    let mut backend = FakeBackend::new(common::requirements());
+fn a_backend_with_nothing_to_name_adds_no_line() {
+    let mut unnamed = FakeBackend::new(common::requirements());
+    let mut named = FakeBackend::new(common::requirements()).loaded_by(VERSION);
 
-    let outcome = run(&mut backend, &["check"]);
+    let without = run(&mut unnamed, &["check"]);
+    let with = run(&mut named, &["check"]);
 
-    assert!(!outcome.stderr.contains("OpenSysML"), "{}", outcome.stderr);
+    assert_eq!(
+        with.stderr.replacen(&format!("{VERSION}\n"), "", 1),
+        without.stderr
+    );
 }

@@ -69,8 +69,8 @@ pub struct ViewerApp {
     export_path: String,
     save_name: String,
     status: Option<String>,
-    /// What loaded the Model: `OpenSysML sysml-grpc v0.11.0`.
-    backend_version: Option<String>,
+    /// What loaded the Model, as the backend names itself.
+    loaded_by: Option<String>,
     drag: Option<Drag>,
     /// What a context menu on the canvas was opened for.
     context_target: ContextTarget,
@@ -180,7 +180,7 @@ impl ViewerApp {
             export_path: String::new(),
             save_name: String::new(),
             status: None,
-            backend_version: None,
+            loaded_by: None,
             drag: None,
             context_target: ContextTarget::Canvas,
             confirm: None,
@@ -203,8 +203,8 @@ impl ViewerApp {
             if self.loading.as_ref() == Some(&loaded.folder) {
                 self.loading = None;
             }
-            if loaded.version.is_some() {
-                self.backend_version = loaded.version;
+            if loaded.loaded_by.is_some() {
+                self.loaded_by = loaded.loaded_by;
             }
             match loaded.result {
                 Ok(model) => {
@@ -796,10 +796,10 @@ impl ViewerApp {
         let diagnostics = &self.diagnostics;
         ui.horizontal(|ui| {
             ui.label(format!("Diagnostics ({})", diagnostics.len()));
-            if let Some(version) = &self.backend_version {
+            if let Some(name) = &self.loaded_by {
                 ui.separator();
-                ui.weak(format!("from {version}"))
-                    .on_hover_text("The service that loaded and checked the Model");
+                ui.weak(format!("from {name}"))
+                    .on_hover_text("What loaded and checked the Model");
             }
         });
         egui::ScrollArea::vertical()

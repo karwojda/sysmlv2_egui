@@ -41,7 +41,7 @@ fn delivers_the_loaded_model_for_the_folder_asked_for() {
 
 #[test]
 fn delivers_what_loaded_the_model() {
-    let backend = FakeBackend::new(Model::default()).with_version("OpenSysML sysml-grpc v0.11.0");
+    let backend = FakeBackend::new(Model::default()).loaded_by("OpenSysML sysml-grpc v0.11.0");
     let (notify, notified) = mpsc::channel();
     let loader = Loader::new(Box::new(backend), move || {
         let _ = notify.send(());
@@ -51,7 +51,7 @@ fn delivers_what_loaded_the_model() {
     let loaded = wait_for_load(&loader, &notified);
 
     assert_eq!(
-        loaded.version.as_deref(),
+        loaded.loaded_by.as_deref(),
         Some("OpenSysML sysml-grpc v0.11.0")
     );
 }
