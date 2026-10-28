@@ -82,7 +82,16 @@ fn render(items: &HashMap<String, (Value, PathBuf)>, id: &str) -> (String, u8) {
     let name_of = |property: &str| -> Option<String> {
         let reference = item.get(property)?;
         if let Some(id) = reference.get("@id").and_then(Value::as_str) {
-            let (target, _) = items.get(id)?;
+            // A standard-library element (`kg`, `sum`) is not in the element
+            // form; a reference to one reads as it was written.
+            let Some((target, _)) = items.get(id) else {
+                let text = item.get("sysx:sourceText").and_then(Value::as_str)?;
+                return match property {
+                    "referent" => Some(text.trim().to_owned()),
+                    "function" => Some(text.split_once('(')?.0.trim().to_owned()),
+                    _ => None,
+                };
+            };
             // An anonymous chain feature reads as its links: `vehicle.powertrain`.
             if let Some(chain) = target.get("chainingFeature").and_then(Value::as_array) {
                 let names: Option<Vec<String>> = chain

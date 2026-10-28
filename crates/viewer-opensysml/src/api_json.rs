@@ -71,12 +71,18 @@ pub fn enrich(
         let Ok(Value::Array(array)) = serde_json::from_str::<Value>(&conversion.content) else {
             continue;
         };
-        for item in array {
+        for mut item in array {
+            // The service writes every property, `null` for one not set;
+            // the readers treat a property that is there as set.
+            if let Value::Object(properties) = &mut item {
+                properties.retain(|_, value| !value.is_null());
+            }
             if let Some(id) = item.get("@id").and_then(Value::as_str) {
                 items.insert(id.to_owned(), (item.clone(), PathBuf::from(document)));
             }
         }
     }
+    name_items(&mut items);
     let qualified_name = |id: &str| -> Option<QualifiedName> {
         items
             .get(id)
@@ -352,6 +358,80 @@ pub fn enrich(
     }
 }
 
+/// Gives each item the `qualifiedName` our elements are named by. The
+/// service quotes a name that needs it (`V::'vehicle tree'`) and keeps our
+/// spelling in `sysx:mappingQualifiedName`; it names no unnamed element,
+/// which we call after its owner and its place there (`Req::@8`). A
+/// standard-library element is left out of the form, so a reference to one
+/// is a bare id; the elements we can guess the name of are added as stubs.
+fn name_items(items: &mut HashMap<String, (Value, PathBuf)>) {
+    fn name(
+        items: &HashMap<String, (Value, PathBuf)>,
+        id: &str,
+        names: &mut HashMap<String, Option<String>>,
+    ) -> Option<String> {
+        if let Some(known) = names.get(id) {
+            return known.clone();
+        }
+        let (item, _) = items.get(id)?;
+        let found = item
+            .get("sysx:mappingQualifiedName")
+            .or_else(|| item.get("qualifiedName"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| {
+                let own = item
+                    .get("declaredName")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .or_else(|| Some(format!("@{}", item.get("sysx:memberIndex")?.as_u64()?)))?;
+                let owner = name(items, reference(item, "owner")?, names)?;
+                Some(format!("{owner}::{own}"))
+            });
+        names.insert(id.to_owned(), found.clone());
+        found
+    }
+    let mut names = HashMap::new();
+    let ids: Vec<String> = items.keys().cloned().collect();
+    for id in &ids {
+        name(items, id, &mut names);
+    }
+    for (id, found) in names {
+        if let (Some(found), Some((Value::Object(item), _))) = (found, items.get_mut(&id)) {
+            item.insert("qualifiedName".to_owned(), Value::String(found));
+        }
+    }
+    // `render asTreeDiagram` names its rendering after the library's.
+    let renderings: Vec<(String, String, PathBuf)> = items
+        .values()
+        .filter(|(item, _)| item.get("@type").and_then(Value::as_str) == Some("RenderingUsage"))
+        .filter_map(|(item, file)| {
+            let target = reference(item, "references")?;
+            let name = item.get("name").and_then(Value::as_str)?;
+            Some((target.to_owned(), format!("Views::{name}"), file.clone()))
+        })
+        .collect();
+    for (id, candidate, file) in renderings {
+        if !items.contains_key(&id) && is_library_id(&id, &candidate) {
+            let stub = serde_json::json!({ "@id": id, "qualifiedName": candidate });
+            items.insert(id, (stub, file));
+        }
+    }
+}
+
+/// Whether `id` is the id the service gives the standard-library element
+/// `qualified`: a name-based uuid under its root package's, which is named
+/// by its URL in the KerML or the SysML specification (`ScalarValues`,
+/// `Views`).
+fn is_library_id(id: &str, qualified: &str) -> bool {
+    let root = qualified.split("::").next().unwrap_or_default();
+    ["KerML", "SysML"].iter().any(|language| {
+        let url = format!("https://www.omg.org/spec/{language}/{root}");
+        let package = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, url.as_bytes());
+        uuid::Uuid::new_v5(&package, qualified.as_bytes()).to_string() == id
+    })
+}
+
 /// The `@ToolLink` and `@ToolProperty` annotations, by the qualified names
 /// of their library defs. Each field's literal is the item
 /// `<metadata id>__<field>_pvalue`; a link or property missing a field is
@@ -368,13 +448,22 @@ fn tool_links(
             .to_owned()
     };
     let mut found = ToolLinks::default();
-    let mut annotations: Vec<&Value> = items
+    let mut annotations: Vec<(&Value, &PathBuf)> = items
         .values()
-        .map(|(item, _)| item)
-        .filter(|item| item.get("@type").and_then(Value::as_str) == Some("MetadataUsage"))
+        .map(|(item, file)| (item, file))
+        .filter(|(item, _)| item.get("@type").and_then(Value::as_str) == Some("MetadataUsage"))
         .collect();
-    annotations.sort_by_key(|a| a.get("@id").and_then(Value::as_str));
-    for annotation in annotations {
+    // In the order they are written.
+    annotations.sort_by_key(|(a, file)| {
+        let at = |key: &str| a.get(key).and_then(Value::as_u64);
+        (
+            *file,
+            at("sysx:sourceLine"),
+            at("sysx:sourceColumn"),
+            a.get("@id").and_then(Value::as_str),
+        )
+    });
+    for (annotation, _) in annotations {
         let def = first_reference(annotation, "type")
             .and_then(|id| items.get(id))
             .and_then(|(def, _)| def.get("qualifiedName")?.as_str());
