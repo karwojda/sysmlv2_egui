@@ -11,6 +11,7 @@ fn at(file: &str, line: u32) -> Diagnostic {
         location: Some(SourceLocation {
             file: PathBuf::from(file),
             line,
+            column: None,
         }),
     }
 }

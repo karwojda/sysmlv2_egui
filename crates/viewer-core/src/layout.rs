@@ -11,10 +11,15 @@ const MAX_ROW_WIDTH: f32 = 900.0;
 
 /// Places nodes of the given sizes so that every edge `(upper, lower)` runs
 /// from a higher layer down to a lower one. Unconnected groups of nodes are
-/// laid out in rows, in order of their first node. Returned rects are
-/// indexed like `sizes`, with the top-left of the whole arrangement at the
-/// origin.
-pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)]) -> Vec<Rect> {
+/// laid out in rows, in order of their first node. The nodes of each of
+/// `siblings` that share a layer keep its order left to right. Returned
+/// rects are indexed like `sizes`, with the top-left of the whole
+/// arrangement at the origin.
+pub fn layered(
+    sizes: &[(f32, f32)],
+    edges: &[(usize, usize)],
+    siblings: &[Vec<usize>],
+) -> Vec<Rect> {
     if sizes.is_empty() {
         return Vec::new();
     }
@@ -32,6 +37,7 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)]) -> Vec<Rect> {
     let mut components = rust_sugiyama::from_vertices_and_edges(&vertices, &edges, &config);
     for (positions, _, _) in &mut components {
         positions.sort_by_key(|&(id, _)| id);
+        keep_sibling_order(positions, sizes, siblings);
     }
     components.sort_by_key(|(positions, _, _)| positions.first().map(|&(id, _)| id));
 
@@ -89,4 +95,57 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)]) -> Vec<Rect> {
         offset_x += width.round() + COMPONENT_GAP;
     }
     rects
+}
+
+/// Puts the nodes of each sibling group back in its order within their
+/// layer, side by side from where the leftmost of them was placed, then
+/// moves nodes apart rightwards wherever that made two in a layer overlap.
+fn keep_sibling_order(
+    positions: &mut [(usize, (f64, f64))],
+    sizes: &[(f32, f32)],
+    siblings: &[Vec<usize>],
+) {
+    let index: std::collections::HashMap<usize, usize> = positions
+        .iter()
+        .enumerate()
+        .map(|(i, &(id, _))| (id, i))
+        .collect();
+    for group in siblings {
+        let mut layers: std::collections::BTreeMap<i64, Vec<usize>> = Default::default();
+        for id in group {
+            if let Some(&i) = index.get(id) {
+                let layer = positions[i].1.1.round() as i64;
+                layers.entry(layer).or_default().push(i);
+            }
+        }
+        for members in layers.values() {
+            let halves: Vec<f64> = members
+                .iter()
+                .map(|&i| sizes[positions[i].0].0 as f64 / 2.0)
+                .collect();
+            let mut left = members
+                .iter()
+                .zip(&halves)
+                .map(|(&i, half)| positions[i].1.0 - half)
+                .fold(f64::INFINITY, f64::min);
+            for (&i, half) in members.iter().zip(halves) {
+                positions[i].1.0 = left + half;
+                left += 2.0 * half + NODE_SPACING;
+            }
+        }
+    }
+    let mut layers: std::collections::BTreeMap<i64, Vec<usize>> = Default::default();
+    for (i, &(_, (_, y))) in positions.iter().enumerate() {
+        layers.entry(y.round() as i64).or_default().push(i);
+    }
+    for mut layer in layers.into_values() {
+        layer.sort_by(|&a, &b| positions[a].1.0.total_cmp(&positions[b].1.0));
+        let mut right = f64::NEG_INFINITY;
+        for i in layer {
+            let half = sizes[positions[i].0].0 as f64 / 2.0;
+            let x = positions[i].1.0.max(right + NODE_SPACING + half);
+            positions[i].1.0 = x;
+            right = x + half;
+        }
+    }
 }
