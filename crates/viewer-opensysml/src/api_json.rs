@@ -15,6 +15,14 @@ use viewer_core::model::{
     SourceLocation,
 };
 
+/// What enriching the elements found besides.
+pub struct Enriched {
+    /// Each document that could not be converted, and why.
+    pub failures: Vec<(String, opensysml::Error)>,
+    /// The Model's Tool Links.
+    pub tool_links: ToolLinks,
+}
+
 /// Adds source locations, documentation, conjugation and connection ends
 /// to `elements`, converting one document at a time so each element's file
 /// is known, and reads the Model's Tool Links. A document that cannot be
@@ -24,7 +32,7 @@ pub fn enrich(
     connection: &Connection,
     parsed: &opensysml::Model,
     elements: &mut BTreeMap<QualifiedName, Element>,
-) -> (Vec<(String, opensysml::Error)>, ToolLinks) {
+) -> Enriched {
     // Element JSON by id, and the file each came from, across all documents,
     // since references cross documents.
     let mut items: HashMap<String, (Value, PathBuf)> = HashMap::new();
@@ -338,7 +346,10 @@ pub fn enrich(
             parameter.is_return = true;
         }
     }
-    (failures, tool_links(&items, &children))
+    Enriched {
+        failures,
+        tool_links: tool_links(&items, &children),
+    }
 }
 
 /// The `@ToolLink` and `@ToolProperty` annotations, by the qualified names

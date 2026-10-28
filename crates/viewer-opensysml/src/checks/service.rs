@@ -5,133 +5,20 @@ use std::time::{Duration, Instant};
 
 use opensysml::{AnalysisOptions, VerifyOptions};
 use viewer_core::model::{AnalysisResult, ClaimResult, QualifiedName};
-use viewer_core::units::{readable_unit, readable_value};
+use viewer_core::units::readable_unit;
 
 use super::{Checker, ClaimOutcome, ComputedValue, ConstraintOutcome, PartCheck};
-use crate::design_values::{Written, WrittenValue};
 
-/// Checks a Model the service has parsed, putting what its reasons say
-/// about the Design Values written into it in words.
+/// Checks a Model the service has parsed.
 pub(crate) struct Service<'a> {
     model: &'a opensysml::Model,
-    written: Option<&'a Written>,
 }
 
 impl<'a> Service<'a> {
-    /// Checks `model`, which has no Design Values written into it.
+    /// Checks `model`.
     pub fn new(model: &'a opensysml::Model) -> Self {
-        Self {
-            model,
-            written: None,
-        }
+        Self { model }
     }
-
-    /// Checks `model`, which has the Design Values (and markers) of
-    /// `written` written into it.
-    pub fn with_design_values(model: &'a opensysml::Model, written: &'a Written) -> Self {
-        Self {
-            model,
-            written: Some(written),
-        }
-    }
-
-    /// What a service verdict comes to, its reason in words; `within` is
-    /// the part the check was about, if known.
-    fn result_of(
-        &self,
-        verdict: &opensysml::Verdict,
-        within: Option<&QualifiedName>,
-    ) -> ClaimResult {
-        match result_of(verdict) {
-            ClaimResult::Undecided { reason } => ClaimResult::Undecided {
-                reason: self.in_words(reason, within),
-            },
-            result => result,
-        }
-    }
-
-    /// `reason`, the service's, in words when it is about a Design Value
-    /// (see [`design_value_reason`]); as it is otherwise.
-    fn in_words(&self, reason: String, within: Option<&QualifiedName>) -> String {
-        self.written
-            .and_then(|written| design_value_reason(written, &reason, within))
-            .unwrap_or(reason)
-    }
-}
-
-/// How the service says a value doesn't fit its feature's type, naming
-/// the feature from its part: `feature value pump.mass: type mismatch:
-/// cannot write 1500000.0 [mm**3] (dimension L^3) to a feature typed by
-/// MassValue (dimension M)`.
-const FEATURE_VALUE: &str = "feature value ";
-const TYPE_MISMATCH: &str = ": type mismatch: ";
-const CANNOT_WRITE: &str = "cannot write ";
-const DIMENSION: &str = " (dimension";
-
-/// `reason`, a check's, in words when it is about a Design Value of
-/// `written`: `no Design Value for Drive::drive::gearbox::volume (FreeCAD:
-/// no object Assembly.Link.)` when there is none, `Design Value for
-/// Drive::drive::pump::mass (FreeCAD: Pump.Volume) does not fit it: cannot
-/// write …` when its dimension is wrong. `None` otherwise.
-///
-/// The service names a feature only from its part (`engine.mass`), so
-/// several linked features may answer to it. Those beneath `within`, the
-/// part the check was about, come first, then those whose value is the
-/// one the service could not write; if several remain, all are named.
-fn design_value_reason(
-    written: &Written,
-    reason: &str,
-    within: Option<&QualifiedName>,
-) -> Option<String> {
-    let missing: Vec<&str> = written
-        .markers
-        .iter()
-        .filter(|(marker, _)| reason.contains(marker.as_str()))
-        .map(|(_, words)| words.as_str())
-        .collect();
-    if !missing.is_empty() {
-        return Some(missing.join("; "));
-    }
-    let (_, rest) = reason.split_once(FEATURE_VALUE)?;
-    let (path, mismatch) = rest.split_once(TYPE_MISMATCH)?;
-    let suffix = format!("::{}", path.replace('.', "::"));
-    let named: Vec<&WrittenValue> = written
-        .values
-        .iter()
-        .filter(|w| w.feature.as_str().ends_with(&suffix))
-        .collect();
-    let beneath = within.map(|part| format!("{part}::"));
-    let named = narrowed(named, |w| {
-        beneath
-            .as_ref()
-            .is_some_and(|b| w.feature.as_str().starts_with(b.as_str()))
-    });
-    let refused = mismatch
-        .strip_prefix(CANNOT_WRITE)
-        .and_then(|r| r.split_once(DIMENSION))
-        .map(|(value, _)| readable_value(value));
-    let named = narrowed(named, |w| {
-        refused
-            .as_ref()
-            .is_some_and(|r| *r == readable_value(&w.value))
-    });
-    if named.is_empty() {
-        return None;
-    }
-    let words: Vec<&str> = named.iter().map(|w| w.words.as_str()).collect();
-    Some(format!(
-        "{} does not fit it: {mismatch}",
-        words.join(" or ")
-    ))
-}
-
-/// Those of `candidates` that are `wanted`, unless none is.
-fn narrowed(
-    candidates: Vec<&WrittenValue>,
-    wanted: impl Fn(&WrittenValue) -> bool,
-) -> Vec<&WrittenValue> {
-    let kept: Vec<&WrittenValue> = candidates.iter().copied().filter(|w| wanted(w)).collect();
-    if kept.is_empty() { candidates } else { kept }
 }
 
 impl Checker for Service<'_> {
@@ -139,7 +26,7 @@ impl Checker for Service<'_> {
         let satisfaction = self
             .model
             .verify_satisfaction(None, &VerifyOptions::default())
-            .map_err(|e| self.in_words(e.to_string(), None))?;
+            .map_err(|e| e.to_string())?;
         Ok(satisfaction
             .verdicts
             .iter()
@@ -148,7 +35,7 @@ impl Checker for Service<'_> {
                     .then(|| QualifiedName::new(v.instance_type_id.clone()));
                 ClaimOutcome {
                     requirement: QualifiedName::new(v.requirement_id.clone()),
-                    result: self.result_of(v, satisfier.as_ref()),
+                    result: result_of(v),
                     satisfier,
                 }
             })
@@ -159,23 +46,16 @@ impl Checker for Service<'_> {
         let validation = self
             .model
             .validate_instance(part.as_str(), None)
-            .map_err(|e| self.in_words(e.to_string(), Some(part)))?;
+            .map_err(|e| e.to_string())?;
         Ok(PartCheck {
             constraints: validation
                 .verdicts
                 .iter()
                 .filter(|v| v.kind == opensysml::KIND_CONSTRAINT)
-                .map(|v| {
-                    // The checked part, as `parts` names it from the path.
-                    let checked = match v.instance_path.as_str() {
-                        "" => part.clone(),
-                        path => QualifiedName::new(format!("{part}::{}", path.replace('.', "::"))),
-                    };
-                    ConstraintOutcome {
-                        constraint: QualifiedName::new(v.element_id.clone()),
-                        path: v.instance_path.clone(),
-                        result: self.result_of(v, Some(&checked)),
-                    }
+                .map(|v| ConstraintOutcome {
+                    constraint: QualifiedName::new(v.element_id.clone()),
+                    path: v.instance_path.clone(),
+                    result: result_of(v),
                 })
                 .collect(),
             values: computed_values(validation.instances()),
@@ -197,9 +77,9 @@ impl Checker for Service<'_> {
                     .verdicts
                     .iter()
                     .find(|v| v.kind == opensysml::KIND_OBJECTIVE)
-                    .map(|v| self.result_of(v, None)),
+                    .map(result_of),
             })
-            .map_err(|e| self.in_words(e.to_string(), None));
+            .map_err(|e| e.to_string());
         (run, started.elapsed())
     }
 }
