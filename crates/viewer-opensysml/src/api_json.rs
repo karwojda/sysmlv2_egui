@@ -83,6 +83,7 @@ pub fn enrich(
         }
     }
     name_items(&mut items);
+    add_library_renderings(&mut items);
     let qualified_name = |id: &str| -> Option<QualifiedName> {
         items
             .get(id)
@@ -361,11 +362,9 @@ pub fn enrich(
 /// Gives each item the `qualifiedName` our elements are named by. The
 /// service quotes a name that needs it (`V::'vehicle tree'`) and keeps our
 /// spelling in `sysx:mappingQualifiedName`; it names no unnamed element,
-/// which we call after its owner and its place there (`Req::@8`). A
-/// standard-library element is left out of the form, so a reference to one
-/// is a bare id; the elements we can guess the name of are added as stubs.
+/// which we call after its owner and its place there (`Req::@8`).
 fn name_items(items: &mut HashMap<String, (Value, PathBuf)>) {
-    fn name(
+    fn qualified_name_of(
         items: &HashMap<String, (Value, PathBuf)>,
         id: &str,
         names: &mut HashMap<String, Option<String>>,
@@ -373,35 +372,45 @@ fn name_items(items: &mut HashMap<String, (Value, PathBuf)>) {
         if let Some(known) = names.get(id) {
             return known.clone();
         }
+        // Unnamed until found, so an owner cycle ends.
+        names.insert(id.to_owned(), None);
         let (item, _) = items.get(id)?;
-        let found = item
+        let qualified = item
             .get("sysx:mappingQualifiedName")
             .or_else(|| item.get("qualifiedName"))
             .and_then(Value::as_str)
             .map(str::to_owned)
             .or_else(|| {
+                // A redefinition has the `name` of what it redefines.
                 let own = item
                     .get("declaredName")
+                    .or_else(|| item.get("name"))
                     .and_then(Value::as_str)
                     .map(str::to_owned)
                     .or_else(|| Some(format!("@{}", item.get("sysx:memberIndex")?.as_u64()?)))?;
-                let owner = name(items, reference(item, "owner")?, names)?;
+                let owner = qualified_name_of(items, reference(item, "owner")?, names)?;
                 Some(format!("{owner}::{own}"))
             });
-        names.insert(id.to_owned(), found.clone());
-        found
+        names.insert(id.to_owned(), qualified.clone());
+        qualified
     }
     let mut names = HashMap::new();
     let ids: Vec<String> = items.keys().cloned().collect();
     for id in &ids {
-        name(items, id, &mut names);
+        qualified_name_of(items, id, &mut names);
     }
-    for (id, found) in names {
-        if let (Some(found), Some((Value::Object(item), _))) = (found, items.get_mut(&id)) {
-            item.insert("qualifiedName".to_owned(), Value::String(found));
+    for (id, qualified) in names {
+        if let (Some(qualified), Some((Value::Object(item), _))) = (qualified, items.get_mut(&id)) {
+            item.insert("qualifiedName".to_owned(), Value::String(qualified));
         }
     }
-    // `render asTreeDiagram` names its rendering after the library's.
+}
+
+/// Adds a stub naming each standard-library rendering a view renders. The
+/// library is left out of the form, so a reference to one is a bare id;
+/// `render asTreeDiagram` names its rendering after the library's, which
+/// the id confirms.
+fn add_library_renderings(items: &mut HashMap<String, (Value, PathBuf)>) {
     let renderings: Vec<(String, String, PathBuf)> = items
         .values()
         .filter(|(item, _)| item.get("@type").and_then(Value::as_str) == Some("RenderingUsage"))

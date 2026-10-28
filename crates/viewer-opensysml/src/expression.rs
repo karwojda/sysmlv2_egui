@@ -88,7 +88,11 @@ fn render(items: &HashMap<String, (Value, PathBuf)>, id: &str) -> (String, u8) {
                 let text = item.get("sysx:sourceText").and_then(Value::as_str)?;
                 return match property {
                     "referent" => Some(text.trim().to_owned()),
-                    "function" => Some(text.split_once('(')?.0.trim().to_owned()),
+                    // `sum(xs)`, or `xs->sum()`.
+                    "function" => {
+                        let (callee, _) = text.split_once('(')?;
+                        Some(callee.rsplit("->").next()?.trim().to_owned())
+                    }
                     _ => None,
                 };
             };

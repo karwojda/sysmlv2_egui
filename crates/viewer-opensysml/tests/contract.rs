@@ -379,8 +379,7 @@ fn rebuilds_require_constraint_text_from_the_service_s_expression_trees() {
             "v.a <= limit",
             "(v.a + v.b) * 2 > 10 and not v.ok",
             "v.a == 3 or v.b != -1.5 implies v.ok",
-            // Library elements arrive without their short names, so a
-            // unit reads as its full name.
+            // A library unit reads as it was written.
             "v.m <= 1650 [kg]",
             "\"x\" == \"y\" xor true",
             "Cap(v.a)",
