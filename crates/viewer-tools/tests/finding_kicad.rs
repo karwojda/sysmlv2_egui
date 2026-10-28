@@ -3,20 +3,14 @@
 //! install folders; and the timeout.
 #![cfg(unix)]
 
-use std::os::unix::fs::PermissionsExt;
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use common::script;
 use viewer_core::engineering_tools::{EngineeringTool, Wanted};
 use viewer_tools::kicad::{KiCad, Machine};
-
-/// A shell script at `path` running `body`, made executable.
-fn stub(path: &Path, body: &str) -> PathBuf {
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    path.to_path_buf()
-}
 
 fn found(machine: Machine) -> PathBuf {
     KiCad::from_machine(machine)
@@ -53,9 +47,9 @@ fn without_kicad_every_read_says_kicad_is_not_available() {
 #[test]
 fn the_variable_comes_before_path_and_install_folders() {
     let dir = tempfile::tempdir().unwrap();
-    let named = stub(&dir.path().join("mine/kicad-cli"), "true");
-    stub(&dir.path().join("bin/kicad-cli"), "true");
-    stub(&dir.path().join("opt/KiCad/10.0/bin/kicad-cli"), "true");
+    let named = script(&dir.path().join("mine/kicad-cli"), "true");
+    script(&dir.path().join("bin/kicad-cli"), "true");
+    script(&dir.path().join("opt/KiCad/10.0/bin/kicad-cli"), "true");
 
     let executable = found(Machine {
         executable: Some(named.clone().into()),
@@ -70,7 +64,7 @@ fn the_variable_comes_before_path_and_install_folders() {
 #[test]
 fn a_variable_naming_nothing_is_not_passed_over_for_path() {
     let dir = tempfile::tempdir().unwrap();
-    stub(&dir.path().join("bin/kicad-cli"), "true");
+    script(&dir.path().join("bin/kicad-cli"), "true");
     let missing = dir.path().join("nowhere/kicad-cli");
 
     let kicad = KiCad::from_machine(Machine {
@@ -92,8 +86,8 @@ fn a_variable_naming_nothing_is_not_passed_over_for_path() {
 fn path_comes_before_install_folders() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("first")).unwrap();
-    let on_path = stub(&dir.path().join("second/kicad-cli"), "true");
-    stub(&dir.path().join("opt/KiCad/10.0/bin/kicad-cli"), "true");
+    let on_path = script(&dir.path().join("second/kicad-cli"), "true");
+    script(&dir.path().join("opt/KiCad/10.0/bin/kicad-cli"), "true");
     let path = std::env::join_paths([dir.path().join("first"), dir.path().join("second")]).unwrap();
 
     let executable = found(Machine {
@@ -110,9 +104,9 @@ fn the_newest_install_is_found_including_a_windows_one_seen_from_wsl() {
     // As `/mnt/c/Program Files` looks from WSL.
     let dir = tempfile::tempdir().unwrap();
     let program_files = dir.path().join("Program Files");
-    stub(&program_files.join("KiCad/9.0/bin/kicad-cli.exe"), "true");
-    let newest = stub(&program_files.join("KiCad/10.0/bin/kicad-cli.exe"), "true");
-    stub(&program_files.join("KiCad/8.0/bin/kicad-cli.exe"), "true");
+    script(&program_files.join("KiCad/9.0/bin/kicad-cli.exe"), "true");
+    let newest = script(&program_files.join("KiCad/10.0/bin/kicad-cli.exe"), "true");
+    script(&program_files.join("KiCad/8.0/bin/kicad-cli.exe"), "true");
 
     let executable = found(Machine {
         install_dirs: vec![dir.path().join("Applications"), program_files],
@@ -126,7 +120,7 @@ fn the_newest_install_is_found_including_a_windows_one_seen_from_wsl() {
 fn a_macos_install_is_found_in_its_app_bundle() {
     let dir = tempfile::tempdir().unwrap();
     let applications = dir.path().join("Applications");
-    let bundled = stub(
+    let bundled = script(
         &applications.join("KiCad/KiCad.app/Contents/MacOS/kicad-cli"),
         "true",
     );
@@ -155,7 +149,7 @@ fn a_run_may_take_30_seconds_unless_the_machine_says_otherwise() {
 #[test]
 fn a_run_that_does_not_answer_in_time_is_killed() {
     let dir = tempfile::tempdir().unwrap();
-    let hanging = stub(&dir.path().join("kicad-cli"), "exec sleep 30");
+    let hanging = script(&dir.path().join("kicad-cli"), "exec sleep 30");
     let mut kicad = KiCad::from_machine(Machine {
         executable: Some(hanging.into()),
         timeout: Some("1".into()),
@@ -177,7 +171,7 @@ fn a_run_that_does_not_answer_in_time_is_killed() {
 #[test]
 fn a_timeout_that_is_not_a_number_of_seconds_is_a_reason() {
     let dir = tempfile::tempdir().unwrap();
-    let kicad_cli = stub(&dir.path().join("kicad-cli"), "echo 10.0.7");
+    let kicad_cli = script(&dir.path().join("kicad-cli"), "echo 10.0.7");
     let mut kicad = KiCad::from_machine(Machine {
         executable: Some(kicad_cli.into()),
         timeout: Some("soon".into()),
