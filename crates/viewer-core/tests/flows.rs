@@ -53,6 +53,21 @@ fn an_unnamed_connection_is_an_unlabelled_edge_in_a_general_diagram() {
     assert!(texts.is_empty(), "{texts:?}");
 }
 
+/// The texts with each wrapped row's continuation lines joined back on.
+fn rejoined(texts: Vec<String>) -> Vec<String> {
+    let mut rows: Vec<String> = Vec::new();
+    for text in texts {
+        match (text.strip_prefix("\u{2003}\u{2003}"), rows.last_mut()) {
+            (Some(rest), Some(row)) => {
+                row.push(' ');
+                row.push_str(rest);
+            }
+            _ => rows.push(text),
+        }
+    }
+    rows
+}
+
 #[test]
 fn an_unnamed_connection_is_listed_by_its_ends_in_the_connections_compartment() {
     let scene = scene(DiagramKind::General, "F");
@@ -63,6 +78,7 @@ fn an_unnamed_connection_is_listed_by_its_ends_in_the_connections_compartment() 
             _ => None,
         })
         .collect();
+    let rows = rejoined(rows);
 
     assert!(
         rows.contains(&"(tank.fuelOut.inner → engine.fuelIn.inner)".to_owned()),
@@ -216,6 +232,7 @@ fn the_general_diagram_lists_flows_and_draws_them_with_arrowheads() {
             _ => None,
         })
         .collect();
+    let rows = rejoined(rows);
     assert!(
         rows.contains(&"flow fuelFlow:Fuel (tank.fuelOut → engine.fuelIn)".to_owned()),
         "{rows:?}"

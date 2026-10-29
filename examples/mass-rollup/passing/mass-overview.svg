@@ -1,151 +1,154 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1757" height="1046" viewBox="0 0 1757 1046" font-family="sans-serif">
-<rect x="0" y="0" width="1757" height="1046" fill="#ffffff"/>
-<polyline points="923.41,107.54 426,215.42" fill="none" stroke="#000000"/>
-<polygon points="941,103.72 930.93,99.76 923.41,107.54 933.48,111.49" fill="#000000" stroke="#000000"/>
-<polyline points="1209.18,121.12 1480,205.81" fill="none" stroke="#000000"/>
-<polygon points="1192,115.75 1198.8,124.16 1209.18,121.12 1202.38,112.71" fill="#000000" stroke="#000000"/>
-<polyline points="1066.28,151 1066.21,174" fill="none" stroke="#000000"/>
-<polygon points="1066.33,133 1060.31,141.98 1066.28,151 1072.31,142.02" fill="#000000" stroke="#000000"/>
-<polyline points="1207.71,575.36 1320.37,667" fill="none" stroke="#000000"/>
-<polygon points="1193.74,564 1196.94,574.33 1207.71,575.36 1204.51,565.02" fill="#000000" stroke="#000000"/>
-<polyline points="1302.78,571.66 1504,666.33" fill="none" stroke="#000000"/>
-<polygon points="1286.49,564 1292.08,573.26 1302.78,571.66 1297.19,562.4" fill="#000000" stroke="#000000"/>
-<polyline points="776.59,536.9 668.29,565.44 450,651.19" fill="none" stroke="#000000"/>
-<polygon points="794,532.31 783.77,528.8 776.59,536.9 786.83,540.41" fill="#000000" stroke="#000000"/>
-<polyline points="342.98,802.98 385.67,867" fill="none" stroke="#000000"/>
-<polygon points="333,788 333,798.82 342.98,802.98 342.98,792.16" fill="#000000" stroke="#000000"/>
-<polyline points="217.21,802.15 166.17,867" fill="none" stroke="#000000"/>
-<polygon points="228.34,788 218.06,791.36 217.21,802.15 227.49,798.78" fill="#000000" stroke="#000000"/>
-<polyline points="1066.26,582 1066.1,667" fill="none" stroke="#000000"/>
-<polygon points="1066.3,564 1060.28,572.99 1066.26,582 1072.28,573.01" fill="#000000" stroke="#000000"/>
-<polyline points="747.26,644 886.44,564" fill="none" stroke="#000000" stroke-dasharray="6 4"/>
-<polyline points="878.29,577.91 886.44,564 870.31,564.04" fill="none" stroke="#000000"/>
-<text x="816.85" y="598" text-anchor="middle" font-size="11">«subject»</text>
-<polyline points="1066.26,357 1066.17,318" fill="none" stroke="#000000"/>
-<polyline points="1074.2,331.98 1066.17,318 1058.2,332.02" fill="none" stroke="#000000"/>
-<text x="1072.21" y="341.17" text-anchor="start" font-size="11">«satisfy» ✓</text>
-<polyline points="285,644 285,318" fill="none" stroke="#000000"/>
-<polyline points="293,332 285,318 277,332" fill="none" stroke="#000000"/>
-<text x="291" y="484.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
-<polyline points="1608.5,604 1608.5,318" fill="none" stroke="#000000"/>
-<polyline points="1616.5,332 1608.5,318 1600.5,332" fill="none" stroke="#000000"/>
-<text x="1614.5" y="464.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
-<rect x="490" y="644" width="264" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
-<text x="622" y="666" text-anchor="middle" font-size="12">«analysis»</text>
-<text x="622" y="684" text-anchor="middle" font-size="14">massAnalysis:MassAnalysis</text>
-<rect x="733" y="649" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="741" y="660.67" text-anchor="middle" font-size="11">✓</text>
-<polyline points="490,694 754,694" fill="none" stroke="#000000"/>
-<text x="622" y="715" text-anchor="middle" font-size="11" font-style="italic">subject</text>
-<text x="500" y="731" text-anchor="start" font-size="12">v = vehicle</text>
-<polyline points="490,741 754,741" fill="none" stroke="#000000"/>
-<text x="622" y="762" text-anchor="middle" font-size="11" font-style="italic">results</text>
-<text x="500" y="778" text-anchor="start" font-size="12">return totalMass:Real = 1333.0</text>
-<rect x="941" y="20" width="251" height="113" rx="10" fill="#d9ead3" stroke="#000000"/>
-<text x="1066.5" y="42" text-anchor="middle" font-size="12">«requirement»</text>
-<text x="1066.5" y="60" text-anchor="middle" font-size="14">massSpec</text>
-<text x="1066.5" y="76" text-anchor="middle" font-size="12">subject v:Vehicle</text>
-<rect x="1171" y="25" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="1179" y="36.67" text-anchor="middle" font-size="11">✓</text>
-<polyline points="941,86 1192,86" fill="none" stroke="#000000"/>
-<text x="1066.5" y="107" text-anchor="middle" font-size="11" font-style="italic">doc</text>
-<text x="951" y="123" text-anchor="start" font-size="12">Mass budget for the vehicle.</text>
-<rect x="144" y="174" width="282" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
-<text x="285" y="196" text-anchor="middle" font-size="12">«requirement»</text>
-<text x="285" y="214" text-anchor="middle" font-size="14">&lt;2&gt; powertrainMass:MassLimit</text>
-<rect x="405" y="179" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="413" y="190.67" text-anchor="middle" font-size="11">✓</text>
-<polyline points="144,224 426,224" fill="none" stroke="#000000"/>
-<text x="285" y="245" text-anchor="middle" font-size="11" font-style="italic">doc</text>
-<text x="154" y="261" text-anchor="start" font-size="12">Powertrain mass at most 250 kg.</text>
-<polyline points="144,271 426,271" fill="none" stroke="#000000"/>
-<text x="285" y="292" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="154" y="308" text-anchor="start" font-size="12">limit = 250.0</text>
-<rect x="1480" y="174" width="257" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
-<text x="1608.5" y="196" text-anchor="middle" font-size="12">«requirement»</text>
-<text x="1608.5" y="214" text-anchor="middle" font-size="14">&lt;3&gt; tankMass:MassLimit</text>
-<rect x="1716" y="179" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="1724" y="190.67" text-anchor="middle" font-size="11">✓</text>
-<polyline points="1480,224 1737,224" fill="none" stroke="#000000"/>
-<text x="1608.5" y="245" text-anchor="middle" font-size="11" font-style="italic">doc</text>
-<text x="1490" y="261" text-anchor="start" font-size="12">Fuel tank mass at most 70 kg.</text>
-<polyline points="1480,271 1737,271" fill="none" stroke="#000000"/>
-<text x="1608.5" y="292" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="1490" y="308" text-anchor="start" font-size="12">limit = 70.0</text>
-<rect x="917" y="174" width="298" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
-<text x="1066" y="196" text-anchor="middle" font-size="12">«requirement»</text>
-<text x="1066" y="214" text-anchor="middle" font-size="14">&lt;1&gt; vehicleMass:MassLimit</text>
-<rect x="1194" y="179" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="1202" y="190.67" text-anchor="middle" font-size="11">✓</text>
-<polyline points="917,224 1215,224" fill="none" stroke="#000000"/>
-<text x="1066" y="245" text-anchor="middle" font-size="11" font-style="italic">doc</text>
-<text x="927" y="261" text-anchor="start" font-size="12">Total vehicle mass at most 1400 kg.</text>
-<polyline points="917,271 1215,271" fill="none" stroke="#000000"/>
-<text x="1066" y="292" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="927" y="308" text-anchor="start" font-size="12">limit = 1400.0</text>
-<rect x="794" y="357" width="545" height="207" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="1066.5" y="379" text-anchor="middle" font-size="12">«part»</text>
-<text x="1066.5" y="397" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
-<polyline points="794,407 1339,407" fill="none" stroke="#000000"/>
-<text x="1066.5" y="428" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="804" y="444" text-anchor="start" font-size="12">mass = powertrain.mass + body.mass + fuelTank.mass + sum(wheels.mass) = 1333.0</text>
-<text x="804" y="460" text-anchor="start" font-size="12">power = 90.0</text>
-<polyline points="794,470 1339,470" fill="none" stroke="#000000"/>
-<text x="1066.5" y="491" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
-<text x="804" y="507" text-anchor="start" font-size="12">powerToWeight:MassPerPower ✓</text>
-<polyline points="794,517 1339,517" fill="none" stroke="#000000"/>
-<text x="1066.5" y="538" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="804" y="554" text-anchor="start" font-size="12">satisfy vehicleMass ✓</text>
-<rect x="1320" y="667" width="120" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="1380" y="689" text-anchor="middle" font-size="12">«part»</text>
-<text x="1380" y="707" text-anchor="middle" font-size="14">body:Body</text>
-<polyline points="1320,717 1440,717" fill="none" stroke="#000000"/>
-<text x="1380" y="738" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="1330" y="754" text-anchor="start" font-size="12">mass = 950.0</text>
-<rect x="1504" y="604" width="209" height="223" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="1608.5" y="626" text-anchor="middle" font-size="12">«part»</text>
-<text x="1608.5" y="644" text-anchor="middle" font-size="14">fuelTank:FuelTank</text>
-<polyline points="1504,654 1713,654" fill="none" stroke="#000000"/>
-<text x="1608.5" y="675" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="1514" y="691" text-anchor="start" font-size="12">fuelMass = 40.0</text>
-<text x="1514" y="707" text-anchor="start" font-size="12">fuelMassMax = 45.0</text>
-<text x="1514" y="723" text-anchor="start" font-size="12">mass = 60.0</text>
-<polyline points="1504,733 1713,733" fill="none" stroke="#000000"/>
-<text x="1608.5" y="754" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
-<text x="1514" y="770" text-anchor="start" font-size="12">^{fuelMass &lt;= fuelMassMax} ✓</text>
-<polyline points="1504,780 1713,780" fill="none" stroke="#000000"/>
-<text x="1608.5" y="801" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="1514" y="817" text-anchor="start" font-size="12">satisfy tankMass ✓</text>
-<rect x="120" y="644" width="330" height="144" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="285" y="666" text-anchor="middle" font-size="12">«part»</text>
-<text x="285" y="684" text-anchor="middle" font-size="14">powertrain:Powertrain</text>
-<polyline points="120,694 450,694" fill="none" stroke="#000000"/>
-<text x="285" y="715" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="130" y="731" text-anchor="start" font-size="12">mass = engine.mass + transmission.mass = 235.0</text>
-<polyline points="120,741 450,741" fill="none" stroke="#000000"/>
-<text x="285" y="762" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="130" y="778" text-anchor="start" font-size="12">satisfy powertrainMass ✓</text>
-<rect x="357" y="867" width="122" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="418" y="889" text-anchor="middle" font-size="12">«part»</text>
-<text x="418" y="907" text-anchor="middle" font-size="14">engine:Engine</text>
-<polyline points="357,917 479,917" fill="none" stroke="#000000"/>
-<text x="418" y="938" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="367" y="954" text-anchor="start" font-size="12">mass = 150.0</text>
-<rect x="20" y="867" width="216" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="128" y="889" text-anchor="middle" font-size="12">«part»</text>
-<text x="128" y="907" text-anchor="middle" font-size="14">transmission:Transmission</text>
-<polyline points="20,917 236,917" fill="none" stroke="#000000"/>
-<text x="128" y="938" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="30" y="954" text-anchor="start" font-size="12">mass = 85.0</text>
-<rect x="993" y="667" width="146" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="1066" y="689" text-anchor="middle" font-size="12">«part»</text>
-<text x="1066" y="707" text-anchor="middle" font-size="14">wheels:Wheel [4]</text>
-<polyline points="993,717 1139,717" fill="none" stroke="#000000"/>
-<text x="1066" y="738" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="1003" y="754" text-anchor="start" font-size="12">mass = 22.0</text>
-<rect x="1614.76" y="980" width="122.24" height="46" fill="#ffffff" stroke="#000000"/>
-<rect x="1622.76" y="988" width="12" height="12" fill="#d9ead3" stroke="#000000"/>
-<text x="1642.76" y="998.5" text-anchor="start" font-size="11">Satisfied</text>
-<rect x="1622.76" y="1006" width="12" height="12" fill="#d9ead3" stroke="#000000"/>
-<text x="1642.76" y="1016.5" text-anchor="start" font-size="11">Analysis holds</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1479" height="1078" viewBox="0 0 1479 1078" font-family="sans-serif">
+<rect x="0" y="0" width="1479" height="1078" fill="#ffffff"/>
+<polyline points="769.6,114.43 415,208.57" fill="none" stroke="#000000"/>
+<polygon points="787,109.82 776.76,106.33 769.6,114.43 779.84,117.92" fill="#000000" stroke="#000000"/>
+<polyline points="1054.68,134.15 1202,193.89" fill="none" stroke="#000000"/>
+<polygon points="1038,127.39 1044.09,136.33 1054.68,134.15 1048.59,125.21" fill="#000000" stroke="#000000"/>
+<polyline points="912.28,151 912.21,174" fill="none" stroke="#000000"/>
+<polygon points="912.33,133 906.31,141.98 912.28,151 918.31,142.02" fill="#000000" stroke="#000000"/>
+<polyline points="1006.12,610.74 1068,699" fill="none" stroke="#000000"/>
+<polygon points="995.78,596 996.04,606.81 1006.12,610.74 1005.86,599.92" fill="#000000" stroke="#000000"/>
+<polyline points="1058.11,571.11 1226,679.83" fill="none" stroke="#000000"/>
+<polygon points="1043,561.33 1047.29,571.26 1058.11,571.11 1053.82,561.18" fill="#000000" stroke="#000000"/>
+<polyline points="764.44,539.34 419,686.46" fill="none" stroke="#000000"/>
+<polygon points="781,532.29 770.37,530.3 764.44,539.34 775.07,541.34" fill="#000000" stroke="#000000"/>
+<polyline points="333.04,843.34 367.22,899" fill="none" stroke="#000000"/>
+<polygon points="323.62,828 323.22,838.81 333.04,843.34 333.45,832.53" fill="#000000" stroke="#000000"/>
+<polyline points="205.1,842.51 163.62,899" fill="none" stroke="#000000"/>
+<polygon points="215.75,828 205.59,831.7 205.1,842.51 215.26,838.81" fill="#000000" stroke="#000000"/>
+<polyline points="901.35,613.95 894.76,699" fill="none" stroke="#000000"/>
+<polygon points="902.74,596 896.06,604.51 901.35,613.95 908.03,605.44" fill="#000000" stroke="#000000"/>
+<polyline points="676.13,676 781,587.3" fill="none" stroke="#000000" stroke-dasharray="6 4"/>
+<polyline points="775.48,602.45 781,587.3 765.14,590.23" fill="none" stroke="#000000"/>
+<text x="728.56" y="625.65" text-anchor="middle" font-size="11">«subject»</text>
+<polyline points="912,357 912,318" fill="none" stroke="#000000"/>
+<polyline points="920,332 912,318 904,332" fill="none" stroke="#000000"/>
+<text x="918" y="341.17" text-anchor="start" font-size="11">«satisfy» ✓</text>
+<polyline points="274.42,668 274.07,318" fill="none" stroke="#000000"/>
+<polyline points="282.09,331.99 274.07,318 266.09,332.01" fill="none" stroke="#000000"/>
+<text x="280.25" y="496.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
+<polyline points="1330.5,636 1330.5,318" fill="none" stroke="#000000"/>
+<polyline points="1338.5,332 1330.5,318 1322.5,332" fill="none" stroke="#000000"/>
+<text x="1336.5" y="480.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
+<rect x="459" y="676" width="264" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
+<text x="591" y="698" text-anchor="middle" font-size="12">«analysis»</text>
+<text x="591" y="716" text-anchor="middle" font-size="14">massAnalysis:MassAnalysis</text>
+<rect x="702" y="681" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
+<text x="710" y="692.67" text-anchor="middle" font-size="11">✓</text>
+<polyline points="459,726 723,726" fill="none" stroke="#000000"/>
+<text x="591" y="747" text-anchor="middle" font-size="11" font-style="italic">subject</text>
+<text x="469" y="763" text-anchor="start" font-size="12">v = vehicle</text>
+<polyline points="459,773 723,773" fill="none" stroke="#000000"/>
+<text x="591" y="794" text-anchor="middle" font-size="11" font-style="italic">results</text>
+<text x="469" y="810" text-anchor="start" font-size="12">return totalMass:Real = 1333.0</text>
+<rect x="787" y="20" width="251" height="113" rx="10" fill="#d9ead3" stroke="#000000"/>
+<text x="912.5" y="42" text-anchor="middle" font-size="12">«requirement»</text>
+<text x="912.5" y="60" text-anchor="middle" font-size="14">massSpec</text>
+<text x="912.5" y="76" text-anchor="middle" font-size="12">subject v:Vehicle</text>
+<rect x="1017" y="25" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
+<text x="1025" y="36.67" text-anchor="middle" font-size="11">✓</text>
+<polyline points="787,86 1038,86" fill="none" stroke="#000000"/>
+<text x="912.5" y="107" text-anchor="middle" font-size="11" font-style="italic">doc</text>
+<text x="797" y="123" text-anchor="start" font-size="12">Mass budget for the vehicle.</text>
+<rect x="133" y="174" width="282" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
+<text x="274" y="196" text-anchor="middle" font-size="12">«requirement»</text>
+<text x="274" y="214" text-anchor="middle" font-size="14">&lt;2&gt; powertrainMass:MassLimit</text>
+<rect x="394" y="179" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
+<text x="402" y="190.67" text-anchor="middle" font-size="11">✓</text>
+<polyline points="133,224 415,224" fill="none" stroke="#000000"/>
+<text x="274" y="245" text-anchor="middle" font-size="11" font-style="italic">doc</text>
+<text x="143" y="261" text-anchor="start" font-size="12">Powertrain mass at most 250 kg.</text>
+<polyline points="133,271 415,271" fill="none" stroke="#000000"/>
+<text x="274" y="292" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="143" y="308" text-anchor="start" font-size="12">limit = 250.0</text>
+<rect x="1202" y="174" width="257" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
+<text x="1330.5" y="196" text-anchor="middle" font-size="12">«requirement»</text>
+<text x="1330.5" y="214" text-anchor="middle" font-size="14">&lt;3&gt; tankMass:MassLimit</text>
+<rect x="1438" y="179" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
+<text x="1446" y="190.67" text-anchor="middle" font-size="11">✓</text>
+<polyline points="1202,224 1459,224" fill="none" stroke="#000000"/>
+<text x="1330.5" y="245" text-anchor="middle" font-size="11" font-style="italic">doc</text>
+<text x="1212" y="261" text-anchor="start" font-size="12">Fuel tank mass at most 70 kg.</text>
+<polyline points="1202,271 1459,271" fill="none" stroke="#000000"/>
+<text x="1330.5" y="292" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="1212" y="308" text-anchor="start" font-size="12">limit = 70.0</text>
+<rect x="763" y="174" width="298" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
+<text x="912" y="196" text-anchor="middle" font-size="12">«requirement»</text>
+<text x="912" y="214" text-anchor="middle" font-size="14">&lt;1&gt; vehicleMass:MassLimit</text>
+<rect x="1040" y="179" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
+<text x="1048" y="190.67" text-anchor="middle" font-size="11">✓</text>
+<polyline points="763,224 1061,224" fill="none" stroke="#000000"/>
+<text x="912" y="245" text-anchor="middle" font-size="11" font-style="italic">doc</text>
+<text x="773" y="261" text-anchor="start" font-size="12">Total vehicle mass at most 1400 kg.</text>
+<polyline points="763,271 1061,271" fill="none" stroke="#000000"/>
+<text x="912" y="292" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="773" y="308" text-anchor="start" font-size="12">limit = 1400.0</text>
+<rect x="781" y="357" width="262" height="239" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="912" y="379" text-anchor="middle" font-size="12">«part»</text>
+<text x="912" y="397" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
+<polyline points="781,407 1043,407" fill="none" stroke="#000000"/>
+<text x="912" y="428" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="791" y="444" text-anchor="start" font-size="12">mass = powertrain.mass + body.mass +</text>
+<text x="791" y="460" text-anchor="start" font-size="12">  fuelTank.mass + sum(wheels.mass) =</text>
+<text x="791" y="476" text-anchor="start" font-size="12">  1333.0</text>
+<text x="791" y="492" text-anchor="start" font-size="12">power = 90.0</text>
+<polyline points="781,502 1043,502" fill="none" stroke="#000000"/>
+<text x="912" y="523" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
+<text x="791" y="539" text-anchor="start" font-size="12">powerToWeight:MassPerPower ✓</text>
+<polyline points="781,549 1043,549" fill="none" stroke="#000000"/>
+<text x="912" y="570" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="791" y="586" text-anchor="start" font-size="12">satisfy vehicleMass ✓</text>
+<rect x="1042" y="699" width="120" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="1102" y="721" text-anchor="middle" font-size="12">«part»</text>
+<text x="1102" y="739" text-anchor="middle" font-size="14">body:Body</text>
+<polyline points="1042,749 1162,749" fill="none" stroke="#000000"/>
+<text x="1102" y="770" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="1052" y="786" text-anchor="start" font-size="12">mass = 950.0</text>
+<rect x="1226" y="636" width="209" height="223" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="1330.5" y="658" text-anchor="middle" font-size="12">«part»</text>
+<text x="1330.5" y="676" text-anchor="middle" font-size="14">fuelTank:FuelTank</text>
+<polyline points="1226,686 1435,686" fill="none" stroke="#000000"/>
+<text x="1330.5" y="707" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="1236" y="723" text-anchor="start" font-size="12">fuelMass = 40.0</text>
+<text x="1236" y="739" text-anchor="start" font-size="12">fuelMassMax = 45.0</text>
+<text x="1236" y="755" text-anchor="start" font-size="12">mass = 60.0</text>
+<polyline points="1226,765 1435,765" fill="none" stroke="#000000"/>
+<text x="1330.5" y="786" text-anchor="middle" font-size="11" font-style="italic">assert constraints</text>
+<text x="1236" y="802" text-anchor="start" font-size="12">^{fuelMass &lt;= fuelMassMax} ✓</text>
+<polyline points="1226,812 1435,812" fill="none" stroke="#000000"/>
+<text x="1330.5" y="833" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="1236" y="849" text-anchor="start" font-size="12">satisfy tankMass ✓</text>
+<rect x="130" y="668" width="289" height="160" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="274.5" y="690" text-anchor="middle" font-size="12">«part»</text>
+<text x="274.5" y="708" text-anchor="middle" font-size="14">powertrain:Powertrain</text>
+<polyline points="130,718 419,718" fill="none" stroke="#000000"/>
+<text x="274.5" y="739" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="140" y="755" text-anchor="start" font-size="12">mass = engine.mass + transmission.mass =</text>
+<text x="140" y="771" text-anchor="start" font-size="12">  235.0</text>
+<polyline points="130,781 419,781" fill="none" stroke="#000000"/>
+<text x="274.5" y="802" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="140" y="818" text-anchor="start" font-size="12">satisfy powertrainMass ✓</text>
+<rect x="336" y="899" width="122" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="397" y="921" text-anchor="middle" font-size="12">«part»</text>
+<text x="397" y="939" text-anchor="middle" font-size="14">engine:Engine</text>
+<polyline points="336,949 458,949" fill="none" stroke="#000000"/>
+<text x="397" y="970" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="346" y="986" text-anchor="start" font-size="12">mass = 150.0</text>
+<rect x="20" y="899" width="216" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="128" y="921" text-anchor="middle" font-size="12">«part»</text>
+<text x="128" y="939" text-anchor="middle" font-size="14">transmission:Transmission</text>
+<polyline points="20,949 236,949" fill="none" stroke="#000000"/>
+<text x="128" y="970" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="30" y="986" text-anchor="start" font-size="12">mass = 85.0</text>
+<rect x="818" y="699" width="146" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="891" y="721" text-anchor="middle" font-size="12">«part»</text>
+<text x="891" y="739" text-anchor="middle" font-size="14">wheels:Wheel [4]</text>
+<polyline points="818,749 964,749" fill="none" stroke="#000000"/>
+<text x="891" y="770" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="828" y="786" text-anchor="start" font-size="12">mass = 22.0</text>
+<rect x="1336.76" y="1012" width="122.24" height="46" fill="#ffffff" stroke="#000000"/>
+<rect x="1344.76" y="1020" width="12" height="12" fill="#d9ead3" stroke="#000000"/>
+<text x="1364.76" y="1030.5" text-anchor="start" font-size="11">Satisfied</text>
+<rect x="1344.76" y="1038" width="12" height="12" fill="#d9ead3" stroke="#000000"/>
+<text x="1364.76" y="1048.5" text-anchor="start" font-size="11">Analysis holds</text>
 </svg>

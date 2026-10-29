@@ -146,8 +146,13 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
     ("requirements", &[ElementKind::RequirementUsage]),
 ];
 
-/// Characters per line of a wrapped `doc` compartment.
+/// Characters per line of a wrapped `doc` compartment, and of any other
+/// compartment row too long for one.
 const DOC_LINE_CHARS: usize = 40;
+
+/// What starts the continuation lines of a wrapped row: an indent of em
+/// spaces, which SVG keeps where it would collapse plain ones.
+const CONTINUED: &str = "\u{2003}\u{2003}";
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
 /// its header. Compartments list the owned features `listed` accepts.
@@ -339,6 +344,10 @@ pub fn node_content(
             None => compartments.push(("requirements", claims)),
         }
     }
+    // A row too long for the node's normal width wraps, as `doc` does.
+    for (_, rows) in &mut compartments {
+        *rows = rows.iter().flat_map(|row| wrap_row(row)).collect();
+    }
     let short_id = element
         .short_name
         .as_ref()
@@ -392,6 +401,76 @@ fn insert_after_attributes(
             |i| i + 1,
         );
     compartments.insert(after, (title, rows));
+}
+
+/// A compartment row as lines of at most [`DOC_LINE_CHARS`], continuation
+/// lines indented by [`CONTINUED`]. It breaks at a space outside a unit or
+/// a quoted name (`['°C']`), after an operator where one is on the line
+/// (`a + b and` / `c`); a word longer than a line keeps a line of its own.
+fn wrap_row(row: &str) -> Vec<String> {
+    const OPERATORS: [&str; 24] = [
+        "+", "-", "*", "/", "%", "**", "^", "<", ">", "<=", ">=", "==", "!=", "===", "!==", "=",
+        ":=", "and", "or", "xor", "implies", "not", "??", "|",
+    ];
+    if row.chars().count() <= DOC_LINE_CHARS {
+        return vec![row.to_owned()];
+    }
+    // Words, keeping a bracketed or quoted stretch in one.
+    let mut words: Vec<String> = vec![String::new()];
+    let (mut bracket, mut quote) = (0_i32, None::<char>);
+    for c in row.chars() {
+        match c {
+            ' ' if bracket == 0 && quote.is_none() => words.push(String::new()),
+            _ => {
+                match (c, quote) {
+                    ('\'' | '"', None) => quote = Some(c),
+                    (c, Some(q)) if c == q => quote = None,
+                    ('[', None) => bracket += 1,
+                    (']', None) => bracket -= 1,
+                    _ => {}
+                }
+                words.last_mut().expect("one word at least").push(c);
+            }
+        }
+    }
+    let width = |line: &[String], first: bool| {
+        let indent = if first { 0 } else { CONTINUED.chars().count() };
+        indent
+            + line.iter().map(|w| w.chars().count()).sum::<usize>()
+            + line.len().saturating_sub(1)
+    };
+    let mut lines: Vec<Vec<String>> = Vec::new();
+    let mut line: Vec<String> = Vec::new();
+    for word in words.into_iter().filter(|w| !w.is_empty()) {
+        line.push(word);
+        let first = lines.is_empty();
+        if line.len() > 1 && width(&line, first) > DOC_LINE_CHARS {
+            let word = line.pop().expect("just pushed");
+            // Carry the words after the line's last operator along.
+            let cut = line
+                .iter()
+                .rposition(|w| OPERATORS.contains(&w.as_str()))
+                .filter(|&at| at + 1 < line.len())
+                .map_or(line.len(), |at| at + 1);
+            let mut carried = line.split_off(cut);
+            lines.push(std::mem::take(&mut line));
+            carried.push(word);
+            line = carried;
+        }
+    }
+    lines.push(line);
+    lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, words)| {
+            let text = words.join(" ");
+            if i == 0 {
+                text
+            } else {
+                format!("{CONTINUED}{text}")
+            }
+        })
+        .collect()
 }
 
 /// `text` broken into lines of at most `width` characters at spaces (a

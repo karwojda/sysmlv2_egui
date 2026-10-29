@@ -179,8 +179,11 @@ fn definitions_list_their_features_in_compartments() {
             "engine:Engine [1]",
             "tanks:Tank [1..2]",
             "connections",
-            "iface:FuelInterface (tanks.fuelOut → engine.fuelIn)",
-            "line:FuelLine (tanks.fuelOut → engine.fuelIn)",
+            // Rows longer than a line wrap, indented.
+            "iface:FuelInterface (tanks.fuelOut →",
+            "\u{2003}\u{2003}engine.fuelIn)",
+            "line:FuelLine (tanks.fuelOut →",
+            "\u{2003}\u{2003}engine.fuelIn)",
         ]
     );
 }
