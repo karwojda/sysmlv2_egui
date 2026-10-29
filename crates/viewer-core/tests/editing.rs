@@ -1,7 +1,7 @@
 //! Seam 1: Layout edits, checked through the scene they produce and the
 //! Diagram File they would save.
 
-use viewer_core::editing::{Edit, MIN_NODE_SIZE, apply};
+use viewer_core::editing::{Alignment, Axis, Dimension, Edit, MIN_NODE_SIZE, apply};
 use viewer_core::scene::{Depicts, Rect, Shape};
 use viewer_core::{
     DiagramFile, DiagramKind, Layout, Model, NodePlacement, QualifiedName, Scene,
@@ -208,6 +208,177 @@ fn bends_move_with_nodes_moved_together_only_when_both_ends_move() {
         dy: 15.0,
     });
     assert_eq!(one.layout.edges[&key], vec![bend]);
+}
+
+/// Car, Truck and Vehicle at three different sizes.
+fn uneven() -> Editing {
+    let mut diagram = Editing::new();
+    for (name, width, height) in [("P::Truck", 180.0, 70.0), ("P::Vehicle", 90.0, 140.0)] {
+        diagram.edit(Edit::Resize {
+            element: qn(name),
+            width,
+            height,
+        });
+    }
+    diagram
+}
+
+fn all() -> Vec<QualifiedName> {
+    vec![qn("P::Car"), qn("P::Truck"), qn("P::Vehicle")]
+}
+
+#[test]
+fn aligning_lines_the_others_up_with_the_reference_across_one_axis_only() {
+    let line = |b: Rect, to: Alignment| match to {
+        Alignment::Left => b.x,
+        Alignment::HorizontalCenter => b.center_x(),
+        Alignment::Right => b.right(),
+        Alignment::Top => b.y,
+        Alignment::VerticalCenter => b.y + b.height / 2.0,
+        Alignment::Bottom => b.bottom(),
+    };
+    for to in [
+        Alignment::Left,
+        Alignment::HorizontalCenter,
+        Alignment::Right,
+        Alignment::Top,
+        Alignment::VerticalCenter,
+        Alignment::Bottom,
+    ] {
+        let mut diagram = uneven();
+        // Away from the page's edge, so nothing stops at zero.
+        diagram.edit(Edit::Move {
+            elements: all(),
+            dx: 300.0,
+            dy: 300.0,
+        });
+        let before: Vec<Rect> = ["P::Car", "P::Truck", "P::Vehicle"]
+            .iter()
+            .map(|n| diagram.bounds(n))
+            .collect();
+
+        diagram.edit(Edit::Align {
+            elements: all(),
+            reference: qn("P::Truck"),
+            to,
+        });
+
+        let truck = diagram.bounds("P::Truck");
+        assert_eq!(truck, before[1], "{to:?}: the reference stays");
+        for (name, was) in [("P::Car", before[0]), ("P::Vehicle", before[2])] {
+            let now = diagram.bounds(name);
+            assert!(
+                (line(now, to) - line(truck, to)).abs() < 0.01,
+                "{to:?} {name}"
+            );
+            assert_eq!(
+                (now.width, now.height),
+                (was.width, was.height),
+                "{to:?} {name}"
+            );
+            match to {
+                Alignment::Left | Alignment::HorizontalCenter | Alignment::Right => {
+                    assert_eq!(now.y, was.y, "{to:?} {name}")
+                }
+                _ => assert_eq!(now.x, was.x, "{to:?} {name}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn matching_size_copies_the_reference_and_keeps_top_left_corners() {
+    let cases: [(Dimension, Option<f32>, Option<f32>); 3] = [
+        (Dimension::Width, Some(180.0), None),
+        (Dimension::Height, None, Some(70.0)),
+        (Dimension::Both, Some(180.0), Some(70.0)),
+    ];
+    for (dimension, width, height) in cases {
+        let mut diagram = uneven();
+        let car = diagram.bounds("P::Car");
+
+        diagram.edit(Edit::MatchSize {
+            elements: all(),
+            reference: qn("P::Truck"),
+            dimension,
+        });
+
+        let now = diagram.bounds("P::Car");
+        assert_eq!((now.x, now.y), (car.x, car.y), "{dimension:?}");
+        assert_eq!(now.width, width.unwrap_or(car.width), "{dimension:?}");
+        assert_eq!(now.height, height.unwrap_or(car.height), "{dimension:?}");
+    }
+}
+
+#[test]
+fn matching_size_leaves_collapsed_nodes_alone() {
+    let mut diagram = uneven();
+    diagram.edit(Edit::Collapse(qn("P::Vehicle")));
+    let vehicle = diagram.bounds("P::Vehicle");
+
+    diagram.edit(Edit::MatchSize {
+        elements: all(),
+        reference: qn("P::Truck"),
+        dimension: Dimension::Both,
+    });
+    assert_eq!(diagram.bounds("P::Vehicle"), vehicle);
+
+    diagram.edit(Edit::MatchSize {
+        elements: all(),
+        reference: qn("P::Vehicle"),
+        dimension: Dimension::Both,
+    });
+    assert_eq!(
+        (
+            diagram.bounds("P::Car").width,
+            diagram.bounds("P::Car").height
+        ),
+        (180.0, 70.0),
+        "a collapsed reference changes nothing"
+    );
+}
+
+#[test]
+fn distributing_makes_the_gaps_equal_and_keeps_the_outermost_and_the_order() {
+    let mut diagram = uneven();
+    // In one row, unevenly: Car at 0, Truck just after it, Vehicle far off.
+    for (name, x) in [("P::Car", 0.0), ("P::Truck", 130.0), ("P::Vehicle", 700.0)] {
+        let b = diagram.bounds(name);
+        diagram.edit(Edit::Move {
+            elements: vec![qn(name)],
+            dx: x - b.x,
+            dy: 400.0 - b.y,
+        });
+    }
+    let (car, vehicle) = (diagram.bounds("P::Car"), diagram.bounds("P::Vehicle"));
+
+    diagram.edit(Edit::Distribute {
+        elements: all(),
+        axis: Axis::Horizontal,
+    });
+
+    let truck = diagram.bounds("P::Truck");
+    assert_eq!(diagram.bounds("P::Car"), car);
+    assert_eq!(diagram.bounds("P::Vehicle"), vehicle);
+    let (left_gap, right_gap) = (truck.x - car.right(), vehicle.x - truck.right());
+    assert!(
+        (left_gap - right_gap).abs() < 0.01,
+        "{left_gap} {right_gap}"
+    );
+    assert_eq!(truck.y, 400.0, "only across the axis");
+}
+
+#[test]
+fn distributing_two_nodes_changes_nothing() {
+    let mut diagram = uneven();
+    let layout = diagram.layout.clone();
+
+    diagram.edit(Edit::Distribute {
+        elements: vec![qn("P::Car"), qn("P::Truck")],
+        axis: Axis::Vertical,
+    });
+
+    assert_eq!(diagram.layout, layout);
 }
 
 #[test]

@@ -52,11 +52,60 @@ pub enum Edit {
     /// Diagram.
     Open(String),
     Close(String),
+    /// Lines `elements` up with `reference` along one of its edges or
+    /// centre lines. Only the others move, and only across that line.
+    Align {
+        elements: Vec<QualifiedName>,
+        reference: QualifiedName,
+        to: Alignment,
+    },
+    /// Gives `elements` the drawn width, height or both of `reference`.
+    /// Their top-left corners stay; collapsed nodes keep their natural size.
+    MatchSize {
+        elements: Vec<QualifiedName>,
+        reference: QualifiedName,
+        dimension: Dimension,
+    },
+    /// Spaces three or more `elements` along `axis` so that the gaps
+    /// between neighbouring boxes are equal. The two outermost stay put and
+    /// the others keep their order.
+    Distribute {
+        elements: Vec<QualifiedName>,
+        axis: Axis,
+    },
     /// Back to the automatic arrangement: positions, sizes, routes, moved
     /// ports and hidden and collapsed elements are dropped, apart from
     /// Orphaned Layout Entries, which are never dropped silently. Opened
     /// Parts stay open: which parts to show is not arrangement.
     Reset,
+}
+
+/// The edge or centre line an [`Edit::Align`] lines nodes up on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Alignment {
+    Left,
+    /// Centres on one vertical line.
+    HorizontalCenter,
+    Right,
+    Top,
+    /// Centres on one horizontal line.
+    VerticalCenter,
+    Bottom,
+}
+
+/// What an [`Edit::MatchSize`] copies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dimension {
+    Width,
+    Height,
+    Both,
+}
+
+/// The direction an [`Edit::Distribute`] spaces nodes along.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Axis {
+    Horizontal,
+    Vertical,
 }
 
 /// Applies `edit` to a General Diagram's `layout`; see [`apply_with`].
@@ -136,6 +185,17 @@ fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, scene: &S
         Edit::Close(path) => {
             layout.opened.remove(path);
         }
+        Edit::Align {
+            elements,
+            reference,
+            to,
+        } => align(layout, scene, elements, reference, *to),
+        Edit::MatchSize {
+            elements,
+            reference,
+            dimension,
+        } => match_size(layout, scene, elements, reference, *dimension),
+        Edit::Distribute { elements, axis } => distribute(layout, scene, elements, *axis),
         Edit::Reset => {
             let orphaned = |e: &QualifiedName| !known(e);
             layout.nodes.retain(|e, _| orphaned(e));
@@ -224,6 +284,101 @@ fn move_nodes(layout: &mut Layout, scene: &Scene, elements: &[QualifiedName], dx
                 bend[1] += dy;
             }
         }
+    }
+}
+
+fn align(
+    layout: &mut Layout,
+    scene: &Scene,
+    elements: &[QualifiedName],
+    reference: &QualifiedName,
+    to: Alignment,
+) {
+    let Some(target) = scene.node_bounds(reference) else {
+        return;
+    };
+    for element in elements.iter().filter(|e| *e != reference) {
+        let Some(b) = scene.node_bounds(element) else {
+            continue;
+        };
+        let (dx, dy) = match to {
+            Alignment::Left => (target.x - b.x, 0.0),
+            Alignment::HorizontalCenter => (target.center_x() - b.center_x(), 0.0),
+            Alignment::Right => (target.right() - b.right(), 0.0),
+            Alignment::Top => (0.0, target.y - b.y),
+            Alignment::VerticalCenter => (
+                0.0,
+                (target.y + target.height / 2.0) - (b.y + b.height / 2.0),
+            ),
+            Alignment::Bottom => (0.0, target.bottom() - b.bottom()),
+        };
+        shift(layout, element, dx, dy);
+    }
+}
+
+fn match_size(
+    layout: &mut Layout,
+    scene: &Scene,
+    elements: &[QualifiedName],
+    reference: &QualifiedName,
+    dimension: Dimension,
+) {
+    let Some(target) = scene.node_bounds(reference) else {
+        return;
+    };
+    if layout.collapsed.contains(reference) {
+        return;
+    }
+    for element in elements.iter().filter(|e| *e != reference) {
+        if layout.collapsed.contains(element) {
+            continue;
+        }
+        let (Some(b), Some(placement)) =
+            (scene.node_bounds(element), layout.nodes.get_mut(element))
+        else {
+            continue;
+        };
+        let (width, height) = match dimension {
+            Dimension::Width => (target.width, b.height),
+            Dimension::Height => (b.width, target.height),
+            Dimension::Both => (target.width, target.height),
+        };
+        placement.size = Some([width.max(MIN_NODE_SIZE[0]), height.max(MIN_NODE_SIZE[1])]);
+    }
+}
+
+fn distribute(layout: &mut Layout, scene: &Scene, elements: &[QualifiedName], axis: Axis) {
+    // Each node's start and length along the axis.
+    let span = |b: Rect| match axis {
+        Axis::Horizontal => (b.x, b.width),
+        Axis::Vertical => (b.y, b.height),
+    };
+    let mut nodes: Vec<(&QualifiedName, f32, f32)> = elements
+        .iter()
+        .filter_map(|e| scene.node_bounds(e).map(|b| (e, span(b).0, span(b).1)))
+        .collect();
+    if nodes.len() < 3 {
+        return;
+    }
+    nodes.sort_by(|a, b| a.1.partial_cmp(&b.1).expect("finite"));
+    let (first, last) = (nodes[0], nodes[nodes.len() - 1]);
+    let lengths: f32 = nodes.iter().map(|n| n.2).sum();
+    let gap = (last.1 + last.2 - first.1 - lengths) / (nodes.len() - 1) as f32;
+    let mut at = first.1 + first.2 + gap;
+    for &(element, start, length) in &nodes[1..nodes.len() - 1] {
+        match axis {
+            Axis::Horizontal => shift(layout, element, at - start, 0.0),
+            Axis::Vertical => shift(layout, element, 0.0, at - start),
+        }
+        at += length + gap;
+    }
+}
+
+/// Moves one node, stopping at zero as any move does.
+fn shift(layout: &mut Layout, element: &QualifiedName, dx: f32, dy: f32) {
+    if let Some(placement) = layout.nodes.get_mut(element) {
+        placement.x = (placement.x + dx).max(0.0);
+        placement.y = (placement.y + dy).max(0.0);
     }
 }
 
