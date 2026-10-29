@@ -327,7 +327,7 @@ mod requirements {
         assert_eq!(of("massReq"), Status::Holds);
         assert_eq!(of("rangeReq"), Status::Violated);
         assert_eq!(of("costReq"), Status::Undecided);
-        assert_eq!(of("carMassReq"), Status::Undecided);
+        assert_eq!(of("carMassReq"), Status::Holds);
         assert_eq!(of("spareReq"), Status::Absent);
     }
 

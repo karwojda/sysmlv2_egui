@@ -52,7 +52,7 @@
 <text x="211" y="564" text-anchor="start" font-size="12">mass = 1500.0</text>
 <polyline points="201,574 356,574" fill="none" stroke="#000000"/>
 <text x="278.5" y="595" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="211" y="611" text-anchor="start" font-size="12">satisfy carMassReq ?</text>
+<text x="211" y="611" text-anchor="start" font-size="12">satisfy carMassReq ✓</text>
 <rect x="20" y="453" width="141" height="192" rx="10" fill="#ffffff" stroke="#000000"/>
 <text x="90.5" y="475" text-anchor="middle" font-size="12">«part»</text>
 <text x="90.5" y="493" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
@@ -76,7 +76,7 @@
 <text x="406" y="386" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>
 <polyline points="396,396 667,396" fill="none" stroke="#000000"/>
 <text x="531.5" y="417" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="406" y="433" text-anchor="start" font-size="12">&lt;5&gt; carMassReq:MassLimit ?</text>
+<text x="406" y="433" text-anchor="start" font-size="12">&lt;5&gt; carMassReq:MassLimit ✓</text>
 <text x="406" y="449" text-anchor="start" font-size="12">&lt;3&gt; costReq:CostCap ?</text>
 <text x="406" y="465" text-anchor="start" font-size="12">&lt;1&gt; massReq:MassLimit ✓</text>
 <text x="406" y="481" text-anchor="start" font-size="12">&lt;2&gt; rangeReq:RangeTarget ✗</text>
