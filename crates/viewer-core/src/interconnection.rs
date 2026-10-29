@@ -209,9 +209,8 @@ pub fn path_exists(model: &Model, root: &QualifiedName, path: &str) -> bool {
     let mut segments = path.split('.').peekable();
     while let Some(name) = segments.next() {
         let Some(d) = definition else { return false };
-        let Some(usage) = model
-            .owned_members(&d.qualified_name)
-            .find(|e| e.kind == ElementKind::PartUsage && e.name == name)
+        let Some(usage) =
+            members(model, d).find(|e| e.kind == ElementKind::PartUsage && e.name == name)
         else {
             return false;
         };
@@ -221,6 +220,13 @@ pub fn path_exists(model: &Model, root: &QualifiedName, path: &str) -> bool {
         }
     }
     true
+}
+
+/// `definition`'s own members, then its Inherited Members.
+fn members<'a>(model: &'a Model, definition: &'a Element) -> impl Iterator<Item = &'a Element> {
+    model
+        .owned_members(&definition.qualified_name)
+        .chain(model.inherited_members(definition))
 }
 
 fn definition_of<'a>(model: &'a Model, usage: &Element) -> Option<&'a Element> {
@@ -242,8 +248,7 @@ fn open_box<'a>(
     layout: &Layout,
 ) -> BoxNode<'a> {
     let mut node = closed_box(model, element, Some(definition), path);
-    node.children = model
-        .owned_members(&definition.qualified_name)
+    node.children = members(model, definition)
         .filter(|e| e.kind == ElementKind::PartUsage)
         .filter_map(|usage| {
             let child_path = feature_path(path, &usage.name);
@@ -277,16 +282,20 @@ fn closed_box<'a>(
         .then(|| model.owned_members(&element.qualified_name))
         .into_iter()
         .flatten();
+    let own: Vec<&Element> = own.filter(|e| e.kind == ElementKind::PortUsage).collect();
     let ports = definition
         .into_iter()
-        .flat_map(|d| model.owned_members(&d.qualified_name))
-        .chain(own)
+        .flat_map(|d| members(model, d))
         .filter(|e| e.kind == ElementKind::PortUsage)
+        // A port the usage redefines is drawn as the usage's.
+        .filter(|e| !own.iter().any(|o| model.redefines(o, e)))
+        .chain(own.iter().copied())
         .map(|port| {
             let nested = port
                 .typed_by
                 .iter()
-                .flat_map(|d| model.owned_members(d))
+                .filter_map(|d| model.element(d))
+                .flat_map(|d| members(model, d))
                 .filter(|e| e.kind == ElementKind::PortUsage)
                 .collect();
             PortSlot {
@@ -316,13 +325,12 @@ fn closed_box<'a>(
 /// within this box: to its own ports, or down through its parts as far as
 /// they are drawn.
 fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> Vec<Wire<'a>> {
-    model
-        .owned_members(&definition.qualified_name)
+    members(model, definition)
         .filter(|e| e.kind.is_connection())
         .filter_map(|connection| match &connection.ends[..] {
             [a, b] => {
-                let (a, a_exact) = resolve(node, &a.path)?;
-                let (b, b_exact) = resolve(node, &b.path)?;
+                let (a, a_exact) = resolve(model, node, &a.path)?;
+                let (b, b_exact) = resolve(model, node, &b.path)?;
                 // A binding equates two features: only drawn when both are
                 // drawn exactly (not an attribute inside a part or port).
                 let binding = connection.kind == ElementKind::BindingConnection;
@@ -338,23 +346,31 @@ fn wires<'a>(model: &'a Model, definition: &'a Element, node: &BoxNode<'a>) -> V
 /// innermost closed part on the chain. The flag says whether the end is
 /// exactly the chain's last feature, rather than the nearest drawn box or
 /// port that contains it.
-fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
+fn resolve(model: &Model, node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
+    // Where among the drawn `features` the chain's `name` is: itself, or
+    // the feature drawn in its place because it redefines it.
+    let position_of = |features: &[&Element], name: &QualifiedName| {
+        features
+            .iter()
+            .position(|f| &f.qualified_name == name)
+            .or_else(|| {
+                let meant = model.element(name)?;
+                features.iter().position(|f| model.redefines(f, meant))
+            })
+    };
     let port_of = |b: &BoxNode, name: &QualifiedName| {
-        b.ports.iter().position(|s| &s.port.qualified_name == name)
+        let ports: Vec<&Element> = b.ports.iter().map(|s| s.port).collect();
+        position_of(&ports, name)
     };
     let child_of = |b: &BoxNode, name: &QualifiedName| {
-        b.children
-            .iter()
-            .position(|c| &c.element.qualified_name == name)
+        let children: Vec<&Element> = b.children.iter().map(|c| c.element).collect();
+        position_of(&children, name)
     };
     let (first, rest) = chain.split_first()?;
     if let Some(port) = port_of(node, first) {
-        let nested = rest.first().and_then(|next| {
-            node.ports[port]
-                .nested
-                .iter()
-                .position(|n| &n.qualified_name == next)
-        });
+        let nested = rest
+            .first()
+            .and_then(|next| position_of(&node.ports[port].nested, next));
         let exact = rest.is_empty() || nested.is_some() && rest.len() == 1;
         return Some((
             End::Port {
@@ -376,12 +392,7 @@ fn resolve(node: &BoxNode, chain: &[QualifiedName]) -> Option<(End, bool)> {
             // The rest of the chain, if any, is inside the port: one of its
             // nested ports, or an item it carries, which isn't drawn.
             let after = rest.get(i + 1);
-            let nested = after.and_then(|next| {
-                current.ports[port]
-                    .nested
-                    .iter()
-                    .position(|n| &n.qualified_name == next)
-            });
+            let nested = after.and_then(|next| position_of(&current.ports[port].nested, next));
             let exact = match nested {
                 Some(_) => i + 2 == rest.len(),
                 None => last,
