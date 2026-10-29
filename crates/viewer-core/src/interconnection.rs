@@ -160,11 +160,25 @@ pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Sce
         _ => return Err(unsuitable()),
     };
 
-    let mut frame = open_box(model, root_element, definition, "", layout);
-    size(&mut frame, layout);
-    place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
-    place_own_ports(&mut frame);
-    place_child_ports(&mut frame, true);
+    // A box whose port labels don't fit along a side grows along it, and
+    // everything is laid out again around it.
+    let mut grown: BTreeMap<String, (f32, f32)> = BTreeMap::new();
+    let lay_out = |grown: &BTreeMap<String, (f32, f32)>| {
+        let mut frame = open_box(model, root_element, definition, "", layout);
+        size(&mut frame, layout, grown);
+        place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
+        place_own_ports(&mut frame);
+        place_child_ports(&mut frame, true);
+        frame
+    };
+    let mut frame = lay_out(&grown);
+    for _ in 0..GROWTH_ROUNDS {
+        if !separate_labels(&mut frame, layout, &mut grown) {
+            break;
+        }
+        frame = lay_out(&grown);
+    }
+    separate_labels(&mut frame, layout, &mut grown);
     apply_port_overrides(&mut frame, layout);
 
     let mut items = Vec::new();
@@ -475,7 +489,8 @@ fn label_stack_below(node: &BoxNode, c: usize) -> f32 {
 /// Sizes a box from the inside out, placing its children relative to its
 /// top-left corner: where the Layout saved them, the rest arranged
 /// automatically below those.
-fn size(node: &mut BoxNode, layout: &Layout) {
+fn size(node: &mut BoxNode, layout: &Layout, grown: &BTreeMap<String, (f32, f32)>) {
+    let at_least = grown.get(&node.path).copied().unwrap_or((0.0, 0.0));
     let title_width = text_width(&title(node.element), USAGE_NAME_FONT)
         .max(text_width("«part def»", KEYWORD_FONT));
     let ports_width = edge_room(node, Direction::In).max(edge_room(node, Direction::Out));
@@ -488,13 +503,15 @@ fn size(node: &mut BoxNode, layout: &Layout) {
             .max(MIN_NODE_WIDTH)
             .max(ports_width);
         let height = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
-        let [width, height] = saved.unwrap_or([width.ceil(), height.ceil()]);
+        // A size the user saved wins over growing for labels.
+        let [width, height] =
+            saved.unwrap_or([width.ceil().max(at_least.0), height.ceil().max(at_least.1)]);
         node.rect.width = width;
         node.rect.height = height;
         return;
     }
     for child in &mut node.children {
-        size(child, layout);
+        size(child, layout, grown);
     }
     // Layers top to bottom from each wire's `out` end to its `in` end, with
     // room for port labels above and below every child, and below it for
@@ -578,9 +595,168 @@ fn size(node: &mut BoxNode, layout: &Layout) {
     let height = (bottom + BOX_PADDING).ceil();
     // A saved size can make a box with parts bigger, never smaller than
     // what it holds.
-    let [width, height] = saved.map_or([width, height], |[w, h]| [w.max(width), h.max(height)]);
+    let [width, height] = saved
+        .map_or([width.max(at_least.0), height.max(at_least.1)], |[w, h]| {
+            [w.max(width), h.max(height)]
+        });
     node.rect.width = width;
     node.rect.height = height;
+}
+
+/// How many times a diagram is laid out again for boxes grown to fit their
+/// port labels; one round settles all but nested growth.
+const GROWTH_ROUNDS: usize = 4;
+
+/// How far a plain port's label starts from the port, beside it on the
+/// top or bottom.
+const LABEL_BESIDE: f32 = PORT_SIZE / 2.0 + 3.0;
+/// How far a composite port's label starts from the end of its bar.
+const BAR_LABEL_GAP: f32 = 4.0;
+/// The gap kept between one port's label and the next port: half a port.
+const LABEL_GAP: f32 = PORT_SIZE / 2.0;
+
+/// How far a port and its label reach along its side, before and after
+/// the port's offset, as `draw_ports` and `composite_port` draw them: on
+/// the top or bottom the label runs on after the port (or its bar); on the
+/// left or right it sits above it.
+fn label_span(slot: &PortSlot) -> (f32, f32) {
+    let bar = bar_length(slot, slot.side.vertical());
+    let half = if slot.nested.is_empty() {
+        PORT_SIZE / 2.0
+    } else {
+        bar / 2.0
+    };
+    if slot.side.vertical() {
+        let start = if slot.nested.is_empty() {
+            LABEL_BESIDE
+        } else {
+            half + BAR_LABEL_GAP
+        };
+        (half, start + text_width(&port_label(slot.port), LABEL_FONT))
+    } else {
+        (half + LABEL_ROOM, half)
+    }
+}
+
+/// Keeps the labels of the ports along each side of every box clear of
+/// each other and, on top, of the box's title. Ports spread evenly keep
+/// their places where they already clear; otherwise the side's ports are
+/// packed in their order and centred. A box too short for them is noted
+/// in `grown` at the length they need; returns whether any was. Ports the
+/// user placed in the Layout are left to them. Children go first, so a
+/// box's own ports line up with where theirs end up.
+fn separate_labels(
+    node: &mut BoxNode,
+    layout: &Layout,
+    grown: &mut BTreeMap<String, (f32, f32)>,
+) -> bool {
+    let mut grew = false;
+    for child in &mut node.children {
+        grew |= separate_labels(child, layout, grown);
+    }
+    if node.path.is_empty() {
+        align_own_ports(node);
+    }
+    let titled = !node.children.is_empty();
+    if titled {
+        clear_of_title(node);
+    }
+    let mut needs = (node.rect.width, node.rect.height);
+    for side in [Side::Top, Side::Bottom, Side::Left, Side::Right] {
+        let length = if side.vertical() {
+            node.rect.width
+        } else {
+            node.rect.height
+        };
+        let path = node.path.clone();
+        let mut on_side: Vec<usize> = (0..node.ports.len())
+            .filter(|&q| node.ports[q].side == side)
+            .filter(|&q| {
+                let key = feature_path(&path, &node.ports[q].port.name);
+                !layout.ports.contains_key(&key)
+            })
+            .collect();
+        on_side.sort_by(|a, b| node.ports[*a].offset.total_cmp(&node.ports[*b].offset));
+        // On top, the title keeps the middle; ports go either side of it.
+        let title = (titled && side == Side::Top).then(|| title_span(node));
+        let groups: Vec<Vec<usize>> = match title {
+            Some((left, _)) => {
+                let (before, after): (Vec<usize>, Vec<usize>) =
+                    on_side.iter().partition(|&&q| node.ports[q].offset < left);
+                vec![before, after]
+            }
+            None => vec![on_side],
+        };
+        let spans: BTreeMap<usize, (f32, f32)> = groups
+            .iter()
+            .flatten()
+            .map(|&q| (q, label_span(&node.ports[q])))
+            .collect();
+        let packed = |group: &[usize]| {
+            group.iter().map(|q| spans[q].0 + spans[q].1).sum::<f32>()
+                + LABEL_GAP * group.len().saturating_sub(1) as f32
+        };
+        let offsets: BTreeMap<usize, f32> =
+            spans.keys().map(|&q| (q, node.ports[q].offset)).collect();
+        // Each port on the side, and each label clear of the next port;
+        // the last label may run on past the side's end, as ever.
+        // Ports between `from` and `to`, each label clear of the next port.
+        let clear = |group: &[usize], from: f32, to: f32| {
+            let mut reach = f32::NEG_INFINITY;
+            group.iter().all(|q| {
+                let (back, forward) = spans[q];
+                let fits = offsets[q] - back >= reach && (from..=to).contains(&offsets[q]);
+                reach = offsets[q] + forward + LABEL_GAP;
+                fits
+            })
+        };
+        // How long a side must be for `group` packed: the last label
+        // running on past its end.
+        let room = |group: &[usize]| match group.last() {
+            Some(last) => packed(group) - spans[last].1 + PORT_SIZE / 2.0,
+            None => 0.0,
+        };
+        let bounds: Vec<(f32, f32)> = match title {
+            Some((left, right)) => vec![(0.0, left), (right, length)],
+            None => vec![(0.0, length)],
+        };
+        let mut need = 0.0_f32;
+        for (group, &(from, to)) in groups.iter().zip(&bounds) {
+            need = need.max(match title {
+                // Each half as long as its group, and the title between.
+                Some((left, right)) => 2.0 * (packed(group) + LABEL_GAP) + (right - left),
+                None => room(group) + 2.0 * LABEL_GAP,
+            });
+            if group.is_empty() || clear(group, from, to) {
+                continue;
+            }
+            // Packed against the title, or centred on a side of its own.
+            let first = spans[&group[0]].0;
+            let last = spans[&group[group.len() - 1]].1;
+            let mut at = match title {
+                Some(_) if from == 0.0 => to - (packed(group) - first - last) - first,
+                Some(_) => from - first,
+                None => (from + to - room(group)) / 2.0,
+            };
+            for q in group {
+                let (back, forward) = spans[q];
+                node.ports[*q].offset = (at + back).round();
+                at += back + forward + LABEL_GAP;
+            }
+        }
+        if side.vertical() {
+            needs.0 = needs.0.max(need.ceil());
+        } else {
+            needs.1 = needs.1.max(need.ceil());
+        }
+    }
+    if needs.0 > node.rect.width + 0.5 || needs.1 > node.rect.height + 0.5 {
+        let entry = grown.entry(node.path.clone()).or_insert((0.0, 0.0));
+        let wanted = (entry.0.max(needs.0), entry.1.max(needs.1));
+        grew |= wanted != *entry;
+        *entry = wanted;
+    }
+    grew
 }
 
 /// Turns child positions relative to their box into absolute ones.
@@ -734,11 +910,7 @@ fn place_child_ports(node: &mut BoxNode, align_own: bool) {
 /// nearer, so connectors from them don't run through the title text.
 fn clear_of_title(node: &mut BoxNode) {
     let rect = node.rect;
-    let half = text_width(&title(node.element), USAGE_NAME_FONT)
-        .max(text_width("«part def»", KEYWORD_FONT))
-        / 2.0
-        + PORT_SPACING;
-    let (left, right) = (rect.width / 2.0 - half, rect.width / 2.0 + half);
+    let (left, right) = title_span(node);
     let mut on_top: Vec<usize> = (0..node.ports.len())
         .filter(|&q| node.ports[q].side == Side::Top)
         .collect();
@@ -762,6 +934,15 @@ fn clear_of_title(node: &mut BoxNode) {
         node.ports[q].offset = offset.round();
         edge = offset + PORT_SPACING;
     }
+}
+
+/// Where along a box's top its title keeps clear of ports, from its left.
+fn title_span(node: &BoxNode) -> (f32, f32) {
+    let half = text_width(&title(node.element), USAGE_NAME_FONT)
+        .max(text_width("«part def»", KEYWORD_FONT))
+        / 2.0
+        + PORT_SPACING;
+    (node.rect.width / 2.0 - half, node.rect.width / 2.0 + half)
 }
 
 /// Moves each of the box's own ports in line with the port it is wired to
@@ -942,7 +1123,7 @@ fn draw_ports(node: &BoxNode, items: &mut Vec<Item>) {
             width: PORT_SIZE,
             height: PORT_SIZE,
         };
-        let beside = PORT_SIZE / 2.0 + 3.0;
+        let beside = LABEL_BESIDE;
         let (position, anchor) = match slot.side {
             Side::Top => (
                 Point::new(p.x + beside, p.y - LABEL_OFFSET),
@@ -1070,12 +1251,15 @@ fn composite_port(node: &BoxNode, slot: &PortSlot, depicts: Depicts) -> Vec<Item
         } else {
             bar.bottom() + LABEL_OFFSET + LABEL_FONT.size
         };
-        (Point::new(bar.right() + 4.0, y), TextAnchor::Start)
+        (
+            Point::new(bar.right() + BAR_LABEL_GAP, y),
+            TextAnchor::Start,
+        )
     } else {
         let x = if slot.side == Side::Left {
-            bar.x - 4.0
+            bar.x - BAR_LABEL_GAP
         } else {
-            bar.right() + 4.0
+            bar.right() + BAR_LABEL_GAP
         };
         let anchor = if slot.side == Side::Left {
             TextAnchor::End
