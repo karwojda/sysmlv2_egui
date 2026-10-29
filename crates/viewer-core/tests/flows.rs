@@ -63,6 +63,7 @@ fn an_unnamed_connection_is_listed_by_its_ends_in_the_connections_compartment() 
             _ => None,
         })
         .collect();
+    let rows = common::rejoined(rows);
 
     assert!(
         rows.contains(&"(tank.fuelOut.inner → engine.fuelIn.inner)".to_owned()),
@@ -216,6 +217,7 @@ fn the_general_diagram_lists_flows_and_draws_them_with_arrowheads() {
             _ => None,
         })
         .collect();
+    let rows = common::rejoined(rows);
     assert!(
         rows.contains(&"flow fuelFlow:Fuel (tank.fuelOut → engine.fuelIn)".to_owned()),
         "{rows:?}"

@@ -1,5 +1,7 @@
 //! Seam 1: the full first-slice language subset in General Diagrams.
 
+mod common;
+
 use std::path::Path;
 
 use viewer_core::model::Direction;
@@ -169,7 +171,7 @@ fn definitions_list_their_features_in_compartments() {
     let scene = scene();
 
     assert_eq!(
-        node_texts(&scene, "Structure::Vehicle"),
+        common::rejoined(node_texts(&scene, "Structure::Vehicle")),
         [
             "«part def»",
             "Vehicle",
@@ -443,12 +445,34 @@ fn a_single_edge_between_two_nodes_stays_straight() {
     let points = scene
         .items_depicting(&link)
         .find_map(|s| match s {
-            Shape::Polyline { points, .. } => Some(points.len()),
+            Shape::Polyline { points, .. } => Some(points.clone()),
             _ => None,
         })
         .unwrap();
 
-    assert_eq!(points, 2);
+    // Not fanned: straight, unless it bends around a node in its way.
+    if points.len() > 2 {
+        let centre = |n: &str| {
+            let r = scene.element_bounds(&qn(n)).unwrap();
+            (r.x + r.width / 2.0, r.y + r.height / 2.0)
+        };
+        let (a, b) = (centre("Structure::vehicle"), centre("Structure::spare"));
+        let in_the_way = ["Structure::Tank", "Structure::Engine", "Structure::Vehicle"]
+            .iter()
+            .any(|n| {
+                let r = scene.element_bounds(&qn(n)).unwrap();
+                (0..=100).any(|i| {
+                    let t = i as f32 / 100.0;
+                    let (x, y) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+                    x >= r.x - 10.0
+                        && x <= r.right() + 10.0
+                        && y >= r.y - 10.0
+                        && y <= r.bottom() + 10.0
+                })
+            });
+        assert!(in_the_way, "{points:?}");
+        assert_eq!(points.len(), 3, "one bend around it");
+    }
 }
 
 #[test]

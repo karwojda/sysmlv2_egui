@@ -200,13 +200,13 @@ fn the_model_records_its_tool_links_and_each_feature_s_design_value_with_its_mod
                 "Drive::drive::engine::volume",
                 "Engine",
                 "1000000.0 [mm^3]",
-                "900000.0 [millimetre ** 3]"
+                "900000.0 [mm ** 3]"
             ),
             outcome(
                 "Drive::drive::gearbox::volume",
                 "Assembly.Link.",
                 "300000.0 [mm^3]",
-                "0.0002 [metre ** 3]"
+                "0.0002 [m ** 3]"
             ),
         ]
     );
@@ -321,7 +321,7 @@ fn a_redefinition_of_an_inherited_default_takes_the_design_value_and_the_def_kee
     );
     assert_eq!(
         element(&model, "Gearbox::volume").value.as_deref(),
-        Some("default 200000.0 [millimetre ** 3]")
+        Some("default 200000.0 [mm ** 3]")
     );
     assert_eq!(element(&model, "drive::mass").computed, ["8.66 [kg]"]);
     assert_eq!(requirement_status(&model), Status::Violated);
@@ -365,7 +365,7 @@ fn valueless_features_are_recorded_by_their_resolved_names_with_the_model_value_
                 "Drive::drive::gearbox::volume",
                 "Assembly.Link.",
                 "300000.0 [mm^3]",
-                Some("default 200000.0 [millimetre ** 3]")
+                Some("default 200000.0 [mm ** 3]")
             ),
         ]
     );

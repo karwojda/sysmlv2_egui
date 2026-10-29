@@ -165,7 +165,27 @@ impl OpenSysmlBackend {
     }
 }
 
+/// How a service's reported build version is shown: as it is (`v0.10.0`,
+/// `dev`), or `unknown` when it reports none.
+fn version_text(reported: &str) -> String {
+    let reported = reported.trim();
+    let shown = if reported.is_empty() {
+        "unknown"
+    } else {
+        reported
+    };
+    format!("OpenSysML sysml-grpc {shown}")
+}
+
 impl ModelBackend for OpenSysmlBackend {
+    /// The version the running service reports, so an override
+    /// (`--sysml-binary`, `--sysml-service`) is named truthfully.
+    fn loaded_by(&self) -> Option<String> {
+        self.connection
+            .as_ref()
+            .map(|connection| version_text(&connection.server_info().version))
+    }
+
     fn load_with(&mut self, folder: &Path, analyses: &Analyses) -> Result<Model, BackendError> {
         if !folder.is_dir() {
             return Err(BackendError::FolderNotFound(folder.to_path_buf()));
@@ -219,7 +239,11 @@ impl ModelBackend for OpenSysmlBackend {
                 message: format!(
                     "connection ends, documentation and source lines are missing for this file: {error}"
                 ),
-                location: Some(SourceLocation { file, line: 0 }),
+                location: Some(SourceLocation {
+                    file,
+                    line: 0,
+                    column: None,
+                }),
             });
         }
         let checked = design_values::check(
@@ -352,6 +376,7 @@ fn diagnostic(d: &opensysml::Diagnostic) -> Diagnostic {
         location: d.span.as_ref().map(|span| SourceLocation {
             file: PathBuf::from(&span.file),
             line: span.start_line.max(0) as u32,
+            column: None,
         }),
     }
 }
@@ -363,6 +388,13 @@ fn unavailable(error: opensysml::Error) -> BackendError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_service_without_a_version_is_shown_as_unknown() {
+        assert_eq!(version_text("v0.10.0"), "OpenSysML sysml-grpc v0.10.0");
+        assert_eq!(version_text("dev"), "OpenSysML sysml-grpc dev");
+        assert_eq!(version_text(""), "OpenSysML sysml-grpc unknown");
+    }
 
     #[test]
     fn start_failures_say_how_to_configure_a_binary_or_service() {

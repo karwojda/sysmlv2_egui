@@ -46,10 +46,9 @@ fn lists_every_requirement_usage_with_its_status_and_claims_in_name_order() {
         lines[0],
         "✗ Violated    Req::vehicleSpec              rolled up from 5 nested requirements"
     );
-    assert!(
-        lines[1].starts_with("? Undecided   Req::vehicleSpec::carMassReq  by Req::car ? "),
-        "{}",
-        lines[1]
+    assert_eq!(
+        lines[1],
+        "✓ Satisfied   Req::vehicleSpec::carMassReq  by Req::car ✓"
     );
     assert_eq!(
         lines[3],
@@ -61,7 +60,7 @@ fn lists_every_requirement_usage_with_its_status_and_claims_in_name_order() {
     );
     assert_eq!(
         lines[6],
-        "6 requirements: 1 satisfied, 2 violated, 2 undecided, 1 not claimed"
+        "6 requirements: 2 satisfied, 2 violated, 1 undecided, 1 not claimed"
     );
 }
 
