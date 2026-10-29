@@ -435,7 +435,7 @@ fn general<'a>(
             }
         })
         .collect();
-    let rects = place(&nodes, &contents, &layering, &families, saved);
+    let layout::Layered { rects, stacked } = place(&nodes, &contents, &layering, &families, saved);
 
     // Edges without a saved route that join the same two nodes are fanned
     // out, numbered from the lower node index so direction doesn't matter.
@@ -478,7 +478,7 @@ fn general<'a>(
         paths.push(notation::route(rects[from], rects[to], &bends));
     }
     let CompositionTrees { trunks, branches } =
-        composition_trees(&edges, &nodes, &rects, &routed_by_user);
+        composition_trees(&edges, &nodes, &rects, &stacked, &routed_by_user);
     let in_tree: Vec<bool> = branches.iter().map(Option::is_some).collect();
     for (path, branch) in paths.iter_mut().zip(&branches) {
         if let Some(branch) = branch {
@@ -530,14 +530,18 @@ fn general<'a>(
         items.extend(notation::composition_trunk(depicts, trunk));
     }
     for ((edge, path), tree) in edges.iter().zip(paths).zip(in_tree) {
-        let (depicts, _, _) = describe(edge, &nodes);
+        let (depicts, _, child) = describe(edge, &nodes);
+        // A stacked child's branch comes across into its left edge.
+        let across = stacked[child];
         items.extend(match *edge {
             Edge::Specialization { .. } => notation::specialization(depicts, path),
             Edge::Typing { .. } => notation::defined_by(depicts, path),
             Edge::Composition { usage, .. } if tree => {
-                notation::composition_branch(depicts, Some(usage), path)
+                notation::composition_branch(depicts, Some(usage), path, across)
             }
-            Edge::Ownership { .. } if tree => notation::composition_branch(depicts, None, path),
+            Edge::Ownership { .. } if tree => {
+                notation::composition_branch(depicts, None, path, across)
+            }
             Edge::Composition { usage, .. } => notation::composition(depicts, Some(usage), path),
             Edge::Ownership { .. } => notation::composition(depicts, None, path),
             Edge::Connection { connection, .. } => notation::connection(depicts, connection, path),
@@ -566,6 +570,7 @@ fn composition_trees(
     edges: &[Edge],
     nodes: &[&Element],
     rects: &[Rect],
+    stacked: &[bool],
     routed_by_user: &[bool],
 ) -> CompositionTrees {
     let mut candidates: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
@@ -581,35 +586,39 @@ fn composition_trees(
     let mut branches: Vec<Option<Vec<Point>>> = vec![None; edges.len()];
     for (owner, members) in candidates {
         let parent = rects[owner];
-        let top = members
+        // Leaves the layout stacked in a column beside the trunk hang from
+        // it by a branch into their left edge; the rest hang from the bar.
+        let (column, row): (Vec<_>, Vec<_>) = members.into_iter().partition(|&(_, c)| stacked[c]);
+        let top = row
             .iter()
+            .chain(&column)
             .map(|&(_, c)| rects[c].y)
             .fold(f32::INFINITY, f32::min);
         let mut bar_y = (parent.bottom() + top) / 2.0;
-        let clear = |x: f32, child: usize| {
-            let from = Point::new(x, bar_y);
-            let to = Point::new(x, rects[child].y);
+        let crosses_none = |from: Point, to: Point, child: usize| {
             (0..rects.len())
                 .filter(|&i| i != owner && i != child)
                 .all(|i| !notation::crosses(from, to, rects[i]))
         };
-        let kept: Vec<(usize, usize)> = members
+        let row: Vec<(usize, usize)> = row
             .into_iter()
-            .filter(|&(_, c)| clear(rects[c].center_x(), c))
+            .filter(|&(_, c)| {
+                let x = rects[c].center_x();
+                crosses_none(Point::new(x, bar_y), Point::new(x, rects[c].y), c)
+            })
             .collect();
-        let Some(&(_, first)) = kept.first() else {
-            continue;
+        let tip_x = match (&row[..], &column[..]) {
+            ([], []) => continue,
+            // One child hangs straight below, as far along the bottom as goes.
+            ([(_, only)], []) => {
+                let inset = notation::DIAMOND_ROOM;
+                rects[*only]
+                    .center_x()
+                    .clamp(parent.x + inset, parent.right() - inset)
+            }
+            _ => parent.center_x(),
         };
-        // One child hangs straight below, as far along the bottom as goes.
-        let inset = notation::DIAMOND_ROOM;
-        let tip_x = if kept.len() == 1 {
-            rects[first]
-                .center_x()
-                .clamp(parent.x + inset, parent.right() - inset)
-        } else {
-            parent.center_x()
-        };
-        let bar = kept
+        let bar = row
             .iter()
             .map(|&(_, c)| rects[c].center_x())
             .fold((tip_x, tip_x), |(low, high), x| (low.min(x), high.max(x)));
@@ -622,15 +631,21 @@ fn composition_trees(
         {
             bar_y += BAR_STAGGER;
         }
-        for (e, c) in kept {
+        let mut end = bar_y;
+        for (e, c) in row {
             let x = rects[c].center_x();
             branches[e] = Some(vec![Point::new(x, bar_y), Point::new(x, rects[c].y)]);
+        }
+        for (e, c) in column {
+            let y = rects[c].y + rects[c].height / 2.0;
+            end = end.max(y);
+            branches[e] = Some(vec![Point::new(tip_x, y), Point::new(rects[c].x, y)]);
         }
         trunks.push((
             owner,
             notation::Trunk {
                 tip: Point::new(tip_x, parent.bottom()),
-                end: bar_y,
+                end,
                 bar_y,
                 bar,
             },
@@ -731,14 +746,15 @@ fn describe(edge: &Edge, nodes: &[&Element]) -> (Depicts, usize, usize) {
 
 /// Node rects: saved placements as they are; every other node arranged
 /// automatically (with the edges among them) and set below the saved ones,
-/// so nothing saved moves and nothing new overlaps it.
+/// so nothing saved moves and nothing new overlaps it. Also gives, for each
+/// node, whether the layout stacked it beside its parent's trunk.
 fn place(
     nodes: &[&Element],
     contents: &[notation::NodeContent],
     layering: &[(usize, usize)],
     families: &[layout::Family],
     saved: &Layout,
-) -> Vec<Rect> {
+) -> layout::Layered {
     let saved_rect = |i: usize| {
         saved.nodes.get(&nodes[i].qualified_name).map(|p| {
             let [width, height] = p.size.unwrap_or_else(|| {
@@ -786,11 +802,11 @@ fn place(
         let bottom = saved_rects.iter().map(Rect::bottom).fold(0.0, f32::max);
         (left, bottom + NEW_NODES_GAP)
     };
-    (0..nodes.len())
+    let rects = (0..nodes.len())
         .map(|i| match saved_rect(i) {
             Some(rect) => rect,
             None => {
-                let r = auto[local(i).expect("an unplaced node has an automatic place")];
+                let r = auto.rects[local(i).expect("an unplaced node has an automatic place")];
                 Rect {
                     x: r.x + left,
                     y: r.y + top,
@@ -798,5 +814,9 @@ fn place(
                 }
             }
         })
-        .collect()
+        .collect();
+    let stacked = (0..nodes.len())
+        .map(|i| local(i).is_some_and(|l| auto.stacked[l]))
+        .collect();
+    layout::Layered { rects, stacked }
 }
