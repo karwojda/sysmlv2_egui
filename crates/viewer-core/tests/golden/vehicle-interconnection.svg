@@ -14,8 +14,8 @@
 <text x="185" y="163" text-anchor="middle" font-size="14">tanks:Tank [1..2]</text>
 <polyline points="185,173 185,275" fill="none" stroke="#000000"/>
 <text x="191" y="227.67" text-anchor="start" font-size="11">iface:FuelInterface</text>
-<polyline points="185,173 185,275" fill="none" stroke="#000000"/>
-<text x="191" y="243.97" text-anchor="start" font-size="11">line:FuelLine</text>
+<polyline points="185,173 185,189 193,189 193,259 185,259 185,275" fill="none" stroke="#000000"/>
+<text x="199" y="243.97" text-anchor="start" font-size="11">line:FuelLine</text>
 <polyline points="185,325 185,411" fill="none" stroke="#000000"/>
 <text x="191" y="371.67" text-anchor="start" font-size="11">statusLink</text>
 <rect x="181" y="406" width="10" height="10" fill="#ffffff" stroke="#000000"/>

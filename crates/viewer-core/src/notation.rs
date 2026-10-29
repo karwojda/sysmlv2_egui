@@ -453,6 +453,29 @@ pub(crate) fn flow_arrow(points: &[Point]) -> Shape {
     }
 }
 
+/// A flow's arrowhead at its target: the tip just short of the path's end
+/// (`back` before it), pointing along the last segment, so opposing flows
+/// between the same ports read as two arrows.
+pub(crate) fn flow_arrow_at_end(points: &[Point], back: f32) -> Shape {
+    let (before, end) = last_segment(points);
+    let tip = back_from(end, before, back);
+    let base = back_from(end, before, back + FLOW_ARROW_LENGTH);
+    let (ux, uy) = (tip.x - base.x, tip.y - base.y);
+    let length = (ux * ux + uy * uy).sqrt().max(f32::EPSILON);
+    let (nx, ny) = (
+        -uy / length * FLOW_ARROW_HALF_WIDTH,
+        ux / length * FLOW_ARROW_HALF_WIDTH,
+    );
+    Shape::Polygon {
+        points: vec![
+            tip,
+            Point::new(base.x + nx, base.y + ny),
+            Point::new(base.x - nx, base.y - ny),
+        ],
+        fill: Fill::Stroke,
+    }
+}
+
 /// `name:Type [multiplicity]`, with `~` for a conjugated type.
 pub(crate) fn usage_label(element: &Element) -> String {
     let mut label = element.name.clone();
