@@ -82,6 +82,12 @@ pub struct ViewerApp {
 /// drag carries the edge's bends being edited.
 enum Drag {
     Pan,
+    /// A selection box from where the drag began to the pointer, in scene
+    /// coordinates.
+    Select {
+        from: viewer_core::scene::Point,
+        to: viewer_core::scene::Point,
+    },
     Move(QualifiedName),
     Resize(QualifiedName),
     /// A port (by key) dragged along the border of the box with key `on`.
@@ -355,6 +361,12 @@ impl ViewerApp {
     }
 
     fn activate(&mut self, index: usize) {
+        // A Selection lasts only while its Diagram is the one shown.
+        if self.active != Some(index) {
+            for diagram in &mut self.diagrams {
+                diagram.selection.clear();
+            }
+        }
         self.active = Some(index);
         let diagram = &self.diagrams[index];
         let file_name = match (&diagram.name, &diagram.source) {
@@ -1061,10 +1073,16 @@ impl ViewerApp {
                 .input(|i| i.pointer.press_origin())
                 .or(response.interact_pointer_pos())
         {
+            let shift = ui.input(|i| i.modifiers.shift);
             self.drag = Some(match grab_at(scene, view, origin, start) {
                 Grab::Resize(element) => Drag::Resize(element),
                 Grab::Port { key, on } => Drag::Port { key, on },
                 Grab::Move(element) => Drag::Move(element),
+                // Shift-dragging empty canvas draws a selection box.
+                Grab::Pan if shift => {
+                    let at = view.to_scene(origin, start);
+                    Drag::Select { from: at, to: at }
+                }
                 Grab::Pan => Drag::Pan,
                 Grab::Bend { edge, index } => Drag::Bend {
                     key: edge.edge_key().expect("an edge has a key"),
@@ -1086,12 +1104,23 @@ impl ViewerApp {
         if response.dragged() {
             let delta = response.drag_delta() / view.zoom;
             match &mut self.drag {
+                // A selected node takes the whole Selection along.
                 Some(Drag::Move(element)) => {
+                    let elements = if diagram.selection.contains(element) {
+                        diagram.selection.keys().to_vec()
+                    } else {
+                        vec![element.clone()]
+                    };
                     edit = Some(Edit::Move {
-                        element: element.clone(),
+                        elements,
                         dx: delta.x,
                         dy: delta.y,
                     });
+                }
+                Some(Drag::Select { to, .. }) => {
+                    if let Some(pointer) = response.interact_pointer_pos() {
+                        *to = view.to_scene(origin, pointer);
+                    }
                 }
                 Some(Drag::Resize(element)) => {
                     if let Some(b) = scene.node_bounds(element) {
@@ -1130,7 +1159,13 @@ impl ViewerApp {
         let drag_began = response.drag_started_by(egui::PointerButton::Primary);
         let drag_ended = response.drag_stopped();
         if drag_ended {
+            if let Some(Drag::Select { from, to }) = &self.drag {
+                diagram.selection.boxed(scene, area(*from, *to));
+            }
             self.drag = None;
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input() {
+            diagram.selection.clear();
         }
         if let Some(pointer) = response.hover_pos() {
             let (zoom, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
@@ -1188,10 +1223,19 @@ impl ViewerApp {
                 }
                 _ => None,
             };
-            let node = pointer_scene
+            let node_key = pointer_scene
                 .and_then(|p| scene.element_at(p))
-                .and_then(|k| scene.element_of(k))
-                .cloned();
+                .filter(|_| port.is_none());
+            let node = node_key.and_then(|k| scene.element_of(k)).cloned();
+            // A plain click picks one node, or none; Ctrl or Shift adds or
+            // takes a node out.
+            let adding = ui.input(|i| i.modifiers.shift || i.modifiers.command);
+            match node_key {
+                Some(key) if adding => diagram.selection.toggle(scene, key),
+                Some(key) => diagram.selection.only(scene, key),
+                None if !adding => diagram.selection.clear(),
+                None => {}
+            }
             select = Some(port.or(node).or(connection));
         }
         if response.secondary_clicked() {
@@ -1220,6 +1264,32 @@ impl ViewerApp {
         let clipped = painter.with_clip_rect(response.rect);
         canvas::paint(&clipped, scene, view, origin, highlight);
         let accent = egui::Color32::from_rgb(0x1f, 0x6f, 0xeb);
+        let to_screen = |r: viewer_core::scene::Rect| {
+            egui::Rect::from_min_size(
+                view.to_screen(origin, viewer_core::scene::Point::new(r.x, r.y)),
+                egui::vec2(r.width, r.height) * view.zoom,
+            )
+        };
+        for key in diagram.selection.keys() {
+            if let Some(bounds) = scene.node_bounds(key) {
+                clipped.rect_stroke(
+                    to_screen(bounds),
+                    1.0,
+                    egui::Stroke::new(2.0, accent),
+                    egui::StrokeKind::Outside,
+                );
+            }
+        }
+        if let Some(Drag::Select { from, to }) = &self.drag {
+            let band = to_screen(area(*from, *to));
+            clipped.rect_filled(band, 0.0, accent.gamma_multiply(0.08));
+            clipped.rect_stroke(
+                band,
+                0.0,
+                egui::Stroke::new(1.0, accent),
+                egui::StrokeKind::Inside,
+            );
+        }
         // A selected port or connection is outlined where it's drawn.
         if let Some(selected) = &self.selected {
             for item in &scene.items {
@@ -1291,6 +1361,7 @@ impl ViewerApp {
                 (Some(Drag::Resize(_)), _) | (None, Some(Grab::Resize(_))) => {
                     egui::CursorIcon::ResizeNwSe
                 }
+                (Some(Drag::Select { .. }), _) => egui::CursorIcon::Crosshair,
                 (Some(Drag::Move(_) | Drag::Bend { .. } | Drag::Port { .. }), _) => {
                     egui::CursorIcon::Grabbing
                 }
@@ -1621,6 +1692,16 @@ fn open_in_editor(source: &viewer_core::SourceLocation) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Could not open {target} with `code -g` ({e}). Is VS Code's `code` command on your PATH?"))
+}
+
+/// The rect spanned by two corners, in either order.
+fn area(a: viewer_core::scene::Point, b: viewer_core::scene::Point) -> viewer_core::scene::Rect {
+    viewer_core::scene::Rect {
+        x: a.x.min(b.x),
+        y: a.y.min(b.y),
+        width: (a.x - b.x).abs(),
+        height: (a.y - b.y).abs(),
+    }
 }
 
 /// The diagnostic as one line (see [`Diagnostic::line`]), with the file

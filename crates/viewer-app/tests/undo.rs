@@ -21,7 +21,7 @@ fn qn(name: &str) -> QualifiedName {
 
 fn move_car(dx: f32) -> Edit {
     Edit::Move {
-        element: qn("P::Car"),
+        elements: vec![qn("P::Car")],
         dx,
         dy: 0.0,
     }

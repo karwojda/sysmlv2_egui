@@ -73,7 +73,7 @@ fn moving_a_node_moves_only_that_node() {
     );
 
     diagram.edit(Edit::Move {
-        element: qn("P::Car"),
+        elements: vec![qn("P::Car")],
         dx: 15.0,
         dy: 120.0,
     });
@@ -96,7 +96,7 @@ fn a_move_is_saved_in_the_diagram_file() {
     let car = diagram.bounds("P::Car");
 
     diagram.edit(Edit::Move {
-        element: qn("P::Car"),
+        elements: vec![qn("P::Car")],
         dx: 15.0,
         dy: 120.0,
     });
@@ -116,13 +116,98 @@ fn nodes_stop_at_the_top_and_left_of_the_page() {
     let mut diagram = Editing::new();
 
     diagram.edit(Edit::Move {
-        element: qn("P::Car"),
+        elements: vec![qn("P::Car")],
         dx: -5000.0,
         dy: -5000.0,
     });
 
     let car = diagram.bounds("P::Car");
     assert_eq!((car.x, car.y), (0.0, 0.0));
+}
+
+#[test]
+fn moving_several_nodes_moves_them_together() {
+    let mut diagram = Editing::new();
+    let (car, truck, vehicle) = (
+        diagram.bounds("P::Car"),
+        diagram.bounds("P::Truck"),
+        diagram.bounds("P::Vehicle"),
+    );
+
+    diagram.edit(Edit::Move {
+        elements: vec![qn("P::Car"), qn("P::Truck")],
+        dx: 30.0,
+        dy: 50.0,
+    });
+
+    for (name, before) in [("P::Car", car), ("P::Truck", truck)] {
+        let after = diagram.bounds(name);
+        assert_eq!(
+            (after.x, after.y),
+            (before.x + 30.0, before.y + 50.0),
+            "{name}"
+        );
+    }
+    assert_eq!(diagram.bounds("P::Vehicle"), vehicle);
+}
+
+#[test]
+fn nodes_moved_together_all_stop_when_one_reaches_the_edge_of_the_page() {
+    let mut diagram = Editing::new();
+    let (car, truck) = (diagram.bounds("P::Car"), diagram.bounds("P::Truck"));
+    let (left, top) = (car.x.min(truck.x), car.y.min(truck.y));
+
+    diagram.edit(Edit::Move {
+        elements: vec![qn("P::Car"), qn("P::Truck")],
+        dx: -5000.0,
+        dy: -5000.0,
+    });
+
+    let (moved_car, moved_truck) = (diagram.bounds("P::Car"), diagram.bounds("P::Truck"));
+    assert_eq!((moved_car.x, moved_car.y), (car.x - left, car.y - top));
+    assert_eq!(
+        (moved_truck.x, moved_truck.y),
+        (truck.x - left, truck.y - top)
+    );
+}
+
+#[test]
+fn bends_move_with_nodes_moved_together_only_when_both_ends_move() {
+    let key = Depicts::Specialization {
+        specific: qn("P::Car"),
+        general: qn("P::Vehicle"),
+    }
+    .edge_key()
+    .unwrap();
+    let routed = || {
+        let mut diagram = Editing::new();
+        let car = diagram.bounds("P::Car");
+        diagram.edit(Edit::Route {
+            edge: key.clone(),
+            bends: vec![[car.x - 40.0, car.y - 30.0]],
+        });
+        let bend = diagram.layout.edges[&key][0];
+        (diagram, bend)
+    };
+
+    let (mut both, bend) = routed();
+    both.edit(Edit::Move {
+        elements: vec![qn("P::Car"), qn("P::Vehicle")],
+        dx: 25.0,
+        dy: 15.0,
+    });
+    assert_eq!(
+        both.layout.edges[&key],
+        vec![[bend[0] + 25.0, bend[1] + 15.0]]
+    );
+
+    let (mut one, bend) = routed();
+    one.edit(Edit::Move {
+        elements: vec![qn("P::Car")],
+        dx: 25.0,
+        dy: 15.0,
+    });
+    assert_eq!(one.layout.edges[&key], vec![bend]);
 }
 
 #[test]
@@ -224,7 +309,7 @@ fn reset_returns_to_the_automatic_arrangement() {
 
     diagram
         .edit(Edit::Move {
-            element: qn("P::Car"),
+            elements: vec![qn("P::Car")],
             dx: 200.0,
             dy: 200.0,
         })
@@ -262,7 +347,7 @@ fn reset_keeps_orphaned_layout_entries() {
 
     diagram
         .edit(Edit::Move {
-            element: qn("P::Car"),
+            elements: vec![qn("P::Car")],
             dx: 10.0,
             dy: 0.0,
         })

@@ -47,6 +47,7 @@ pub struct OpenDiagram {
     /// While a drag is under way: whether it has recorded its undo step
     /// yet. A whole drag is one step, though it edits on every frame.
     drag_step: Option<bool>,
+    pub selection: Selection,
     pub scene: Result<Scene, DiagramError>,
     pub view: View,
     /// Fit the Diagram to the canvas on the next paint.
@@ -97,6 +98,7 @@ impl OpenDiagram {
             undo: Vec::new(),
             redo: Vec::new(),
             drag_step: None,
+            selection: Selection::default(),
             view: View::default(),
             needs_fit: true,
             fitted_to: None,
@@ -121,11 +123,15 @@ impl OpenDiagram {
     }
 
     /// Rebuilds the scene from a newly loaded Model, keeping the Layout
-    /// and the view.
+    /// and the view, and the Selection's nodes that are still drawn.
     pub fn refresh(&mut self, model: &Model) {
         self.scene = self.source.build_scene(model, &self.layout);
-        if let Ok(scene) = &mut self.scene {
-            style::apply_styles(scene, model, self.model_style.as_ref(), &self.style);
+        match &mut self.scene {
+            Ok(scene) => {
+                style::apply_styles(scene, model, self.model_style.as_ref(), &self.style);
+                self.selection.keep_drawn(scene);
+            }
+            Err(_) => self.selection.clear(),
         }
         self.kind = self.source.kind(model);
     }
@@ -154,6 +160,9 @@ impl OpenDiagram {
         let source = &self.source;
         let known = |key: &QualifiedName| source.layout_key_exists(model, key);
         editing::apply_with(&mut self.layout, &known, scene, edit);
+        if *edit == Edit::Reset {
+            self.selection.clear();
+        }
         if self.layout != before {
             if self.drag_step != Some(true) {
                 self.undo.push(before);
@@ -271,6 +280,115 @@ impl OpenDiagram {
     }
 }
 
+/// The nodes of one Diagram picked to move or arrange together, by node
+/// key (see [`Depicts::node_key`]), in the order they were picked. They
+/// are all drawn in the same box; the Interconnection Frame is never in
+/// one.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Selection(Vec<QualifiedName>);
+
+impl Selection {
+    pub fn keys(&self) -> &[QualifiedName] {
+        &self.0
+    }
+
+    pub fn contains(&self, key: &QualifiedName) -> bool {
+        self.0.contains(key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    /// A plain click: `key` alone, or nothing if it can't be selected.
+    pub fn only(&mut self, scene: &Scene, key: &QualifiedName) {
+        self.0.clear();
+        if movable(scene, key) {
+            self.0.push(key.clone());
+        }
+    }
+
+    /// A Ctrl- or Shift-click: adds `key`, or takes it out if it was in.
+    /// A node in another box than the rest starts a new Selection.
+    pub fn toggle(&mut self, scene: &Scene, key: &QualifiedName) {
+        if let Some(index) = self.0.iter().position(|k| k == key) {
+            self.0.remove(index);
+        } else if self
+            .0
+            .first()
+            .is_some_and(|k| container(scene, k) != container(scene, key))
+        {
+            self.only(scene, key);
+        } else if movable(scene, key) {
+            self.0.push(key.clone());
+        }
+    }
+
+    /// A selection box: the nodes lying wholly inside `area` (in scene
+    /// coordinates). Nodes inside a box that is in the area move with it,
+    /// so only the outermost ones count; where several boxes' nodes are
+    /// equally outermost, those of the first in paint order.
+    pub fn boxed(&mut self, scene: &Scene, area: Rect) {
+        let inside = |r: Rect| {
+            r.x >= area.x
+                && r.y >= area.y
+                && r.right() <= area.right()
+                && r.bottom() <= area.bottom()
+        };
+        let candidates: Vec<&QualifiedName> = scene
+            .elements()
+            .into_iter()
+            .filter(|k| movable(scene, k) && scene.node_bounds(k).is_some_and(inside))
+            .collect();
+        let depth = |k: &QualifiedName| container(scene, k).map_or(0, |c| c.split('.').count());
+        let outermost = candidates.iter().map(|k| depth(k)).min();
+        let first = candidates
+            .iter()
+            .find(|k| Some(depth(k)) == outermost)
+            .map(|k| container(scene, k));
+        self.0 = candidates
+            .into_iter()
+            .filter(|k| Some(container(scene, k)) == first)
+            .cloned()
+            .collect();
+    }
+
+    /// Drops the nodes that are no longer drawn, such as hidden ones.
+    pub fn keep_drawn(&mut self, scene: &Scene) {
+        let drawn = scene.elements();
+        self.0.retain(|k| drawn.contains(&k));
+    }
+}
+
+/// Whether the node under `key` can be moved, resized and selected: any
+/// node of a General Diagram, any part but the Frame in an Interconnection
+/// Diagram.
+pub fn movable(scene: &Scene, key: &QualifiedName) -> bool {
+    scene.origins.is_empty() || scene.origins.contains_key(key)
+}
+
+/// The box the node under `key` is drawn in: the feature path of the part
+/// it's inside in an Interconnection Diagram (`""` for the Frame), none on
+/// a General Diagram's page.
+fn container<'a>(scene: &Scene, key: &'a QualifiedName) -> Option<&'a str> {
+    if scene.origins.is_empty() {
+        return None;
+    }
+    Some(
+        key.as_str()
+            .rsplit_once('.')
+            .map_or("", |(parent, _)| parent),
+    )
+}
+
 /// How many undo steps an open Diagram keeps; older ones are dropped.
 pub const UNDO_STEPS: usize = 200;
 
@@ -329,7 +447,7 @@ pub enum Grab {
 /// pressing on it pans.
 pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
     let screen = |p: Point| view.to_screen(origin, p);
-    let movable = |key: &QualifiedName| scene.origins.is_empty() || scene.origins.contains_key(key);
+    let movable = |key: &QualifiedName| movable(scene, key);
     let handle = scene
         .elements()
         .into_iter()
