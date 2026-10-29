@@ -580,6 +580,33 @@ pub(crate) fn flow_arrow(points: &[Point]) -> Shape {
         middle.x - ux * FLOW_ARROW_LENGTH / 2.0,
         middle.y - uy * FLOW_ARROW_LENGTH / 2.0,
     );
+    arrowhead(tip, base)
+}
+
+/// A flow's arrowhead at its target: the tip just short of the path's end
+/// (`back` before it), pointing along the last segment, so opposing flows
+/// between the same ports read as two arrows.
+pub(crate) fn flow_arrow_at_end(points: &[Point], back: f32) -> Shape {
+    // The last segment with a length, so the arrow points along the line.
+    let end = points[points.len() - 1];
+    let before = points
+        .iter()
+        .rev()
+        .copied()
+        .find(|p| distance(*p, end) > 0.5)
+        .unwrap_or(end);
+    // On a short last segment, the arrow fills it rather than overshoot.
+    let room = distance(before, end);
+    let back = back.min((room - FLOW_ARROW_LENGTH).max(0.0));
+    let tip = back_from(end, before, back);
+    let base = back_from(end, before, back + FLOW_ARROW_LENGTH.min(room));
+    arrowhead(tip, base)
+}
+
+/// A filled triangle pointing from `base` to `tip`.
+fn arrowhead(tip: Point, base: Point) -> Shape {
+    let length = distance(base, tip).max(f32::EPSILON);
+    let (ux, uy) = ((tip.x - base.x) / length, (tip.y - base.y) / length);
     let (nx, ny) = (-uy * FLOW_ARROW_HALF_WIDTH, ux * FLOW_ARROW_HALF_WIDTH);
     Shape::Polygon {
         points: vec![

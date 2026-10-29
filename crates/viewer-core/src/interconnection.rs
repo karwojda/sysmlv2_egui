@@ -187,14 +187,17 @@ pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Sce
     draw_boxes(&frame, true, &mut items, &mut rects, &mut origins);
     let mut ports = Vec::new();
     draw_ports(&frame, &mut ports);
-    // Connector labels keep clear of box titles, port labels and each other.
+    // Connector labels keep clear of box titles, port labels, closed parts
+    // and each other; wires keep off each other's runs.
     let mut taken: Vec<Rect> = items
         .iter()
         .chain(&ports)
         .filter(|i| matches!(i.shape, Shape::Text { .. }))
         .map(|i| i.shape.extent())
         .collect();
-    draw_connectors(&frame, layout, &mut items, &mut taken);
+    closed_parts(&frame, &mut taken);
+    let mut tracks = Vec::new();
+    draw_connectors(&frame, layout, &mut items, &mut taken, &mut tracks);
     items.extend(ports);
     let mut scene = page(items, &rects);
     scene.origins = origins;
@@ -1363,7 +1366,13 @@ fn end_point(node: &BoxNode, end: &End, toward: Point) -> (Point, Side, bool) {
 /// across the gap between them. Each label goes beside the middle of its
 /// connector's longest run, stepping up or down a line until it clears the
 /// labels in `taken`.
-fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken: &mut Vec<Rect>) {
+fn draw_connectors(
+    node: &BoxNode,
+    layout: &Layout,
+    items: &mut Vec<Item>,
+    taken: &mut Vec<Rect>,
+    tracks: &mut Vec<(Point, Point)>,
+) {
     for wire in &node.wires {
         let leave = |end: &End, other: &End| {
             let (point, side, inward) = end_point(node, end, rough_point(node, other));
@@ -1432,14 +1441,21 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
             points.extend([Point::new(b1.x, last.y), b1, b]);
             points.dedup();
             points
-        } else if clear(&simple) {
-            simple
         } else {
-            match route(a1, b1, &blocked) {
-                Some(path) => [vec![a], path, vec![b]].concat(),
-                None => simple,
-            }
+            let routed = if clear(&simple) {
+                simple
+            } else {
+                match route(a1, b1, &blocked) {
+                    Some(path) => [vec![a], path, vec![b]].concat(),
+                    None => simple,
+                }
+            };
+            separate_tracks(routed, tracks, &blocked)
         };
+        // Other wires' runs, which a label had better not lie across.
+        let others = tracks.len();
+        tracks.extend(points.windows(2).map(|s| (s[0], s[1])));
+        let others = &tracks[..others];
 
         // Beside a vertical run, above a horizontal one.
         let (from, to) = points
@@ -1448,24 +1464,33 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
             .max_by(|x, y| run_length(*x).total_cmp(&run_length(*y)))
             .expect("a connector has segments");
         let middle = Point::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
-        let (preferred, anchor) = if from.x == to.x {
-            (
-                Point::new(middle.x + LABEL_OFFSET, middle.y + LABEL_FONT.size / 3.0),
-                TextAnchor::Start,
-            )
+        // Either side of the run; the first is where it has always gone.
+        let sides: [(Point, TextAnchor); 2] = if from.x == to.x {
+            let y = middle.y + LABEL_FONT.size / 3.0;
+            [
+                (Point::new(middle.x + LABEL_OFFSET, y), TextAnchor::Start),
+                (Point::new(middle.x - LABEL_OFFSET, y), TextAnchor::End),
+            ]
         } else {
-            (
-                Point::new(middle.x, middle.y - LABEL_OFFSET),
-                TextAnchor::Middle,
-            )
+            [
+                (
+                    Point::new(middle.x, middle.y - LABEL_OFFSET),
+                    TextAnchor::Middle,
+                ),
+                (
+                    Point::new(middle.x, middle.y + LABEL_OFFSET + LABEL_FONT.size),
+                    TextAnchor::Middle,
+                ),
+            ]
         };
+
         let text = notation::connector_label(wire.connection);
         // A flow points from its first end to its second; the path runs
         // from `wire.a` to `wire.b`, which are those ends in order.
         if wire.connection.kind == ElementKind::FlowUsage {
             items.push(Item {
                 depicts: depicts.clone(),
-                shape: notation::flow_arrow(&points),
+                shape: notation::flow_arrow_at_end(&points, PORT_SIZE / 2.0),
             });
         }
         if text.is_empty() {
@@ -1479,24 +1504,35 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
             });
             continue;
         }
-        let label_at = |step: f32| Shape::Text {
-            position: Point::new(preferred.x, preferred.y + step * LABEL_STACK),
+        let label_at = |(at, anchor): (Point, TextAnchor), step: f32| Shape::Text {
+            position: Point::new(at.x, at.y + step * LABEL_STACK),
             text: text.clone(),
             anchor,
             font: LABEL_FONT,
             fill: Fill::Stroke,
         };
-        let label = (0..=2 * LABEL_TRIES)
-            .map(|k| {
-                if k % 2 == 1 {
-                    (k / 2 + 1) as f32
-                } else {
-                    -((k / 2) as f32)
-                }
+        let candidates = || {
+            sides.into_iter().flat_map(|side| {
+                (0..=2 * LABEL_TRIES)
+                    .map(|k| {
+                        if k % 2 == 1 {
+                            (k / 2 + 1) as f32
+                        } else {
+                            -((k / 2) as f32)
+                        }
+                    })
+                    .map(move |step| label_at(side, step))
             })
-            .map(label_at)
-            .find(|shape| !taken.iter().any(|r| r.intersects(&shape.extent())))
-            .unwrap_or_else(|| label_at(0.0));
+        };
+        let apart = |shape: &Shape| !taken.iter().any(|r| r.intersects(&shape.extent()));
+        let off_wires = |shape: &Shape| {
+            let r = shape.extent();
+            !others.iter().any(|&(a, b)| segment_crosses(a, b, r))
+        };
+        let label = candidates()
+            .find(|shape| apart(shape) && off_wires(shape))
+            .or_else(|| candidates().find(apart))
+            .unwrap_or_else(|| label_at(sides[0], 0.0));
         taken.push(label.extent());
         items.push(Item {
             depicts: depicts.clone(),
@@ -1511,19 +1547,143 @@ fn draw_connectors(node: &BoxNode, layout: &Layout, items: &mut Vec<Item>, taken
         });
     }
     for child in &node.children {
-        draw_connectors(child, layout, items, taken);
+        draw_connectors(child, layout, items, taken, tracks);
     }
 }
 
+/// The rects of the parts drawn closed inside `node`, at any depth.
+fn closed_parts(node: &BoxNode, out: &mut Vec<Rect>) {
+    for child in &node.children {
+        if child.children.is_empty() {
+            out.push(child.rect);
+        } else {
+            closed_parts(child, out);
+        }
+    }
+}
+
+/// How far apart wires that would run along each other are drawn.
+const TRACK_SPACING: f32 = 8.0;
+
+/// `points` with each run that lies along one of `tracks` (a run of a
+/// wire drawn before) moved sideways, a track at a time, to where it lies
+/// along none and crosses nothing `blocked`. A run starting or ending at a
+/// stub jogs off it there, so the stub stays at its port. Runs with no
+/// free track nearby stay.
+fn separate_tracks(points: Vec<Point>, tracks: &[(Point, Point)], blocked: &[Rect]) -> Vec<Point> {
+    let along = |a: Point, b: Point| {
+        let vertical = (a.x - b.x).abs() < 0.5;
+        tracks.iter().any(|&(c, d)| {
+            let overlap = |(a0, a1): (f32, f32), (b0, b1): (f32, f32)| {
+                a0.max(a1).min(b0.max(b1)) - a0.min(a1).max(b0.min(b1)) > 1.0
+            };
+            if vertical {
+                (c.x - d.x).abs() < 0.5
+                    && (a.x - c.x).abs() < 1.0
+                    && overlap((a.y, b.y), (c.y, d.y))
+            } else {
+                (c.y - d.y).abs() < 0.5
+                    && (a.y - b.y).abs() < 0.5
+                    && (a.y - c.y).abs() < 1.0
+                    && overlap((a.x, b.x), (c.x, d.x))
+            }
+        })
+    };
+    // A straight wire gets stubs of its own to jog off.
+    let mut points = if let [a, b] = points[..] {
+        let length = ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt();
+        let stub = CONNECTOR_STUB.min(length / 3.0) / length.max(f32::EPSILON);
+        let (dx, dy) = ((b.x - a.x) * stub, (b.y - a.y) * stub);
+        vec![
+            a,
+            Point::new(a.x + dx, a.y + dy),
+            Point::new(b.x - dx, b.y - dy),
+            b,
+        ]
+    } else {
+        points
+    };
+    let mut i = 1;
+    // Each move adds at most two points; this many rounds see every run.
+    let mut rounds = 3 * points.len();
+    while i + 2 < points.len() && rounds > 0 {
+        rounds -= 1;
+        let (a, b) = (points[i], points[i + 1]);
+        if (a.x - b.x).abs() + (a.y - b.y).abs() < 0.5 || !along(a, b) {
+            i += 1;
+            continue;
+        }
+        let vertical = (a.x - b.x).abs() < 0.5;
+        let moved = (1..=4).flat_map(|k| [k as f32, -(k as f32)]).find_map(|k| {
+            let mut candidate = points.clone();
+            let mut j = i;
+            // Keep the stubs where they are: jog off them instead.
+            if j == 1 {
+                candidate.insert(1, candidate[1]);
+                j += 1;
+            }
+            if j + 2 == candidate.len() - 1 {
+                candidate.insert(j + 2, candidate[j + 1]);
+            }
+            let d = k * TRACK_SPACING;
+            for p in &mut candidate[j..=j + 1] {
+                if vertical {
+                    p.x += d;
+                } else {
+                    p.y += d;
+                }
+            }
+            // The run and the one before it must lie along no other wire;
+            // the one after is looked at next, and moves in turn if it must.
+            // None of the three may cross a box.
+            let free = candidate[j - 1..=j + 1]
+                .windows(2)
+                .all(|s| !along(s[0], s[1]))
+                && candidate[j - 1..=j + 2]
+                    .windows(2)
+                    .all(|s| !blocked.iter().any(|r| segment_crosses(s[0], s[1], *r)));
+            free.then_some((candidate, j))
+        });
+        match moved {
+            Some((candidate, j)) => {
+                points = candidate;
+                i = j + 1;
+            }
+            None => i += 1,
+        }
+    }
+    points.dedup_by(|a, b| (a.x - b.x).abs() < 0.01 && (a.y - b.y).abs() < 0.01);
+    // Only the bends are kept between the ends.
+    let mut bends = vec![points[0]];
+    for (k, &p) in points.iter().enumerate().skip(1) {
+        let before = *bends.last().expect("starts with the first point");
+        let straight = points.get(k + 1).is_some_and(|&next| {
+            ((before.x - p.x).abs() < 0.01 && (p.x - next.x).abs() < 0.01)
+                || ((before.y - p.y).abs() < 0.01 && (p.y - next.y).abs() < 0.01)
+        });
+        if !straight {
+            bends.push(p);
+        }
+    }
+    bends
+}
+
 /// What a wire inside `node` must route around: every box in the tree
-/// except the ones its ends lie in (and their enclosing boxes), plus the
-/// title band of every box with parts drawn inside, `node`'s own included.
+/// but those enclosing its ends, the boxes its ends are on included (past
+/// the stubs leaving them), plus the title band of every box with parts
+/// drawn inside, `node`'s own included.
 fn obstacles(node: &BoxNode, a: &End, b: &End) -> Vec<Rect> {
     fn walk(node: &BoxNode, path: &mut Vec<usize>, ends: [&[usize]; 2], out: &mut Vec<Rect>) {
         for (c, child) in node.children.iter().enumerate() {
             path.push(c);
-            let on_an_end = ends.iter().any(|end| end.starts_with(path));
-            if !on_an_end {
+            let encloses = ends
+                .iter()
+                .any(|end| end.starts_with(path) && end.len() > path.len());
+            let is_an_end = ends.contains(&path.as_slice());
+            if is_an_end && !encloses {
+                // Only as far out as its stubs reach.
+                out.push(child.rect);
+            } else if !encloses {
                 out.push(inflate(child.rect, CLEARANCE));
             } else {
                 if !child.children.is_empty() {

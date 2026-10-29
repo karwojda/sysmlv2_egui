@@ -23,17 +23,17 @@
 <text x="512" y="435" text-anchor="middle" font-size="14">transmission:Transmission</text>
 <polyline points="512,581 512,683" fill="none" stroke="#000000"/>
 <text x="518" y="635.67" text-anchor="start" font-size="11">axle</text>
-<polyline points="243,309 243,325 243,352 143,352 143,379 143,395" fill="none" stroke="#000000"/>
+<polyline points="243,309 243,352 143,352 143,395" fill="none" stroke="#000000"/>
 <text x="193" y="346" text-anchor="middle" font-size="11">engineStatus</text>
-<polyline points="311,173 311,189 311,216 243,216 243,243 243,259" fill="none" stroke="#000000"/>
+<polyline points="311,173 311,216 243,216 243,259" fill="none" stroke="#000000"/>
 <text x="277" y="210" text-anchor="middle" font-size="11">fuelLine:FuelInterface</text>
-<polyline points="512,581 512,683" fill="none" stroke="#000000"/>
-<text x="518" y="651.97" text-anchor="start" font-size="11">leftDrive</text>
+<polyline points="512,581 512,597 520,597 520,667 512,667 512,683" fill="none" stroke="#000000"/>
+<text x="526" y="651.97" text-anchor="start" font-size="11">leftDrive</text>
 <polyline points="512,445 512,531" fill="none" stroke="#000000"/>
 <text x="518" y="491.67" text-anchor="start" font-size="11">shaft</text>
 <polyline points="415,20 415,86 457,86 457,243 378,243 378,259" fill="none" stroke="#000000"/>
 <text x="463" y="168.17" text-anchor="start" font-size="11">supply</text>
-<polyline points="378,309 378,325 378,352 512,352 512,379 512,395" fill="none" stroke="#000000"/>
+<polyline points="378,309 378,352 512,352 512,395" fill="none" stroke="#000000"/>
 <text x="445" y="346" text-anchor="middle" font-size="11">torque</text>
 <rect x="410" y="15" width="10" height="10" fill="#ffffff" stroke="#000000"/>
 <text x="423" y="14" text-anchor="start" font-size="11">power : ~PowerPort</text>
