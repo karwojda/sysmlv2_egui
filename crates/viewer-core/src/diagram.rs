@@ -414,13 +414,56 @@ fn general<'a>(
         };
         paths.push(notation::route(rects[from], rects[to], &bends));
     }
+    // A parent's composition edges to children below it, without routes
+    // the user set, are drawn as one tree, as in the notation's parts
+    // trees: a diamond at its bottom middle, a trunk down to a bar, and a
+    // branch down to the top middle of each child.
+    let mut trees: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (e, edge) in edges.iter().enumerate() {
+        let (_, owner, child) = describe(edge, &nodes);
+        let composes = matches!(edge, Edge::Composition { .. } | Edge::Ownership { .. });
+        let below = rects[child].y >= rects[owner].bottom() + 2.0 * notation::DIAMOND_ROOM;
+        if composes && !routed_by_user[e] && owner != child && below {
+            trees.entry(owner).or_default().push(e);
+        }
+    }
+    let mut trunks: Vec<(usize, Point, f32, (f32, f32))> = Vec::new();
+    let mut in_tree = vec![false; edges.len()];
+    for (&owner, members) in &trees {
+        let parent = rects[owner];
+        let tip = Point::new(parent.center_x(), parent.bottom());
+        let children: Vec<usize> = members
+            .iter()
+            .map(|&e| describe(&edges[e], &nodes).2)
+            .collect();
+        let top = children
+            .iter()
+            .map(|&c| rects[c].y)
+            .fold(f32::INFINITY, f32::min);
+        let bar_y = (tip.y + notation::DIAMOND_ROOM).max((tip.y + top) / 2.0);
+        let mut bar = (tip.x, tip.x);
+        for (&e, &child) in members.iter().zip(&children) {
+            let x = rects[child].center_x();
+            bar = (bar.0.min(x), bar.1.max(x));
+            paths[e] = vec![Point::new(x, bar_y), Point::new(x, rects[child].y)];
+            in_tree[e] = true;
+        }
+        trunks.push((owner, tip, bar_y, bar));
+    }
+
     // Ends crowding the same spot on a node's border are spread along it;
-    // ends of routes the user set are left exactly where they are.
+    // ends of routes the user set, or of a tree's branches, are left
+    // exactly where they are.
     for (node, rect) in rects.iter().enumerate() {
         let mut ends: Vec<&mut Point> = Vec::new();
-        for ((edge, path), user) in edges.iter().zip(paths.iter_mut()).zip(&routed_by_user) {
+        for (((edge, path), user), tree) in edges
+            .iter()
+            .zip(paths.iter_mut())
+            .zip(&routed_by_user)
+            .zip(&in_tree)
+        {
             let (_, from, to) = describe(edge, &nodes);
-            if *user || from == to {
+            if *user || *tree || from == to {
                 continue;
             }
             let last = path.len() - 1;
@@ -431,15 +474,31 @@ fn general<'a>(
                 ends.push(&mut rest[last - 1]);
             }
         }
-        notation::spread_ends(*rect, &mut ends);
+        // A tree's diamond stays at the middle of its parent's bottom.
+        let fixed: Vec<Point> = trunks
+            .iter()
+            .filter(|(owner, ..)| *owner == node)
+            .map(|&(_, tip, ..)| tip)
+            .collect();
+        notation::spread_ends(*rect, &mut ends, &fixed);
     }
 
     let mut items: Vec<Item> = Vec::new();
-    for (edge, path) in edges.iter().zip(paths) {
+    for (owner, tip, bar_y, bar) in trunks {
+        let depicts = Depicts::CompositionTree {
+            owner: nodes[owner].qualified_name.clone(),
+        };
+        items.extend(notation::composition_trunk(depicts, tip, bar_y, bar));
+    }
+    for ((edge, path), tree) in edges.iter().zip(paths).zip(in_tree) {
         let (depicts, _, _) = describe(edge, &nodes);
         items.extend(match *edge {
             Edge::Specialization { .. } => notation::specialization(depicts, path),
             Edge::Typing { .. } => notation::defined_by(depicts, path),
+            Edge::Composition { usage, .. } if tree => {
+                notation::composition_branch(depicts, Some(usage), path)
+            }
+            Edge::Ownership { .. } if tree => notation::composition_branch(depicts, None, path),
             Edge::Composition { usage, .. } => notation::composition(depicts, Some(usage), path),
             Edge::Ownership { .. } => notation::composition(depicts, None, path),
             Edge::Connection { connection, .. } => notation::connection(depicts, connection, path),

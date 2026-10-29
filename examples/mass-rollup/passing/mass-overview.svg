@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1757" height="1046" viewBox="0 0 1757 1046" font-family="sans-serif">
 <rect x="0" y="0" width="1757" height="1046" fill="#ffffff"/>
-<polyline points="923.41,107.54 426,215.42" fill="none" stroke="#000000"/>
-<polygon points="941,103.72 930.93,99.76 923.41,107.54 933.48,111.49" fill="#000000" stroke="#000000"/>
-<polyline points="1209.18,121.12 1480,205.81" fill="none" stroke="#000000"/>
-<polygon points="1192,115.75 1198.8,124.16 1209.18,121.12 1202.38,112.71" fill="#000000" stroke="#000000"/>
-<polyline points="1066.28,151 1066.21,174" fill="none" stroke="#000000"/>
-<polygon points="1066.33,133 1060.31,141.98 1066.28,151 1072.31,142.02" fill="#000000" stroke="#000000"/>
-<polyline points="1207.71,575.36 1320.37,667" fill="none" stroke="#000000"/>
-<polygon points="1193.74,564 1196.94,574.33 1207.71,575.36 1204.51,565.02" fill="#000000" stroke="#000000"/>
-<polyline points="1302.78,571.66 1504,666.33" fill="none" stroke="#000000"/>
-<polygon points="1286.49,564 1292.08,573.26 1302.78,571.66 1297.19,562.4" fill="#000000" stroke="#000000"/>
-<polyline points="776.59,536.9 668.29,565.44 450,651.19" fill="none" stroke="#000000"/>
-<polygon points="794,532.31 783.77,528.8 776.59,536.9 786.83,540.41" fill="#000000" stroke="#000000"/>
-<polyline points="342.98,802.98 385.67,867" fill="none" stroke="#000000"/>
-<polygon points="333,788 333,798.82 342.98,802.98 342.98,792.16" fill="#000000" stroke="#000000"/>
-<polyline points="217.21,802.15 166.17,867" fill="none" stroke="#000000"/>
-<polygon points="228.34,788 218.06,791.36 217.21,802.15 227.49,798.78" fill="#000000" stroke="#000000"/>
-<polyline points="1066.26,582 1066.1,667" fill="none" stroke="#000000"/>
-<polygon points="1066.3,564 1060.28,572.99 1066.26,582 1072.28,573.01" fill="#000000" stroke="#000000"/>
+<polygon points="1066.5,133 1060.5,142 1066.5,151 1072.5,142" fill="#000000" stroke="#000000"/>
+<polyline points="1066.5,151 1066.5,153.5" fill="none" stroke="#000000"/>
+<polyline points="285,153.5 1608.5,153.5" fill="none" stroke="#000000"/>
+<polygon points="1066.5,564 1060.5,573 1066.5,582 1072.5,573" fill="#000000" stroke="#000000"/>
+<polyline points="1066.5,582 1066.5,584" fill="none" stroke="#000000"/>
+<polyline points="285,584 1608.5,584" fill="none" stroke="#000000"/>
+<polygon points="285,788 279,797 285,806 291,797" fill="#000000" stroke="#000000"/>
+<polyline points="285,806 285,827.5" fill="none" stroke="#000000"/>
+<polyline points="128,827.5 418,827.5" fill="none" stroke="#000000"/>
+<polyline points="285,153.5 285,174" fill="none" stroke="#000000"/>
+<polyline points="1608.5,153.5 1608.5,174" fill="none" stroke="#000000"/>
+<polyline points="1066,153.5 1066,174" fill="none" stroke="#000000"/>
+<polyline points="1380,584 1380,667" fill="none" stroke="#000000"/>
+<polyline points="1608.5,584 1608.5,604" fill="none" stroke="#000000"/>
+<polyline points="285,584 285,644" fill="none" stroke="#000000"/>
+<polyline points="418,827.5 418,867" fill="none" stroke="#000000"/>
+<polyline points="128,827.5 128,867" fill="none" stroke="#000000"/>
+<polyline points="1066,584 1066,667" fill="none" stroke="#000000"/>
 <polyline points="747.26,644 886.44,564" fill="none" stroke="#000000" stroke-dasharray="6 4"/>
 <polyline points="878.29,577.91 886.44,564 870.31,564.04" fill="none" stroke="#000000"/>
 <text x="816.85" y="598" text-anchor="middle" font-size="11">«subject»</text>

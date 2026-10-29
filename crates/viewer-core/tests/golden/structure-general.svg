@@ -1,11 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="832" height="691" viewBox="0 0 832 691" font-family="sans-serif">
 <rect x="0" y="0" width="832" height="691" fill="#ffffff"/>
-<polyline points="204.29,255.15 168,288.33" fill="none" stroke="#000000"/>
-<polygon points="217.57,243 206.88,244.65 204.29,255.15 214.98,253.5" fill="#000000" stroke="#000000"/>
-<text x="190.97" y="272.81" text-anchor="start" font-size="11">engine [1]</text>
-<polyline points="339.5,261 339.5,307" fill="none" stroke="#000000"/>
 <polygon points="339.5,243 333.5,252 339.5,261 345.5,252" fill="#000000" stroke="#000000"/>
-<text x="345.5" y="284" text-anchor="start" font-size="11">tanks [1..2]</text>
+<polyline points="339.5,261 339.5,263.5" fill="none" stroke="#000000"/>
+<polyline points="94,263.5 339.5,263.5" fill="none" stroke="#000000"/>
+<polyline points="94,263.5 94,284" fill="none" stroke="#000000"/>
+<text x="100" y="281" text-anchor="start" font-size="11">engine [1]</text>
+<polyline points="339.5,263.5 339.5,307" fill="none" stroke="#000000"/>
+<text x="345.5" y="304" text-anchor="start" font-size="11">tanks [1..2]</text>
 <polyline points="294.7,468 180.23,404.12" fill="none" stroke="#000000"/>
 <polygon points="168,397.3 184.12,397.13 176.33,411.1" fill="#ffffff" stroke="#000000"/>
 <circle cx="186.54" cy="403.06" r="1.8" fill="#000000"/>

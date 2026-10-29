@@ -1,8 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="726" height="510" viewBox="0 0 726 510" font-family="sans-serif">
 <rect x="0" y="0" width="726" height="510" fill="#ffffff"/>
-<polyline points="460.26,196.46 425.45,275" fill="none" stroke="#000000"/>
-<polygon points="467.55,180 458.42,185.8 460.26,196.46 469.39,190.66" fill="#000000" stroke="#000000"/>
-<text x="440.77" y="253.97" text-anchor="start" font-size="11">tank</text>
+<polygon points="503,180 497,189 503,198 509,189" fill="#000000" stroke="#000000"/>
+<polyline points="503,198 503,227.5" fill="none" stroke="#000000"/>
+<polyline points="390,227.5 503,227.5" fill="none" stroke="#000000"/>
+<polyline points="390,227.5 390,275" fill="none" stroke="#000000"/>
+<text x="396" y="272" text-anchor="start" font-size="11">tank</text>
 <polyline points="555.71,220 543.77,192.82" fill="none" stroke="#000000"/>
 <polygon points="538.14,180 551.09,189.6 536.44,196.04" fill="#ffffff" stroke="#000000"/>
 <circle cx="549.44" cy="195.79" r="1.8" fill="#000000"/>

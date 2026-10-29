@@ -189,6 +189,11 @@ pub enum Depicts {
         owner: QualifiedName,
         usage: QualifiedName,
     },
+    /// The diamond, trunk and bar a parent's composition edges share when
+    /// drawn as one tree; each edge's own branch depicts that edge.
+    CompositionTree {
+        owner: QualifiedName,
+    },
     /// A connection or interface usage, by its qualified name.
     Connection(QualifiedName),
     /// A part in an Interconnection Diagram: `key` is its feature path from
@@ -222,9 +227,11 @@ impl Depicts {
     /// Nodes have none: they are keyed by their element.
     pub fn edge_key(&self) -> Option<String> {
         match self {
-            Depicts::Element(_) | Depicts::Part { .. } | Depicts::Port { .. } | Depicts::Legend => {
-                None
-            }
+            Depicts::Element(_)
+            | Depicts::Part { .. }
+            | Depicts::Port { .. }
+            | Depicts::Legend
+            | Depicts::CompositionTree { .. } => None,
             Depicts::Specialization { specific, general } => {
                 Some(format!("specialization {specific} {general}"))
             }

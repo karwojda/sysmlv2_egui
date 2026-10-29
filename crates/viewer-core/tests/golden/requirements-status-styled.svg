@@ -1,15 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1401" height="388" viewBox="0 0 1401 388" font-family="sans-serif">
 <rect x="0" y="0" width="1401" height="388" fill="#ffffff"/>
-<polyline points="873.37,117.93 1130,187.49" fill="none" stroke="#000000"/>
-<polygon points="856,113.22 863.12,121.37 873.37,117.93 866.26,109.79" fill="#000000" stroke="#000000"/>
-<polyline points="838.78,141.69 939.14,197" fill="none" stroke="#000000"/>
-<polygon points="823.02,133 828,142.6 838.78,141.69 833.79,132.09" fill="#000000" stroke="#000000"/>
-<polyline points="720.5,151 720.5,173" fill="none" stroke="#000000"/>
 <polygon points="720.5,133 714.5,142 720.5,151 726.5,142" fill="#000000" stroke="#000000"/>
-<polyline points="594.2,141.21 485.3,197" fill="none" stroke="#000000"/>
-<polygon points="610.22,133 599.47,131.76 594.2,141.21 604.94,142.44" fill="#000000" stroke="#000000"/>
-<polyline points="567.55,115.2 244.3,197" fill="none" stroke="#000000"/>
-<polygon points="585,110.79 574.8,107.18 567.55,115.2 577.75,118.81" fill="#000000" stroke="#000000"/>
+<polyline points="720.5,151 720.5,153" fill="none" stroke="#000000"/>
+<polyline points="145.5,153 1255.5,153" fill="none" stroke="#000000"/>
+<polyline points="1255.5,153 1255.5,173" fill="none" stroke="#000000"/>
+<polyline points="984.5,153 984.5,197" fill="none" stroke="#000000"/>
+<polyline points="720.5,153 720.5,173" fill="none" stroke="#000000"/>
+<polyline points="436.5,153 436.5,197" fill="none" stroke="#000000"/>
+<polyline points="145.5,153 145.5,197" fill="none" stroke="#000000"/>
 <rect x="585" y="20" width="271" height="113" rx="10" fill="#f4cccc" stroke="#000000"/>
 <text x="720.5" y="42" text-anchor="middle" font-size="12">«requirement»</text>
 <text x="720.5" y="60" text-anchor="middle" font-size="14">vehicleSpec</text>

@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="503" height="318" viewBox="0 0 503 318" font-family="sans-serif">
 <rect x="0" y="0" width="503" height="318" fill="#ffffff"/>
-<polyline points="339.94,127.06 385.88,158" fill="none" stroke="#000000"/>
-<polygon points="325.01,117 329.12,127 339.94,127.06 335.83,117.05" fill="#000000" stroke="#000000"/>
-<polyline points="423,226 423,248" fill="none" stroke="#000000"/>
+<polygon points="253,117 247,126 253,135 259,126" fill="#000000" stroke="#000000"/>
+<polyline points="253,135 253,137.5" fill="none" stroke="#000000"/>
+<polyline points="81,137.5 423,137.5" fill="none" stroke="#000000"/>
 <polygon points="423,208 417,217 423,226 429,217" fill="#000000" stroke="#000000"/>
-<polyline points="200.62,130.78 102.03,248" fill="none" stroke="#000000"/>
-<polygon points="212.21,117 201.82,120.03 200.62,130.78 211.01,127.75" fill="#000000" stroke="#000000"/>
-<polyline points="252.42,135 252.22,158" fill="none" stroke="#000000"/>
-<polygon points="252.58,117 246.5,125.95 252.42,135 258.5,126.05" fill="#000000" stroke="#000000"/>
+<polyline points="423,226 423,228" fill="none" stroke="#000000"/>
+<polyline points="423,137.5 423,158" fill="none" stroke="#000000"/>
+<polyline points="423,228 423,248" fill="none" stroke="#000000"/>
+<polyline points="81,137.5 81,248" fill="none" stroke="#000000"/>
+<polyline points="252,137.5 252,158" fill="none" stroke="#000000"/>
 <polyline points="363,207.12 326,222 142,260.3" fill="none" stroke="#000000"/>
 <text x="332" y="225.67" text-anchor="start" font-size="11">mount</text>
 <rect x="172" y="20" width="162" height="97" rx="10" fill="#ffffff" stroke="#000000"/>
