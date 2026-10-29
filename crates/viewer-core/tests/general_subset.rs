@@ -1,5 +1,7 @@
 //! Seam 1: the full first-slice language subset in General Diagrams.
 
+mod common;
+
 use std::path::Path;
 
 use viewer_core::model::Direction;
@@ -169,7 +171,7 @@ fn definitions_list_their_features_in_compartments() {
     let scene = scene();
 
     assert_eq!(
-        node_texts(&scene, "Structure::Vehicle"),
+        common::rejoined(node_texts(&scene, "Structure::Vehicle")),
         [
             "«part def»",
             "Vehicle",
@@ -179,11 +181,8 @@ fn definitions_list_their_features_in_compartments() {
             "engine:Engine [1]",
             "tanks:Tank [1..2]",
             "connections",
-            // Rows longer than a line wrap, indented.
-            "iface:FuelInterface (tanks.fuelOut →",
-            "\u{2003}\u{2003}engine.fuelIn)",
-            "line:FuelLine (tanks.fuelOut →",
-            "\u{2003}\u{2003}engine.fuelIn)",
+            "iface:FuelInterface (tanks.fuelOut → engine.fuelIn)",
+            "line:FuelLine (tanks.fuelOut → engine.fuelIn)",
         ]
     );
 }

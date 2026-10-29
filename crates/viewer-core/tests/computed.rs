@@ -20,27 +20,12 @@ fn texts_of(scene: &Scene, element: &str) -> Vec<String> {
         .collect()
 }
 
-/// The texts with each wrapped row's continuation lines joined back on.
-fn rejoined(texts: Vec<String>) -> Vec<String> {
-    let mut rows: Vec<String> = Vec::new();
-    for text in texts {
-        match (text.strip_prefix("\u{2003}\u{2003}"), rows.last_mut()) {
-            (Some(rest), Some(row)) => {
-                row.push(' ');
-                row.push_str(rest);
-            }
-            _ => rows.push(text),
-        }
-    }
-    rows
-}
-
 #[test]
 fn an_expression_row_shows_what_it_comes_to() {
     let scene = build_scene(&common::analysis(), DiagramKind::General, &qn("A")).unwrap();
 
     assert!(
-        rejoined(texts_of(&scene, "A::car"))
+        common::rejoined(texts_of(&scene, "A::car"))
             .contains(&"mass = engine.mass + sum(wheels.mass) = 230.0".to_owned()),
         "{:?}",
         texts_of(&scene, "A::car")

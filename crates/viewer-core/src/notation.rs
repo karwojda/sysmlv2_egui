@@ -67,7 +67,9 @@ const COLON_HALF_SPREAD: f32 = 4.0;
 /// the fonts installed on the machine doing the Export.
 pub(crate) fn text_width(text: &str, font: Font) -> f32 {
     let average = if font.bold { 0.62 } else { 0.56 };
-    text.chars().count() as f32 * font.size * average
+    // An em space, as a wrapped row's indent, is a whole em wide.
+    let ems = text.chars().filter(|&c| c == '\u{2003}').count() as f32;
+    (text.chars().count() as f32 - ems) * font.size * average + ems * font.size
 }
 
 /// The area `shape` covers, with text estimated like node sizes are.
@@ -404,62 +406,14 @@ fn insert_after_attributes(
 }
 
 /// A compartment row as lines of at most [`DOC_LINE_CHARS`], continuation
-/// lines indented by [`CONTINUED`]. It breaks at a space outside a unit or
-/// a quoted name (`['°C']`), after an operator where one is on the line
-/// (`a + b and` / `c`); a word longer than a line keeps a line of its own.
+/// lines indented by [`CONTINUED`]. It breaks between [`row_words`], after
+/// an operator where that keeps at least half a line (`a + b and` / `c`);
+/// a word longer than a line keeps a line of its own.
 fn wrap_row(row: &str) -> Vec<String> {
-    const OPERATORS: [&str; 24] = [
-        "+", "-", "*", "/", "%", "**", "^", "<", ">", "<=", ">=", "==", "!=", "===", "!==", "=",
-        ":=", "and", "or", "xor", "implies", "not", "??", "|",
-    ];
     if row.chars().count() <= DOC_LINE_CHARS {
         return vec![row.to_owned()];
     }
-    // Words, keeping a bracketed or quoted stretch in one.
-    let mut words: Vec<String> = vec![String::new()];
-    let (mut bracket, mut quote) = (0_i32, None::<char>);
-    for c in row.chars() {
-        match c {
-            ' ' if bracket == 0 && quote.is_none() => words.push(String::new()),
-            _ => {
-                match (c, quote) {
-                    ('\'' | '"', None) => quote = Some(c),
-                    (c, Some(q)) if c == q => quote = None,
-                    ('[', None) => bracket += 1,
-                    (']', None) => bracket -= 1,
-                    _ => {}
-                }
-                words.last_mut().expect("one word at least").push(c);
-            }
-        }
-    }
-    let width = |line: &[String], first: bool| {
-        let indent = if first { 0 } else { CONTINUED.chars().count() };
-        indent
-            + line.iter().map(|w| w.chars().count()).sum::<usize>()
-            + line.len().saturating_sub(1)
-    };
-    let mut lines: Vec<Vec<String>> = Vec::new();
-    let mut line: Vec<String> = Vec::new();
-    for word in words.into_iter().filter(|w| !w.is_empty()) {
-        line.push(word);
-        let first = lines.is_empty();
-        if line.len() > 1 && width(&line, first) > DOC_LINE_CHARS {
-            let word = line.pop().expect("just pushed");
-            // Carry the words after the line's last operator along.
-            let cut = line
-                .iter()
-                .rposition(|w| OPERATORS.contains(&w.as_str()))
-                .filter(|&at| at + 1 < line.len())
-                .map_or(line.len(), |at| at + 1);
-            let mut carried = line.split_off(cut);
-            lines.push(std::mem::take(&mut line));
-            carried.push(word);
-            line = carried;
-        }
-    }
-    lines.push(line);
-    lines
+    fit_lines(row_words(row))
         .into_iter()
         .enumerate()
         .map(|(i, words)| {
@@ -471,6 +425,90 @@ fn wrap_row(row: &str) -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// The words a row may break between: at spaces, but never inside a unit
+/// or a quoted name (`['°C']`, `'max speed'`), nor between a value and its
+/// unit (`-10 ['°C']`) or a row and its closing mark (`… ✓`). A quote or
+/// bracket left open counts as plain text.
+fn row_words(row: &str) -> Vec<String> {
+    const MARKS: [&str; 4] = ["✓", "✗", "?", "○"];
+    let mut words: Vec<String> = vec![String::new()];
+    let (mut bracket, mut quote) = (0_u32, None::<char>);
+    for c in row.chars() {
+        if c == ' ' && bracket == 0 && quote.is_none() {
+            words.push(String::new());
+            continue;
+        }
+        match (c, quote) {
+            ('\'' | '"', None) => quote = Some(c),
+            (c, Some(q)) if c == q => quote = None,
+            ('[', None) => bracket += 1,
+            (']', None) => bracket = bracket.saturating_sub(1),
+            _ => {}
+        }
+        words.last_mut().expect("one word at least").push(c);
+    }
+    if bracket > 0 || quote.is_some() {
+        words = row.split(' ').map(str::to_owned).collect();
+    }
+    let mut glued: Vec<String> = Vec::new();
+    for word in words.into_iter().filter(|w| !w.is_empty()) {
+        let joins = word.starts_with('[') || MARKS.contains(&word.as_str());
+        match glued.last_mut() {
+            Some(last) if joins && !is_operator(last) => {
+                last.push(' ');
+                last.push_str(&word);
+            }
+            _ => glued.push(word),
+        }
+    }
+    glued
+}
+
+/// Whether `word` is an operator a wrapped row prefers to break after.
+fn is_operator(word: &str) -> bool {
+    const OPERATORS: [&str; 24] = [
+        "+", "-", "*", "/", "%", "**", "^", "<", ">", "<=", ">=", "==", "!=", "===", "!==", "=",
+        ":=", "and", "or", "xor", "implies", "not", "??", "|",
+    ];
+    OPERATORS.contains(&word)
+}
+
+/// `words` as lines that fit [`DOC_LINE_CHARS`], continuation lines
+/// counting their indent; each line is measured again once words carry
+/// over to it.
+fn fit_lines(words: Vec<String>) -> Vec<Vec<String>> {
+    let width = |line: &[String], first: bool| {
+        let indent = if first { 0 } else { CONTINUED.chars().count() };
+        indent
+            + line.iter().map(|w| w.chars().count()).sum::<usize>()
+            + line.len().saturating_sub(1)
+    };
+    let mut lines: Vec<Vec<String>> = Vec::new();
+    let mut line: Vec<String> = Vec::new();
+    for word in words {
+        line.push(word);
+        while line.len() > 1 && width(&line, lines.is_empty()) > DOC_LINE_CHARS {
+            let first = lines.is_empty();
+            // As many words as fit, then back to the last operator among
+            // them if that keeps at least half a line.
+            let fits = (1..line.len())
+                .rev()
+                .find(|&n| width(&line[..n], first) <= DOC_LINE_CHARS)
+                .unwrap_or(1);
+            let cut = line[..fits]
+                .iter()
+                .rposition(|w| is_operator(w))
+                .map(|at| at + 1)
+                .filter(|&n| 2 * width(&line[..n], first) >= DOC_LINE_CHARS)
+                .unwrap_or(fits);
+            let rest = line.split_off(cut);
+            lines.push(std::mem::replace(&mut line, rest));
+        }
+    }
+    lines.push(line);
+    lines
 }
 
 /// `text` broken into lines of at most `width` characters at spaces (a

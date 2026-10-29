@@ -1,6 +1,9 @@
 //! Long compartment rows wrap at the width `doc` text uses, so a node
 //! keeps its normal width.
 
+mod common;
+
+use common::CONTINUED;
 use viewer_core::diagram::build_scene;
 use viewer_core::scene::{Depicts, Scene, Shape};
 use viewer_core::{DiagramKind, Model, QualifiedName};
@@ -37,11 +40,7 @@ fn compartment(texts: &[String], title: &str) -> Vec<String> {
 
 /// A wrapped row's lines joined back into the row.
 fn rejoined(lines: &[String]) -> String {
-    lines
-        .iter()
-        .map(|l| l.trim_start_matches('\u{2003}'))
-        .collect::<Vec<_>>()
-        .join(" ")
+    common::rejoined(lines.to_vec()).join("\n")
 }
 
 fn requirements() -> Model {
@@ -69,7 +68,7 @@ fn a_long_constraint_wraps_and_the_node_keeps_its_neighbours_width() {
     }
     assert_eq!(rejoined(&lines), format!("require {{{CONSTRAINT}}}"));
     assert!(
-        lines[1..].iter().all(|l| l.starts_with('\u{2003}')),
+        lines[1..].iter().all(|l| l.starts_with(CONTINUED)),
         "continuation lines are indented: {lines:?}"
     );
     let width = |name: &str| scene.element_bounds(&qn(name)).unwrap().width;
@@ -89,7 +88,7 @@ fn lines_break_after_operators_and_never_inside_a_unit_or_name() {
 
     let lines = compartment(&texts_of(&scene, "P::S11"), "constraints");
     for line in &lines {
-        let line = line.trim_start_matches('\u{2003}');
+        let line = line.trim_start_matches(CONTINUED);
         assert!(!line.starts_with("and"), "{lines:?}");
         assert_eq!(
             line.matches('[').count(),
@@ -99,7 +98,7 @@ fn lines_break_after_operators_and_never_inside_a_unit_or_name() {
     }
     let words: Vec<&str> = lines
         .iter()
-        .flat_map(|l| l.trim_start_matches('\u{2003}').split(' '))
+        .flat_map(|l| l.trim_start_matches(CONTINUED).split(' '))
         .collect();
     for name in [
         "unit.minOperatingTemperature",
@@ -146,4 +145,50 @@ fn a_token_longer_than_the_width_is_not_broken() {
 
     let lines = compartment(&texts_of(&scene, "P::V"), "attributes");
     assert_eq!(lines, [long, "short"]);
+}
+
+/// The `attributes` lines of a part def with one attribute `x` whose
+/// value is written `value`.
+fn value_lines(value: &str) -> Vec<String> {
+    let model = Model::builder()
+        .package("P")
+        .part_def("P::V")
+        .attribute("P::V::x")
+        .value(value)
+        .build();
+    let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
+    compartment(&texts_of(&scene, "P::V"), "attributes")
+}
+
+#[test]
+fn words_carried_to_a_line_are_measured_again() {
+    let lines = value_lines("aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbb cccc d");
+
+    for line in &lines {
+        assert!(line.chars().count() <= WIDTH, "{lines:?}");
+    }
+    assert!(
+        lines[0].chars().count() > WIDTH / 2,
+        "no near-empty first line: {lines:?}"
+    );
+}
+
+#[test]
+fn a_value_keeps_its_unit_and_a_row_its_mark() {
+    let lines =
+        value_lines("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + -10 ['°C'] and bbbbbbbbbbbbbbbbbbb ✓");
+
+    let lines: Vec<&str> = lines
+        .iter()
+        .map(|l| l.trim_start_matches(CONTINUED))
+        .collect();
+    assert!(lines.iter().any(|l| l.contains("-10 ['°C']")), "{lines:?}");
+    assert!(lines.iter().all(|l| *l != "✓"), "{lines:?}");
+}
+
+#[test]
+fn an_unclosed_quote_does_not_stop_a_row_wrapping() {
+    let lines = value_lines("'unclosed aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee");
+
+    assert!(lines.len() > 1, "{lines:?}");
 }
