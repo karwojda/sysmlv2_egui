@@ -742,17 +742,34 @@ pub fn composition_branch(
     usage: Option<&Element>,
     path: Vec<Point>,
 ) -> Vec<Item> {
-    let end = path[path.len() - 1];
+    let (path_start, end) = (path[0], path[path.len() - 1]);
     let mut shapes = vec![Shape::Polyline {
         points: path,
         dashed: false,
     }];
-    // Beside the branch just above the child, clear of the bar however
-    // short the branch.
-    shapes.extend(composition_label(
-        usage,
-        Point::new(end.x + LABEL_OFFSET, end.y - LABEL_OFFSET / 2.0),
-    ));
+    // Beside a branch down, just above the child, clear of the bar however
+    // short the branch; a branch across into a stacked child's left edge
+    // has its label left of the trunk.
+    let start = path_start;
+    let across = (start.y - end.y).abs() < 0.5 && (start.x - end.x).abs() > 0.5;
+    let label = if across {
+        composition_label(
+            usage,
+            Point::new(start.x - LABEL_OFFSET, end.y + LABEL_FONT.size / 3.0),
+        )
+        .map(|mut label| {
+            if let Shape::Text { anchor, .. } = &mut label {
+                *anchor = TextAnchor::End;
+            }
+            label
+        })
+    } else {
+        composition_label(
+            usage,
+            Point::new(end.x + LABEL_OFFSET, end.y - LABEL_OFFSET / 2.0),
+        )
+    };
+    shapes.extend(label);
     tag(depicts, shapes)
 }
 

@@ -102,6 +102,72 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)], families: &[Famil
     rects
 }
 
+/// Each node's id and centre, as the layered layout gives them.
+type Positions = [(usize, (f64, f64))];
+
+/// How far right of its parent's middle, where the composition trunk runs
+/// down, a column of stacked leaves starts.
+pub(crate) const STACK_INDENT: f32 = 24.0;
+/// The gap between two stacked leaves.
+const STACK_GAP: f64 = 16.0;
+
+/// Stacks the leaves among `members`, the children of `parent` in one
+/// layer, in a column just right of the parent's middle, in their order;
+/// the rest, with subtrees of their own, follow side by side right of the
+/// column, their subtrees with them. Everything below the layer moves down
+/// past the column.
+fn stack_leaves(
+    positions: &mut [(usize, (f64, f64))],
+    sizes: &[(f32, f32)],
+    below: &HashMap<usize, Vec<usize>>,
+    parent: usize,
+    members: &[usize],
+    shift: &dyn Fn(&mut Positions, usize, f64),
+) {
+    let width = |positions: &[(usize, (f64, f64))], i: usize| sizes[positions[i].0].0 as f64;
+    let height = |positions: &[(usize, (f64, f64))], i: usize| sizes[positions[i].0].1 as f64;
+    let (leaves, branches): (Vec<usize>, Vec<usize>) = members
+        .iter()
+        .partition(|i| below.get(i).is_none_or(Vec::is_empty));
+    if leaves.is_empty() {
+        return;
+    }
+    let layer = positions[members[0]].1.1;
+    let top = members
+        .iter()
+        .map(|&i| positions[i].1.1 - height(positions, i) / 2.0)
+        .fold(f64::INFINITY, f64::min);
+    let bottom = members
+        .iter()
+        .map(|&i| positions[i].1.1 + height(positions, i) / 2.0)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let left = positions[parent].1.0 + STACK_INDENT as f64;
+    let mut y = top;
+    let mut right = left;
+    for &i in &leaves {
+        positions[i].1 = (
+            left + width(positions, i) / 2.0,
+            y + height(positions, i) / 2.0,
+        );
+        y += height(positions, i) + STACK_GAP;
+        right = right.max(left + width(positions, i));
+    }
+    let mut x = right + NODE_SPACING;
+    for &i in &branches {
+        let dx = x + width(positions, i) / 2.0 - positions[i].1.0;
+        shift(positions, i, dx);
+        x += width(positions, i) + NODE_SPACING;
+    }
+    let past = y - STACK_GAP - bottom;
+    if past > 0.0 {
+        for (i, (_, (_, y))) in positions.iter_mut().enumerate() {
+            if *y > layer + 0.5 && !leaves.contains(&i) {
+                *y += past;
+            }
+        }
+    }
+}
+
 /// Lays each family's children out side by side in its order, centred
 /// under their parent, top down, then moves nodes apart rightwards where a
 /// layer overlaps. A node moves with all it is a parent of, so subtrees
@@ -164,6 +230,13 @@ fn keep_sibling_order(
                 .map(|&i| 2.0 * half(positions, i))
                 .sum::<f64>()
                 + NODE_SPACING * (members.len() - 1) as f64;
+            // Too wide for a page: its leaves stack beside the trunk.
+            if let Some(p) = parent.filter(|&p| layer_of(positions, p) < layer)
+                && width > MAX_ROW_WIDTH as f64
+            {
+                stack_leaves(positions, sizes, &below, p, &members, &shift);
+                continue;
+            }
             let centre = match parent {
                 Some(p) if layer_of(positions, *p) < layer => positions[*p].1.0,
                 _ => {

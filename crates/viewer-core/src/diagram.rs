@@ -570,35 +570,44 @@ fn composition_trees(
     let mut branches: Vec<Option<Vec<Point>>> = vec![None; edges.len()];
     for (owner, members) in candidates {
         let parent = rects[owner];
-        let top = members
+        // Leaves the layout stacked in a column beside the trunk hang from
+        // it by a branch into their left edge; the rest hang from the bar.
+        // (The layout rounds centres and corners, so allow a point or so.)
+        let beside = |c: usize| {
+            (rects[c].x - (parent.center_x() + crate::layout::STACK_INDENT)).abs() < 1.5
+                && rects[c].y > parent.bottom()
+        };
+        let (stacked, row): (Vec<_>, Vec<_>) = members.into_iter().partition(|&(_, c)| beside(c));
+        let top = row
             .iter()
+            .chain(&stacked)
             .map(|&(_, c)| rects[c].y)
             .fold(f32::INFINITY, f32::min);
         let mut bar_y = (parent.bottom() + top) / 2.0;
-        let clear = |x: f32, child: usize| {
-            let from = Point::new(x, bar_y);
-            let to = Point::new(x, rects[child].y);
+        let crosses_none = |from: Point, to: Point, child: usize| {
             (0..rects.len())
                 .filter(|&i| i != owner && i != child)
                 .all(|i| !notation::crosses(from, to, rects[i]))
         };
-        let kept: Vec<(usize, usize)> = members
+        let row: Vec<(usize, usize)> = row
             .into_iter()
-            .filter(|&(_, c)| clear(rects[c].center_x(), c))
+            .filter(|&(_, c)| {
+                let x = rects[c].center_x();
+                crosses_none(Point::new(x, bar_y), Point::new(x, rects[c].y), c)
+            })
             .collect();
-        let Some(&(_, first)) = kept.first() else {
-            continue;
+        let tip_x = match (&row[..], &stacked[..]) {
+            ([], []) => continue,
+            // One child hangs straight below, as far along the bottom as goes.
+            ([(_, only)], []) => {
+                let inset = notation::DIAMOND_ROOM;
+                rects[*only]
+                    .center_x()
+                    .clamp(parent.x + inset, parent.right() - inset)
+            }
+            _ => parent.center_x(),
         };
-        // One child hangs straight below, as far along the bottom as goes.
-        let inset = notation::DIAMOND_ROOM;
-        let tip_x = if kept.len() == 1 {
-            rects[first]
-                .center_x()
-                .clamp(parent.x + inset, parent.right() - inset)
-        } else {
-            parent.center_x()
-        };
-        let bar = kept
+        let bar = row
             .iter()
             .map(|&(_, c)| rects[c].center_x())
             .fold((tip_x, tip_x), |(low, high), x| (low.min(x), high.max(x)));
@@ -611,15 +620,21 @@ fn composition_trees(
         {
             bar_y += BAR_STAGGER;
         }
-        for (e, c) in kept {
+        let mut end = bar_y;
+        for (e, c) in row {
             let x = rects[c].center_x();
             branches[e] = Some(vec![Point::new(x, bar_y), Point::new(x, rects[c].y)]);
+        }
+        for (e, c) in stacked {
+            let y = rects[c].y + rects[c].height / 2.0;
+            end = end.max(y);
+            branches[e] = Some(vec![Point::new(tip_x, y), Point::new(rects[c].x, y)]);
         }
         trunks.push((
             owner,
             notation::Trunk {
                 tip: Point::new(tip_x, parent.bottom()),
-                end: bar_y,
+                end,
                 bar_y,
                 bar,
             },
