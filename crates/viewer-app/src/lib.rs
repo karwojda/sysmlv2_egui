@@ -115,6 +115,13 @@ enum StyleTab {
     Diagram,
 }
 
+/// A step back or forward through the open Diagram's Layout edits.
+#[derive(Clone, Copy)]
+enum History {
+    Undo,
+    Redo,
+}
+
 /// A question about discarding unsaved changes.
 enum Confirm {
     CloseTab(usize),
@@ -859,11 +866,29 @@ impl ViewerApp {
 
     fn toolbar(&mut self, ui: &mut egui::Ui, active: usize) {
         let mut edits = Vec::new();
+        let mut history = None;
         ui.horizontal_wrapped(|ui| {
             if ui.button("Fit").clicked() {
                 self.diagrams[active].needs_fit = true;
             }
             ui.label(format!("{:.0}%", self.diagrams[active].view.zoom * 100.0));
+            ui.separator();
+
+            let diagram = &self.diagrams[active];
+            if ui
+                .add_enabled(diagram.can_undo(), egui::Button::new("Undo"))
+                .on_hover_text("Ctrl+Z")
+                .clicked()
+            {
+                history = Some(History::Undo);
+            }
+            if ui
+                .add_enabled(diagram.can_redo(), egui::Button::new("Redo"))
+                .on_hover_text("Ctrl+Shift+Z or Ctrl+Y")
+                .clicked()
+            {
+                history = Some(History::Redo);
+            }
             ui.separator();
 
             let diagram = &self.diagrams[active];
@@ -945,6 +970,27 @@ impl ViewerApp {
         }
         for edit in edits {
             self.edit_active(edit);
+        }
+        // Undo shortcuts, unless a text field has them.
+        if !ui.ctx().egui_wants_keyboard_input() {
+            let shortcut = |modifiers, key| egui::KeyboardShortcut::new(modifiers, key);
+            let shift_command = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+            ui.input_mut(|i| {
+                if i.consume_shortcut(&shortcut(shift_command, egui::Key::Z))
+                    || i.consume_shortcut(&shortcut(egui::Modifiers::COMMAND, egui::Key::Y))
+                {
+                    history = Some(History::Redo);
+                } else if i.consume_shortcut(&shortcut(egui::Modifiers::COMMAND, egui::Key::Z)) {
+                    history = Some(History::Undo);
+                }
+            });
+        }
+        if let (Some(history), Some(model)) = (history, &self.model) {
+            let diagram = &mut self.diagrams[active];
+            match history {
+                History::Undo => diagram.undo(model),
+                History::Redo => diagram.redo(model),
+            }
         }
     }
 
@@ -1081,7 +1127,9 @@ impl ViewerApp {
                 Some(Drag::Pan) | None => diagram.view.pan += response.drag_delta(),
             }
         }
-        if response.drag_stopped() {
+        let drag_began = response.drag_started_by(egui::PointerButton::Primary);
+        let drag_ended = response.drag_stopped();
+        if drag_ended {
             self.drag = None;
         }
         if let Some(pointer) = response.hover_pos() {
@@ -1354,8 +1402,14 @@ impl ViewerApp {
                     .on_hover_text_at_pointer("Drag to bend · double-click a bend to remove it");
             }
         }
+        if drag_began {
+            self.diagrams[active].begin_drag();
+        }
         if let Some(edit) = edit {
             self.edit_active(edit);
+        }
+        if drag_ended {
+            self.diagrams[active].end_drag();
         }
         if let Some(element) = select {
             self.select_and_reveal(element);

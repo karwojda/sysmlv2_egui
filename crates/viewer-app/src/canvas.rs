@@ -38,6 +38,15 @@ pub struct OpenDiagram {
     pub name: Option<String>,
     /// Layout changes not yet saved.
     pub dirty: bool,
+    /// The Layout and Style as last saved (or as opened), to tell whether
+    /// undoing has brought the Diagram back to them.
+    saved: (Layout, DiagramStyle),
+    /// Layouts to go back to, oldest first, and to go forward to again.
+    undo: Vec<Layout>,
+    redo: Vec<Layout>,
+    /// While a drag is under way: whether it has recorded its undo step
+    /// yet. A whole drag is one step, though it edits on every frame.
+    drag_step: Option<bool>,
     pub scene: Result<Scene, DiagramError>,
     pub view: View,
     /// Fit the Diagram to the canvas on the next paint.
@@ -79,11 +88,15 @@ impl OpenDiagram {
             scene: Ok(Scene::default()),
             kind: None,
             source,
+            saved: (layout.clone(), style.clone()),
             layout,
             style,
             model_style: None,
             name,
             dirty: false,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            drag_step: None,
             view: View::default(),
             needs_fit: true,
             fitted_to: None,
@@ -133,7 +146,8 @@ impl OpenDiagram {
         }
     }
 
-    /// Applies a Layout edit and redraws.
+    /// Applies a Layout edit and redraws. Each edit that changes the
+    /// Layout is an undo step, unless it is part of a drag.
     pub fn edit(&mut self, model: &Model, edit: &Edit) {
         let Ok(scene) = &self.scene else { return };
         let before = self.layout.clone();
@@ -141,9 +155,59 @@ impl OpenDiagram {
         let known = |key: &QualifiedName| source.layout_key_exists(model, key);
         editing::apply_with(&mut self.layout, &known, scene, edit);
         if self.layout != before {
+            if self.drag_step != Some(true) {
+                self.undo.push(before);
+                if self.undo.len() > UNDO_STEPS {
+                    self.undo.remove(0);
+                }
+                self.redo.clear();
+                if self.drag_step.is_some() {
+                    self.drag_step = Some(true);
+                }
+            }
             self.dirty = true;
             self.refresh(model);
         }
+    }
+
+    /// Starts a drag: its edits, until [`Self::end_drag`], are one undo
+    /// step.
+    pub fn begin_drag(&mut self) {
+        self.drag_step = Some(false);
+    }
+
+    pub fn end_drag(&mut self) {
+        self.drag_step = None;
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// Goes back to the Layout before the last undo step, and redraws.
+    pub fn undo(&mut self, model: &Model) {
+        if let Some(layout) = self.undo.pop() {
+            self.redo.push(std::mem::replace(&mut self.layout, layout));
+            self.restored(model);
+        }
+    }
+
+    /// Goes forward again to the Layout the last undo left.
+    pub fn redo(&mut self, model: &Model) {
+        if let Some(layout) = self.redo.pop() {
+            self.undo.push(std::mem::replace(&mut self.layout, layout));
+            self.restored(model);
+        }
+    }
+
+    /// After undo or redo: unsaved unless back at the saved Diagram.
+    fn restored(&mut self, model: &Model) {
+        self.dirty = (&self.layout, &self.style) != (&self.saved.0, &self.saved.1);
+        self.refresh(model);
     }
 
     /// The tab title: the saved name, or the root for an ad hoc Diagram,
@@ -192,6 +256,7 @@ impl OpenDiagram {
         std::fs::write(&path, file.to_text()).map_err(|e| e.to_string())?;
         self.name = Some(name.to_owned());
         self.dirty = false;
+        self.saved = (self.layout.clone(), self.style.clone());
         Ok(())
     }
 
@@ -205,6 +270,9 @@ impl OpenDiagram {
         std::fs::write(path, svg::render(scene)).map_err(|e| e.to_string())
     }
 }
+
+/// How many undo steps an open Diagram keeps; older ones are dropped.
+pub const UNDO_STEPS: usize = 200;
 
 /// Diagram names become file names, so they are limited to letters, digits,
 /// `-`, `_` and `.`, and may not start with `.`.
