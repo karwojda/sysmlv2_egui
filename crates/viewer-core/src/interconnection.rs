@@ -1268,7 +1268,10 @@ fn draw_connectors(
             };
             separate_tracks(routed, tracks, &blocked)
         };
+        // Other wires' runs, which a label had better not lie across.
+        let others = tracks.len();
         tracks.extend(points.windows(2).map(|s| (s[0], s[1])));
+        let others = &tracks[..others];
 
         // Beside a vertical run, above a horizontal one.
         let (from, to) = points
@@ -1296,8 +1299,7 @@ fn draw_connectors(
                 ),
             ]
         };
-        // Other wires' runs, which a label had better not lie across.
-        let others = &tracks[..tracks.len() + 1 - points.len()];
+
         let text = notation::connector_label(wire.connection);
         // A flow points from its first end to its second; the path runs
         // from `wire.a` to `wire.b`, which are those ends in order.
@@ -1418,7 +1420,10 @@ fn separate_tracks(points: Vec<Point>, tracks: &[(Point, Point)], blocked: &[Rec
         points
     };
     let mut i = 1;
-    while i + 2 < points.len() {
+    // Each move adds at most two points; this many rounds see every run.
+    let mut rounds = 3 * points.len();
+    while i + 2 < points.len() && rounds > 0 {
+        rounds -= 1;
         let (a, b) = (points[i], points[i + 1]);
         if (a.x - b.x).abs() + (a.y - b.y).abs() < 0.5 || !along(a, b) {
             i += 1;
@@ -1444,12 +1449,15 @@ fn separate_tracks(points: Vec<Point>, tracks: &[(Point, Point)], blocked: &[Rec
                     p.y += d;
                 }
             }
-            // The run and the one before it must be free; the one after is
-            // looked at next, and moves in turn if it must.
-            let near = &candidate[j - 1..=j + 1];
-            let free = near.windows(2).all(|s| {
-                !along(s[0], s[1]) && !blocked.iter().any(|r| segment_crosses(s[0], s[1], *r))
-            });
+            // The run and the one before it must lie along no other wire;
+            // the one after is looked at next, and moves in turn if it must.
+            // None of the three may cross a box.
+            let free = candidate[j - 1..=j + 1]
+                .windows(2)
+                .all(|s| !along(s[0], s[1]))
+                && candidate[j - 1..=j + 2]
+                    .windows(2)
+                    .all(|s| !blocked.iter().any(|r| segment_crosses(s[0], s[1], *r)));
             free.then_some((candidate, j))
         });
         match moved {

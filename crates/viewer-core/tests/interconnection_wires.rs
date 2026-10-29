@@ -183,3 +183,33 @@ fn a_wire_whose_straight_route_crosses_a_third_box_goes_around_it() {
         assert!(!crosses, "{s:?} crosses c {c:?}");
     }
 }
+
+#[test]
+fn bends_the_user_set_are_honoured_as_they_are() {
+    let model = two_parts()
+        .connection("P::V::first")
+        .end(&["P::V::a", "P::A::p1"])
+        .end(&["P::V::b", "P::B::q1"])
+        .connection("P::V::second")
+        .end(&["P::V::a", "P::A::p1"])
+        .end(&["P::V::b", "P::B::q1"])
+        .build();
+    let plain = build_scene(&model, DiagramKind::Interconnection, &qn("P::V")).unwrap();
+    let first = line(&plain, "P::V::first");
+    // Lay the second exactly along the first, by hand.
+    let bend = first[first.len() / 2];
+    let mut layout = Layout::default();
+    let key = Depicts::Connection(qn("P::V::second")).edge_key().unwrap();
+    layout.edges.insert(key, vec![[bend.x, bend.y]]);
+
+    let scene = build_scene_with_layout(&model, DiagramKind::Interconnection, &qn("P::V"), &layout)
+        .unwrap();
+
+    let second = line(&scene, "P::V::second");
+    assert!(
+        second
+            .iter()
+            .any(|p| (p.x - bend.x).abs() < 0.5 && (p.y - bend.y).abs() < 0.5),
+        "the bend {bend:?} is kept: {second:?}"
+    );
+}
