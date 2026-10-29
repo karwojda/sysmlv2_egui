@@ -111,11 +111,20 @@ fn a_stacked_column_hangs_from_the_trunk_by_branches_into_left_edges() {
     let (lines, diamonds) = composition_shapes(&scene);
     assert_eq!(diamonds, 1);
     let parent = rect(&scene, "P::spec");
+    let tip = scene
+        .items_depicting(&Depicts::CompositionTree {
+            owner: qn("P::spec"),
+        })
+        .find_map(|s| match s {
+            Shape::Polygon { points, .. } => Some(points[0]),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        close(tip.x, parent.x + parent.width / 2.0) && close(tip.y, parent.bottom()),
+        "the diamond {tip:?} at the bottom middle of {parent:?}"
+    );
     for line in &lines {
-        assert!(
-            close(line[0].x, parent.x + parent.width / 2.0) || line.len() == 2,
-            "{line:?}"
-        );
         for s in line.windows(2) {
             assert!(close(s[0].x, s[1].x) || close(s[0].y, s[1].y), "{s:?}");
         }
@@ -187,4 +196,19 @@ fn a_child_placed_by_hand_keeps_its_place() {
 
     let s3 = rect(&scene, "P::spec::s3");
     assert!(close(s3.x, 700.0) && close(s3.y, 40.0), "{s3:?}");
+}
+
+#[test]
+fn a_subtree_s_own_wide_row_of_leaves_stacks_too() {
+    let scene = draw(&tree(&[("t1", 11), ("l1", 0)]).build(), &Layout::default());
+
+    let t1 = rect(&scene, "P::spec::t1");
+    let column: Vec<Rect> = (0..11)
+        .map(|g| rect(&scene, &format!("P::spec::t1::g{g}")))
+        .collect();
+    for pair in column.windows(2) {
+        assert!(close(pair[0].x, pair[1].x), "one column: {pair:?}");
+        assert!(pair[0].bottom() < pair[1].y, "in Model order: {pair:?}");
+    }
+    assert!(column[0].x > t1.x + t1.width / 2.0, "right of t1's trunk");
 }
