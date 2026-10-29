@@ -126,7 +126,7 @@ fn nested_requirements_are_listed_with_their_ids_in_a_package_diagram() {
     assert_eq!(
         &texts[listed + 1..],
         [
-            "<5> carMassReq:MassLimit ?",
+            "<5> carMassReq:MassLimit ✓",
             "<3> costReq:CostCap ?",
             "<1> massReq:MassLimit ✓",
             "<2> rangeReq:RangeTarget ✗",
@@ -393,7 +393,7 @@ fn a_satisfier_lists_its_claims_in_its_requirements_compartment() {
     );
     let car = texts_of(&scene, "Req::car");
     assert!(
-        car.ends_with(&["requirements".to_owned(), "satisfy carMassReq ?".to_owned()]),
+        car.ends_with(&["requirements".to_owned(), "satisfy carMassReq ✓".to_owned()]),
         "{car:?}"
     );
 }

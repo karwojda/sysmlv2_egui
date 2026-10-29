@@ -19,11 +19,11 @@
 <polyline points="585,86 856,86" fill="none" stroke="#000000"/>
 <text x="720.5" y="107" text-anchor="middle" font-size="11" font-style="italic">doc</text>
 <text x="595" y="123" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>
-<rect x="1130" y="173" width="251" height="97" rx="10" fill="#ffe599" stroke="#000000"/>
+<rect x="1130" y="173" width="251" height="97" rx="10" fill="#d9ead3" stroke="#000000"/>
 <text x="1255.5" y="195" text-anchor="middle" font-size="12">«requirement»</text>
 <text x="1255.5" y="213" text-anchor="middle" font-size="14">&lt;5&gt; carMassReq:MassLimit</text>
 <rect x="1360" y="178" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="1368" y="189.67" text-anchor="middle" font-size="11">?</text>
+<text x="1368" y="189.67" text-anchor="middle" font-size="11">✓</text>
 <polyline points="1130,223 1381,223" fill="none" stroke="#000000"/>
 <text x="1255.5" y="244" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
 <text x="1140" y="260" text-anchor="start" font-size="12">limit = 1600.0</text>

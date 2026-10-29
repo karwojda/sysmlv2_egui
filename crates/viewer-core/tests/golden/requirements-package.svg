@@ -44,18 +44,16 @@
 <text x="135" y="370" text-anchor="start" font-size="12">cost:Real</text>
 <text x="135" y="386" text-anchor="start" font-size="12">mass:Real</text>
 <text x="135" y="402" text-anchor="start" font-size="12">range:Real</text>
-<rect x="201" y="469" width="155" height="176" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="278.5" y="491" text-anchor="middle" font-size="12">«part»</text>
-<text x="278.5" y="509" text-anchor="middle" font-size="14">car:Vehicle</text>
-<polyline points="201,519 356,519" fill="none" stroke="#000000"/>
-<text x="278.5" y="540" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="211" y="556" text-anchor="start" font-size="12">mass = 1500.0</text>
-<text x="211" y="572" text-anchor="start" font-size="12" font-style="italic">^cost:Real</text>
-<text x="211" y="588" text-anchor="start" font-size="12" font-style="italic">^range:Real</text>
-<polyline points="201,598 356,598" fill="none" stroke="#000000"/>
-<text x="278.5" y="619" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="211" y="635" text-anchor="start" font-size="12">satisfy carMassReq ?</text>
-<rect x="20" y="453" width="141" height="208" rx="10" fill="#ffffff" stroke="#000000"/>
+<rect x="201" y="477" width="155" height="144" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="278.5" y="499" text-anchor="middle" font-size="12">«part»</text>
+<text x="278.5" y="517" text-anchor="middle" font-size="14">car:Vehicle</text>
+<polyline points="201,527 356,527" fill="none" stroke="#000000"/>
+<text x="278.5" y="548" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="211" y="564" text-anchor="start" font-size="12">mass = 1500.0</text>
+<polyline points="201,574 356,574" fill="none" stroke="#000000"/>
+<text x="278.5" y="595" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
+<text x="211" y="611" text-anchor="start" font-size="12">satisfy carMassReq ✓</text>
+<rect x="20" y="453" width="141" height="192" rx="10" fill="#ffffff" stroke="#000000"/>
 <text x="90.5" y="475" text-anchor="middle" font-size="12">«part»</text>
 <text x="90.5" y="493" text-anchor="middle" font-size="14">vehicle:Vehicle</text>
 <polyline points="20,503 161,503" fill="none" stroke="#000000"/>
@@ -79,7 +77,7 @@
 <text x="406" y="386" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>
 <polyline points="396,396 667,396" fill="none" stroke="#000000"/>
 <text x="531.5" y="417" text-anchor="middle" font-size="11" font-style="italic">requirements</text>
-<text x="406" y="433" text-anchor="start" font-size="12">&lt;5&gt; carMassReq:MassLimit ?</text>
+<text x="406" y="433" text-anchor="start" font-size="12">&lt;5&gt; carMassReq:MassLimit ✓</text>
 <text x="406" y="449" text-anchor="start" font-size="12">&lt;3&gt; costReq:CostCap ?</text>
 <text x="406" y="465" text-anchor="start" font-size="12">&lt;1&gt; massReq:MassLimit ✓</text>
 <text x="406" y="481" text-anchor="start" font-size="12">&lt;2&gt; rangeReq:RangeTarget ✗</text>

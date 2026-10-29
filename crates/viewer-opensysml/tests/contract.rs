@@ -224,6 +224,39 @@ fn reports_syntax_errors_as_diagnostics_with_file_and_line() {
 
 #[test]
 #[ignore = "needs the sysml-grpc service"]
+fn names_the_service_that_loaded_the_model_by_its_reported_version() {
+    let mut backend = OpenSysmlBackend::new();
+    assert_eq!(backend.loaded_by(), None, "nothing loaded yet");
+
+    backend.load(&fixture("vehicles")).unwrap();
+
+    let name = backend.loaded_by().expect("a name after a load");
+    let reported = name.strip_prefix("OpenSysML sysml-grpc ").expect(&name);
+    assert!(!reported.is_empty(), "{name}");
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn reports_the_service_s_checks_of_the_model_as_diagnostics() {
+    // A stakeholder declared before the subject it inherits, as
+    // `sysml -validate` 0.11 rejects.
+    let model = OpenSysmlBackend::new()
+        .load(&fixture("subject_position"))
+        .unwrap();
+
+    let error = model
+        .diagnostics()
+        .iter()
+        .find(|d| d.severity == Severity::Error)
+        .expect("an error");
+    assert_eq!(error.message, "Subject must be first parameter.");
+    let location = error.location.as_ref().expect("the error has a location");
+    assert!(location.file.ends_with("needs.sysml"), "{location:?}");
+    assert_eq!(location.line, 7);
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
 fn one_backend_loads_several_models() {
     let mut backend = OpenSysmlBackend::new();
 
@@ -359,9 +392,8 @@ fn rebuilds_require_constraint_text_from_the_service_s_expression_trees() {
             "v.a <= limit",
             "(v.a + v.b) * 2 > 10 and not v.ok",
             "v.a == 3 or v.b != -1.5 implies v.ok",
-            // Library elements arrive without their short names, so a
-            // unit reads as its full name.
-            "v.m <= 1650 [kilogram]",
+            // A library unit reads as it was written.
+            "v.m <= 1650 [kg]",
             "\"x\" == \"y\" xor true",
             "Cap(v.a)",
             "v.a - (v.b - 1) >= v.b ** 2",

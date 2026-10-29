@@ -2562,9 +2562,9 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "opensysml"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3efb1b993f8abbc0a72895e7ad046cc981ee743fe1fd07db0973b9c88762b16b"
+checksum = "2cf7384a23b135610ca94eb2dc3f8549d4540bc2c8626fb5378d9efee8cf4b8d"
 dependencies = [
  "fs4",
  "prost",
@@ -3288,6 +3288,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3953,6 +3959,7 @@ checksum = "7cc1186384beb7dd8eedea376413fd654937285ea6c9cfbb928dc3043ea4b606"
 dependencies = [
  "js-sys",
  "serde_core",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 
@@ -4035,6 +4042,7 @@ dependencies = [
  "opensysml",
  "serde_json",
  "tempfile",
+ "uuid",
  "viewer-core",
 ]
 

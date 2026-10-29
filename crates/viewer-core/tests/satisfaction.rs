@@ -48,7 +48,7 @@ fn requirement_usages_wear_their_status_badge_and_definitions_none() {
         ("massReq", "✓"),
         ("rangeReq", "✗"),
         ("costReq", "?"),
-        ("carMassReq", "?"),
+        ("carMassReq", "✓"),
         ("spareReq", "○"),
     ] {
         assert_eq!(
