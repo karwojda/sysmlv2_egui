@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="809" height="692" viewBox="0 0 809 692" font-family="sans-serif">
-<rect x="0" y="0" width="809" height="692" fill="#ffffff"/>
-<polyline points="342,207.13 206.45,117" fill="none" stroke="#000000"/>
-<polyline points="222.53,118.09 206.45,117 213.68,131.41" fill="none" stroke="#000000"/>
-<text x="274.22" y="156.06" text-anchor="middle" font-size="11">«satisfy» ✓</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="809" height="740" viewBox="0 0 809 740" font-family="sans-serif">
+<rect x="0" y="0" width="809" height="740" fill="#ffffff"/>
+<polyline points="342,213.1 203.43,117" fill="none" stroke="#000000"/>
+<polyline points="219.49,118.4 203.43,117 210.38,131.55" fill="none" stroke="#000000"/>
+<text x="272.72" y="159.05" text-anchor="middle" font-size="11">«satisfy» ✓</text>
 <polyline points="412.5,158 412.5,94" fill="none" stroke="#000000"/>
 <polyline points="420.5,108 412.5,94 404.5,108" fill="none" stroke="#000000"/>
 <text x="418.5" y="129.67" text-anchor="start" font-size="11">«satisfy» ✗</text>

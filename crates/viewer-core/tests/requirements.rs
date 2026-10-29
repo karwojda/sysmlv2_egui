@@ -194,15 +194,16 @@ fn a_nested_requirement_node_reads_id_name_and_type_not_bold() {
 }
 
 #[test]
-fn only_packages_definitions_and_requirement_usages_can_be_general_roots() {
+fn a_part_opens_as_an_interconnection_diagram_and_requirements_as_general_ones() {
     let model = common::requirements();
-    let accepts = |name: &str| DiagramKind::General.accepts_root(model.element(&qn(name)).unwrap());
+    let default = |name: &str| DiagramKind::default_for(model.element(&qn(name)).unwrap());
 
-    assert!(accepts("Req::vehicleSpec"));
-    assert!(accepts("Req::MassLimit"));
+    assert_eq!(default("Req::vehicleSpec"), Some(DiagramKind::General));
+    assert_eq!(default("Req::MassLimit"), Some(DiagramKind::General));
+    assert_eq!(default("Req::vehicle"), Some(DiagramKind::Interconnection));
     assert!(
-        !accepts("Req::vehicle"),
-        "a part opens as an Interconnection Diagram"
+        DiagramKind::General.accepts_root(model.element(&qn("Req::vehicle")).unwrap()),
+        "a part can still be drawn on top of its own members"
     );
 }
 
