@@ -1,15 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1391" height="388" viewBox="0 0 1391 388" font-family="sans-serif">
 <rect x="0" y="0" width="1391" height="388" fill="#ffffff"/>
-<polyline points="542.59,116.81 271,188.41" fill="none" stroke="#000000"/>
-<polygon points="560,112.22 549.77,108.72 542.59,116.81 552.83,120.32" fill="#000000" stroke="#000000"/>
-<polyline points="571.2,141.32 464.44,197" fill="none" stroke="#000000"/>
-<polygon points="587.16,133 576.41,131.84 571.2,141.32 581.95,142.48" fill="#000000" stroke="#000000"/>
-<polyline points="685.25,150.83 682.19,173" fill="none" stroke="#000000"/>
-<polygon points="687.71,133 680.53,141.1 685.25,150.83 692.42,142.74" fill="#000000" stroke="#000000"/>
-<polyline points="811.77,141.82 910,197" fill="none" stroke="#000000"/>
-<polygon points="796.07,133 800.98,142.64 811.77,141.82 806.86,132.18" fill="#000000" stroke="#000000"/>
-<polyline points="848.4,116.95 1151,197" fill="none" stroke="#000000"/>
-<polygon points="831,112.35 838.17,120.45 848.4,116.95 841.24,108.85" fill="#000000" stroke="#000000"/>
+<polygon points="695.5,133 689.5,142 695.5,151 701.5,142" fill="#000000" stroke="#000000"/>
+<polyline points="695.5,151 695.5,153" fill="none" stroke="#000000"/>
+<polyline points="145.5,153 1245.5,153" fill="none" stroke="#000000"/>
+<polyline points="145.5,153 145.5,173" fill="none" stroke="#000000"/>
+<polyline points="416.5,153 416.5,197" fill="none" stroke="#000000"/>
+<polyline points="675.5,153 675.5,173" fill="none" stroke="#000000"/>
+<polyline points="954.5,153 954.5,197" fill="none" stroke="#000000"/>
+<polyline points="1245.5,153 1245.5,197" fill="none" stroke="#000000"/>
 <rect x="560" y="20" width="271" height="113" rx="10" fill="#f4cccc" stroke="#000000"/>
 <text x="695.5" y="42" text-anchor="middle" font-size="12">«requirement»</text>
 <text x="695.5" y="60" text-anchor="middle" font-size="14">vehicleSpec</text>
@@ -19,11 +17,11 @@
 <polyline points="560,86 831,86" fill="none" stroke="#000000"/>
 <text x="695.5" y="107" text-anchor="middle" font-size="11" font-style="italic">doc</text>
 <text x="570" y="123" text-anchor="start" font-size="12">Top-level vehicle requirements.</text>
-<rect x="20" y="173" width="251" height="97" rx="10" fill="#ffe599" stroke="#000000"/>
+<rect x="20" y="173" width="251" height="97" rx="10" fill="#d9ead3" stroke="#000000"/>
 <text x="145.5" y="195" text-anchor="middle" font-size="12">«requirement»</text>
 <text x="145.5" y="213" text-anchor="middle" font-size="14">&lt;5&gt; carMassReq:MassLimit</text>
 <rect x="250" y="178" width="16" height="16" rx="8" fill="none" stroke="#000000"/>
-<text x="258" y="189.67" text-anchor="middle" font-size="11">?</text>
+<text x="258" y="189.67" text-anchor="middle" font-size="11">✓</text>
 <polyline points="20,223 271,223" fill="none" stroke="#000000"/>
 <text x="145.5" y="244" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
 <text x="30" y="260" text-anchor="start" font-size="12">limit = 1600.0</text>
