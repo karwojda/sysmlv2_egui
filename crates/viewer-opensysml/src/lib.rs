@@ -239,7 +239,11 @@ impl ModelBackend for OpenSysmlBackend {
                 message: format!(
                     "connection ends, documentation and source lines are missing for this file: {error}"
                 ),
-                location: Some(SourceLocation { file, line: 0 }),
+                location: Some(SourceLocation {
+                    file,
+                    line: 0,
+                    column: None,
+                }),
             });
         }
         let checked = design_values::check(
@@ -372,6 +376,7 @@ fn diagnostic(d: &opensysml::Diagnostic) -> Diagnostic {
         location: d.span.as_ref().map(|span| SourceLocation {
             file: PathBuf::from(&span.file),
             line: span.start_line.max(0) as u32,
+            column: None,
         }),
     }
 }

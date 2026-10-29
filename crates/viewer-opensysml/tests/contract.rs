@@ -24,9 +24,33 @@ fn assert_same_model(real: &Model, fake: &Model) {
             .collect::<Vec<_>>()
     };
     assert_eq!(names(real), names(fake));
+    // Columns only order members on one line; twins give lines alone.
+    let without_column = |e: &viewer_core::model::Element| {
+        let mut e = e.clone();
+        if let Some(source) = &mut e.source {
+            source.column = None;
+        }
+        e
+    };
     for (real, fake) in real.elements().zip(fake.elements()) {
-        assert_eq!(real, fake);
+        assert_eq!(without_column(real), without_column(fake));
     }
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
+fn records_where_on_its_line_each_member_starts() {
+    let model = OpenSysmlBackend::new().load(&fixture("one_line")).unwrap();
+    let column = |name: &str| {
+        let source = model
+            .element(&QualifiedName::from(name))
+            .unwrap()
+            .source
+            .clone();
+        source.and_then(|s| s.column).expect(name)
+    };
+
+    assert!(column("L::D::zed") < column("L::D::abe"));
 }
 
 /// The fake-backend twin of `fixtures/vehicles`.
