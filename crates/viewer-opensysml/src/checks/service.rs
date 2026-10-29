@@ -131,7 +131,8 @@ fn computed_values(instances: &[opensysml::Instance]) -> Vec<ComputedValue> {
 }
 
 /// A value written as the Model would write it: `1363.0`, `4`, `true`,
-/// `"x"`, `1650 [kg]`. `None` for anything else (instances, sequences, …).
+/// `"x"`, `1650 [kg]`. `None` for anything else (instances, sequences of
+/// several, …).
 fn value_text(value: &opensysml::Value) -> Option<String> {
     use opensysml::{Magnitude, Value};
     let real = |r: f64| {
@@ -158,6 +159,8 @@ fn value_text(value: &opensysml::Value) -> Option<String> {
             };
             Some(format!("{magnitude} [{}]", readable_unit(&q.unit)))
         }
+        // An analysis's output comes as a sequence of its one value.
+        Value::Sequence(values) if values.len() == 1 => value_text(&values[0]),
         _ => None,
     }
 }
@@ -178,6 +181,20 @@ mod tests {
             Some("\"x\"")
         );
         assert_eq!(value_text(&Value::InstanceRef(3)), None);
+    }
+
+    #[test]
+    fn a_sequence_of_one_value_is_written_as_that_value() {
+        use opensysml::Value;
+        assert_eq!(
+            value_text(&Value::Sequence(vec![Value::Real(1363.0)])).as_deref(),
+            Some("1363.0")
+        );
+        assert_eq!(
+            value_text(&Value::Sequence(vec![Value::Real(1.0), Value::Real(2.0)])),
+            None
+        );
+        assert_eq!(value_text(&Value::Sequence(Vec::new())), None);
     }
 
     fn quantity(magnitude: opensysml::Magnitude, unit: &str) -> opensysml::Value {

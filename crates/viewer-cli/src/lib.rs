@@ -797,9 +797,13 @@ fn load_model_for(
     stderr: &mut dyn Write,
     outcome: &str,
 ) -> Result<Model, Failure> {
-    let model = backend
-        .load_with(model_folder, analyses)
-        .map_err(|e| Failure(e.to_string()))?;
+    let loaded = backend.load_with(model_folder, analyses);
+    // On stderr, so reports and exit codes stay as they are; before a
+    // failure too, which it may explain.
+    if let Some(name) = backend.loaded_by() {
+        let _ = writeln!(stderr, "{name}");
+    }
+    let model = loaded.map_err(|e| Failure(e.to_string()))?;
     for diagnostic in model.diagnostics() {
         let _ = writeln!(stderr, "{}", diagnostic.line(None));
     }

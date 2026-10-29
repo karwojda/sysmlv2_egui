@@ -26,7 +26,7 @@ impl DiagramKind {
     pub fn description(self) -> &'static str {
         match self {
             DiagramKind::General => {
-                "a General Diagram (it must be a package, definition or requirement)"
+                "a General Diagram (it must be a package, a definition, or a part, attribute, port, requirement, constraint or analysis)"
             }
             DiagramKind::Interconnection => {
                 "an Interconnection Diagram (it must be a part or part def)"
@@ -35,18 +35,28 @@ impl DiagramKind {
     }
 
     /// Whether a Diagram of this kind can be rooted at `element`: a General
-    /// Diagram shows the members of a package or definition.
+    /// Diagram shows the members of a package or definition, or a usage on
+    /// top of its own members.
     pub fn accepts_root(self, element: &Element) -> bool {
         match self {
             DiagramKind::General => {
-                element.kind == ElementKind::Package
-                    || element.kind.is_definition()
-                    || element.kind == ElementKind::RequirementUsage
+                element.kind == ElementKind::Package || is_node_in_general(element)
             }
             DiagramKind::Interconnection => {
                 element.kind == ElementKind::PartDefinition
                     || element.kind == ElementKind::PartUsage
             }
+        }
+    }
+
+    /// The kind a Diagram of `element` opens as when none is asked for: an
+    /// Interconnection Diagram for a part, otherwise a General Diagram
+    /// where one fits.
+    pub fn default_for(element: &Element) -> Option<DiagramKind> {
+        if element.kind == ElementKind::PartUsage {
+            Some(DiagramKind::Interconnection)
+        } else {
+            Some(DiagramKind::General).filter(|kind| kind.accepts_root(element))
         }
     }
 }
@@ -167,9 +177,10 @@ pub fn build_scene_with_layout(
     }
     match kind {
         DiagramKind::General => {
-            // A requirement is drawn as the top of its tree, its nested
-            // requirements below it; its subject is on its header already.
-            let itself = (element.kind == ElementKind::RequirementUsage).then_some(element);
+            // A usage is drawn as the top of its tree, its own members
+            // below it; a requirement's subject is on its header already.
+            let itself = (!element.kind.is_definition() && element.kind != ElementKind::Package)
+                .then_some(element);
             let nodes: Vec<&Element> = itself
                 .into_iter()
                 .chain(model.owned_members(root).filter(|e| is_node_in_general(e)))
@@ -268,10 +279,11 @@ fn general<'a>(
     connections: Vec<&'a Element>,
     saved: &Layout,
 ) -> Scene {
-    let nodes: Vec<&Element> = nodes
+    let mut nodes: Vec<&Element> = nodes
         .into_iter()
         .filter(|e| !saved.hidden.contains(&e.qualified_name))
         .collect();
+    nodes.sort_by(|a, b| a.model_order().cmp(&b.model_order()));
     let index_of = |name: &QualifiedName| nodes.iter().position(|e| &e.qualified_name == name);
 
     let mut edges = Vec::new();
@@ -372,7 +384,58 @@ fn general<'a>(
             notation::node_content(e, model, compartments, |member| index_of(member).is_none())
         })
         .collect();
-    let rects = place(&nodes, &contents, &layering, saved);
+    // Each parent's children in Model Order: an owned usage by where it is
+    // declared, a composed part type by where its usage is.
+    struct Child<'e> {
+        declared_by: &'e Element,
+        node: usize,
+    }
+    let mut children: BTreeMap<usize, Vec<Child>> = BTreeMap::new();
+    for edge in &edges {
+        let (owner, child) = match *edge {
+            Edge::Ownership { owner, usage } => (
+                owner,
+                Child {
+                    declared_by: nodes[usage],
+                    node: usage,
+                },
+            ),
+            Edge::Composition {
+                owner,
+                part_type,
+                usage,
+            } => (
+                owner,
+                Child {
+                    declared_by: usage,
+                    node: part_type,
+                },
+            ),
+            _ => continue,
+        };
+        children.entry(owner).or_default().push(child);
+    }
+    let families: Vec<layout::Family> = children
+        .into_iter()
+        .map(|(parent, mut children)| {
+            children.sort_by(|a, b| {
+                a.declared_by
+                    .model_order()
+                    .cmp(&b.declared_by.model_order())
+            });
+            let mut order: Vec<usize> = Vec::new();
+            for child in children {
+                if !order.contains(&child.node) {
+                    order.push(child.node);
+                }
+            }
+            layout::Family {
+                parent: Some(parent),
+                children: order,
+            }
+        })
+        .collect();
+    let rects = place(&nodes, &contents, &layering, &families, saved);
 
     // Edges without a saved route that join the same two nodes are fanned
     // out, numbered from the lower node index so direction doesn't matter.
@@ -545,6 +608,7 @@ fn place(
     nodes: &[&Element],
     contents: &[notation::NodeContent],
     layering: &[(usize, usize)],
+    families: &[layout::Family],
     saved: &Layout,
 ) -> Vec<Rect> {
     let saved_rect = |i: usize| {
@@ -573,7 +637,14 @@ fn place(
         .iter()
         .filter_map(|&(a, b)| Some((local(a)?, local(b)?)))
         .collect();
-    let auto = layout::layered(&sizes, &edges);
+    let families: Vec<layout::Family> = families
+        .iter()
+        .map(|f| layout::Family {
+            parent: f.parent.and_then(local),
+            children: f.children.iter().filter_map(|&i| local(i)).collect(),
+        })
+        .collect();
+    let auto = layout::layered(&sizes, &edges, &families);
 
     let saved_rects: Vec<Rect> = (0..nodes.len()).filter_map(saved_rect).collect();
     let (left, top) = if saved_rects.is_empty() {

@@ -432,10 +432,7 @@ pub fn requirements() -> Model {
             reason: "satisfaction satisfy vehicleSpec::costReq by vehicle: require condition evaluation failed: no value for feature v.cost".to_owned(),
         })
         .satisfy("Req::car::@1", "Req::vehicleSpec::carMassReq", "Req::car")
-        // The service leaves a `satisfy` inside a part without its subject.
-        .result(ClaimResult::Undecided {
-            reason: "satisfaction satisfy vehicleSpec::carMassReq: require condition evaluation failed: no value for feature v".to_owned(),
-        })
+        .result(ClaimResult::Holds)
         .build()
 }
 

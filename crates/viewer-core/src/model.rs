@@ -264,6 +264,9 @@ impl fmt::Display for Expose {
 pub struct SourceLocation {
     pub file: PathBuf,
     pub line: u32,
+    /// Where on the line it starts, from 1, when known: two members on one
+    /// line keep their order.
+    pub column: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -336,6 +339,17 @@ pub struct Element {
 }
 
 impl Element {
+    /// Where the element is declared, for drawing members in Model Order:
+    /// by file, then line and column; an element without a location comes
+    /// after those with one, by name.
+    pub fn model_order(&self) -> impl Ord + '_ {
+        let at = self
+            .source
+            .as_ref()
+            .map(|s| (&s.file, s.line, s.column.unwrap_or(0)));
+        (at.is_none(), at, &self.qualified_name)
+    }
+
     /// How the element is named to a reader: its name, or for an unnamed
     /// connection-like element its ends (`a → b`, or `a = b` for a binding).
     pub fn display_name(&self) -> String {
@@ -536,6 +550,51 @@ impl Model {
         self.elements
             .values()
             .filter(move |e| e.owner.as_ref() == Some(owner))
+    }
+
+    /// `element`'s Inherited Members (`CONTEXT.md`): what it has through
+    /// its definition (a usage's `typed_by`) or the definitions it
+    /// specializes (a definition's), and through every definition those
+    /// specialize, nearest definition first and each definition once. A
+    /// member is hidden by a nearer one that redefines it; until
+    /// redefinitions are recorded, by a nearer one of the same name, the
+    /// element's own members included. For `part specialised : Design`
+    /// with `Design :> Box`: `Design::inner`, then `Box::outer`.
+    pub fn inherited_members<'a>(&'a self, element: &'a Element) -> Vec<&'a Element> {
+        let mut next: std::collections::VecDeque<&QualifiedName> = if element.kind.is_definition() {
+            element.specializes.iter().collect()
+        } else {
+            element.typed_by.iter().collect()
+        };
+        let mut visited: std::collections::HashSet<&QualifiedName> =
+            std::iter::once(&element.qualified_name).collect();
+        let mut names: std::collections::HashSet<&str> = self
+            .owned_members(&element.qualified_name)
+            .map(|m| m.name.as_str())
+            .collect();
+        let mut inherited = Vec::new();
+        while let Some(name) = next.pop_front() {
+            let Some(definition) = self.element(name).filter(|_| visited.insert(name)) else {
+                continue;
+            };
+            let members: Vec<&Element> = self
+                .owned_members(name)
+                .filter(|m| m.name.is_empty() || !names.contains(m.name.as_str()))
+                .collect();
+            names.extend(members.iter().map(|m| m.name.as_str()));
+            inherited.extend(members);
+            next.extend(&definition.specializes);
+        }
+        inherited
+    }
+
+    /// Whether `member` is its owner's subject (`subject v : Vehicle`).
+    pub fn is_subject(&self, member: &Element) -> bool {
+        member
+            .owner
+            .as_ref()
+            .and_then(|owner| self.element(owner))
+            .is_some_and(|owner| owner.subject.as_ref() == Some(&member.qualified_name))
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {
@@ -835,6 +894,17 @@ impl ModelBuilder {
         self.last().source = Some(SourceLocation {
             file: file.into(),
             line,
+            column: None,
+        });
+        self
+    }
+
+    /// [`ModelBuilder::at`], at `column` of the line.
+    pub fn at_column(mut self, file: impl Into<PathBuf>, line: u32, column: u32) -> Self {
+        self.last().source = Some(SourceLocation {
+            file: file.into(),
+            line,
+            column: Some(column),
         });
         self
     }

@@ -538,7 +538,7 @@ fn size(node: &mut BoxNode, layout: &Layout) {
         .iter()
         .filter_map(|&(a, b)| Some((local(a)?, local(b)?)))
         .collect();
-    let auto = layout::layered(&unplaced_sizes, &unplaced_edges);
+    let auto = layout::layered(&unplaced_sizes, &unplaced_edges, &[]);
     let saved_bottom = node
         .children
         .iter()
