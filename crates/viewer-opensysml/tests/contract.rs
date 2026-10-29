@@ -224,6 +224,19 @@ fn reports_syntax_errors_as_diagnostics_with_file_and_line() {
 
 #[test]
 #[ignore = "needs the sysml-grpc service"]
+fn names_the_service_that_loaded_the_model_by_its_reported_version() {
+    let mut backend = OpenSysmlBackend::new();
+    assert_eq!(backend.loaded_by(), None, "nothing loaded yet");
+
+    backend.load(&fixture("vehicles")).unwrap();
+
+    let name = backend.loaded_by().expect("a name after a load");
+    let reported = name.strip_prefix("OpenSysML sysml-grpc ").expect(&name);
+    assert!(!reported.is_empty(), "{name}");
+}
+
+#[test]
+#[ignore = "needs the sysml-grpc service"]
 fn reports_the_service_s_checks_of_the_model_as_diagnostics() {
     // A stakeholder declared before the subject it inherits, as
     // `sysml -validate` 0.11 rejects.
