@@ -96,6 +96,30 @@ fn a_box_too_small_for_its_port_labels_grows_until_they_fit() {
             "{label} {rect:?} along {frame:?}"
         );
     }
+    // Wider than the same box with one-letter port names, which fits.
+    let mut short = defs().part_def("P::RearUnit");
+    for port in ["a", "b", "c", "d", "e"] {
+        short = short
+            .port(&format!("P::RearUnit::{port}"))
+            .typed_by("P::BlePort");
+    }
+    let short = build_scene(
+        &short.build(),
+        DiagramKind::Interconnection,
+        &qn("P::RearUnit"),
+    )
+    .unwrap()
+    .element_bounds(&qn("P::RearUnit"))
+    .unwrap();
+    assert!(frame.width > short.width, "{frame:?} grew past {short:?}");
+    // In the order they had: by name, nothing to face.
+    let mut by_x = labels.clone();
+    by_x.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
+    let order: Vec<&str> = by_x
+        .iter()
+        .map(|(l, _)| l.split(' ').next().unwrap())
+        .collect();
+    assert_eq!(order, ["ble", "mount", "radar", "rearLight", "usbC"]);
 }
 
 #[test]
