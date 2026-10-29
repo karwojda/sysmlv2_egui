@@ -10,6 +10,10 @@ A desktop tool for systems engineers to open SysML v2 models, see them as diagra
 The set of SysML v2 textual-notation files the user opens; the single source of truth, which this tool reads but never writes.
 _Avoid_: project, workspace, repository
 
+**Model Order**:
+The order a Model declares its elements in: by file, then by where each starts in it. A Diagram draws a parent's children left to right in Model Order.
+_Avoid_: declaration order, source order
+
 **Unsupported Element**:
 A Model element outside the language subset this tool draws; it is listed in the Browser Diagram but never appears in other Diagrams.
 _Avoid_: unknown element, opaque element

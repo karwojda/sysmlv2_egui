@@ -339,7 +339,7 @@ pub struct Element {
 }
 
 impl Element {
-    /// Where the element is declared, for drawing members in Model order:
+    /// Where the element is declared, for drawing members in Model Order:
     /// by file, then line and column; an element without a location comes
     /// after those with one, by name.
     pub fn model_order(&self) -> impl Ord + '_ {

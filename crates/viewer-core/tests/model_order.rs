@@ -1,9 +1,11 @@
 //! General Diagrams draw the children of one parent left to right in the
 //! order the Model declares them, not by name.
 
-use viewer_core::diagram::build_scene;
-use viewer_core::model::ModelBuilder;
+use viewer_core::diagram::{build_general_scene, build_scene};
+use viewer_core::diagram_file::Layout;
+use viewer_core::model::{ExposeScope, ModelBuilder};
 use viewer_core::scene::Scene;
+use viewer_core::view::{ViewContents, resolve};
 use viewer_core::{DiagramKind, Model, QualifiedName};
 
 fn qn(s: &str) -> QualifiedName {
@@ -40,7 +42,7 @@ fn composite(order: &[&str]) -> (Model, Vec<String>) {
 }
 
 #[test]
-fn a_composite_requirement_s_children_are_drawn_in_declaration_order() {
+fn a_composite_requirement_s_children_are_drawn_in_model_order() {
     let (model, declared) = composite(&["c", "a", "b"]);
 
     let scene = build_scene(&model, DiagramKind::General, &qn("P::spec")).unwrap();
@@ -63,7 +65,7 @@ fn eleven_children_keep_their_order() {
 }
 
 #[test]
-fn a_definition_s_parts_are_drawn_in_declaration_order() {
+fn a_definition_s_parts_are_drawn_in_model_order() {
     let model = Model::builder()
         .package("P")
         .at(FILE, 1)
@@ -128,4 +130,43 @@ fn members_without_a_location_follow_by_name() {
     let scene = build_scene(&model, DiagramKind::General, &qn("P::D")).unwrap();
 
     assert_eq!(left_to_right(&scene, &names), names);
+}
+
+#[test]
+fn children_stay_centred_under_their_parent_with_their_own_subtrees() {
+    let model = Model::builder()
+        .package("P")
+        .at(FILE, 1)
+        .requirement("P::spec")
+        .at(FILE, 2)
+        .requirement("P::spec::c")
+        .at(FILE, 3)
+        .requirement("P::spec::a")
+        .at(FILE, 4)
+        .requirement("P::spec::b")
+        .at(FILE, 5)
+        .requirement("P::spec::c::deep")
+        .at(FILE, 6)
+        .view("P::tree")
+        .exposes("P::spec", ExposeScope::ElementAndDescendants)
+        .renders("Views::asTreeDiagram")
+        .build();
+    let ViewContents::General(shown) = resolve(&model, &qn("P::tree")).unwrap() else {
+        panic!("a General Diagram");
+    };
+
+    let scene = build_general_scene(&model, &shown, &Layout::default());
+
+    let rect = |n: &str| scene.element_bounds(&qn(n)).unwrap();
+    let centre = |n: &str| rect(n).x + rect(n).width / 2.0;
+    let span = (rect("P::spec::c").x, rect("P::spec::b").right());
+    assert!(
+        (centre("P::spec") - (span.0 + span.1) / 2.0).abs() < 1.0,
+        "the parent is centred over its children"
+    );
+    let c = rect("P::spec::c");
+    assert!(
+        (c.x..=c.right()).contains(&centre("P::spec::c::deep")),
+        "a child's subtree stays under it"
+    );
 }
