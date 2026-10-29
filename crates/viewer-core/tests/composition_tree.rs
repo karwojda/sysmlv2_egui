@@ -214,3 +214,36 @@ fn an_edge_with_bends_set_by_the_user_is_drawn_on_its_own() {
             .any(|p| close(p.x, rect.x - 30.0) && close(p.y, rect.y - 10.0))
     );
 }
+
+#[test]
+fn two_usages_of_one_definition_keep_edges_of_their_own() {
+    let model = Model::builder()
+        .package("P")
+        .part_def("P::Car")
+        .part("P::Car::engine")
+        .typed_by("P::Component")
+        .part("P::Car::wheels")
+        .typed_by("P::Component")
+        .multiplicity("4", "4")
+        .part_def("P::Component")
+        .build();
+    let scene = build_scene(&model, DiagramKind::General, &qn("P")).unwrap();
+
+    let lines = lines(&scene);
+    for (i, a) in lines.iter().enumerate() {
+        for b in &lines[i + 1..] {
+            assert_ne!(a, b, "two edges drawn on one line");
+        }
+    }
+    let labels: Vec<Point> = scene
+        .items
+        .iter()
+        .filter(|i| is_composition(&i.depicts))
+        .filter_map(|i| match &i.shape {
+            Shape::Text { position, .. } => Some(*position),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels.len(), 2);
+    assert_ne!(labels[0], labels[1], "labels on top of each other");
+}

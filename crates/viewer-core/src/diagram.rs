@@ -560,7 +560,8 @@ fn general<'a>(
 /// user set, drawn as one tree as in the notation's parts trees: a
 /// diamond at the middle of its bottom, a trunk down to a bar, and a
 /// branch down to the top middle of each child. A child whose branch would
-/// cross another node keeps an edge of its own, and a parent with one
+/// cross another node, or that the parent composes more than once, keeps
+/// an edge of its own, and a parent with one
 /// child hangs it straight below where it can.
 fn composition_trees(
     edges: &[Edge],
@@ -576,6 +577,13 @@ fn composition_trees(
         if composes && !routed_by_user[e] && owner != child && below {
             candidates.entry(owner).or_default().push((e, child));
         }
+    }
+    // A child composed more than once by its parent (two usages of one
+    // definition) keeps its edges, fanned out, as one branch can't tell
+    // them apart.
+    for members in candidates.values_mut() {
+        let children: Vec<usize> = members.iter().map(|&(_, c)| c).collect();
+        members.retain(|&(_, c)| children.iter().filter(|&&other| other == c).count() == 1);
     }
     let mut trunks: Vec<(usize, notation::Trunk)> = Vec::new();
     let mut branches: Vec<Option<Vec<Point>>> = vec![None; edges.len()];
