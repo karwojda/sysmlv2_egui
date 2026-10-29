@@ -756,21 +756,32 @@ pub fn composition_branch(
     tag(depicts, shapes)
 }
 
-/// What a composition tree's branches share: the filled diamond hanging
-/// from `tip` (the middle of the parent's bottom), the trunk down to
-/// `bar_y`, and the bar from `bar.0` to `bar.1` the branches leave.
-pub fn composition_trunk(depicts: Depicts, tip: Point, bar_y: f32, bar: (f32, f32)) -> Vec<Item> {
-    let below = Point::new(tip.x, bar_y);
+/// What a composition tree's branches share.
+pub struct Trunk {
+    /// Where the diamond hangs from: on the parent's bottom.
+    pub tip: Point,
+    /// How far down the trunk runs.
+    pub end: f32,
+    /// The height of the bar the branches leave, and its two ends.
+    pub bar_y: f32,
+    pub bar: (f32, f32),
+}
+
+/// A composition tree's shared part: the filled diamond hanging from the
+/// trunk's tip, the trunk, and its bar, where it has one.
+pub fn composition_trunk(depicts: Depicts, trunk: &Trunk) -> Vec<Item> {
+    let below = Point::new(trunk.tip.x, trunk.end);
     let mut shapes = vec![
-        diamond(tip, below),
+        diamond(trunk.tip, below),
         Shape::Polyline {
-            points: vec![back_from(tip, below, DIAMOND_LENGTH), below],
+            points: vec![back_from(trunk.tip, below, DIAMOND_LENGTH), below],
             dashed: false,
         },
     ];
-    if bar.1 - bar.0 > 0.5 {
+    let (from, to) = trunk.bar;
+    if to - from > 0.5 {
         shapes.push(Shape::Polyline {
-            points: vec![Point::new(bar.0, bar_y), Point::new(bar.1, bar_y)],
+            points: vec![Point::new(from, trunk.bar_y), Point::new(to, trunk.bar_y)],
             dashed: false,
         });
     }
@@ -1045,7 +1056,7 @@ fn distance(a: Point, b: Point) -> f32 {
 
 /// Whether the segment from `a` to `b` passes through `rect`, kept a few
 /// units clear of its border (Liang–Barsky clipping).
-fn crosses(a: Point, b: Point, rect: Rect) -> bool {
+pub(crate) fn crosses(a: Point, b: Point, rect: Rect) -> bool {
     let (x0, y0) = (rect.x - OBSTACLE_CLEARANCE, rect.y - OBSTACLE_CLEARANCE);
     let (x1, y1) = (
         rect.right() + OBSTACLE_CLEARANCE,

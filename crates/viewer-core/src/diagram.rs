@@ -414,41 +414,13 @@ fn general<'a>(
         };
         paths.push(notation::route(rects[from], rects[to], &bends));
     }
-    // A parent's composition edges to children below it, without routes
-    // the user set, are drawn as one tree, as in the notation's parts
-    // trees: a diamond at its bottom middle, a trunk down to a bar, and a
-    // branch down to the top middle of each child.
-    let mut trees: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    for (e, edge) in edges.iter().enumerate() {
-        let (_, owner, child) = describe(edge, &nodes);
-        let composes = matches!(edge, Edge::Composition { .. } | Edge::Ownership { .. });
-        let below = rects[child].y >= rects[owner].bottom() + 2.0 * notation::DIAMOND_ROOM;
-        if composes && !routed_by_user[e] && owner != child && below {
-            trees.entry(owner).or_default().push(e);
+    let CompositionTrees { trunks, branches } =
+        composition_trees(&edges, &nodes, &rects, &routed_by_user);
+    let in_tree: Vec<bool> = branches.iter().map(Option::is_some).collect();
+    for (path, branch) in paths.iter_mut().zip(&branches) {
+        if let Some(branch) = branch {
+            *path = branch.clone();
         }
-    }
-    let mut trunks: Vec<(usize, Point, f32, (f32, f32))> = Vec::new();
-    let mut in_tree = vec![false; edges.len()];
-    for (&owner, members) in &trees {
-        let parent = rects[owner];
-        let tip = Point::new(parent.center_x(), parent.bottom());
-        let children: Vec<usize> = members
-            .iter()
-            .map(|&e| describe(&edges[e], &nodes).2)
-            .collect();
-        let top = children
-            .iter()
-            .map(|&c| rects[c].y)
-            .fold(f32::INFINITY, f32::min);
-        let bar_y = (tip.y + notation::DIAMOND_ROOM).max((tip.y + top) / 2.0);
-        let mut bar = (tip.x, tip.x);
-        for (&e, &child) in members.iter().zip(&children) {
-            let x = rects[child].center_x();
-            bar = (bar.0.min(x), bar.1.max(x));
-            paths[e] = vec![Point::new(x, bar_y), Point::new(x, rects[child].y)];
-            in_tree[e] = true;
-        }
-        trunks.push((owner, tip, bar_y, bar));
     }
 
     // Ends crowding the same spot on a node's border are spread along it;
@@ -474,21 +446,25 @@ fn general<'a>(
                 ends.push(&mut rest[last - 1]);
             }
         }
-        // A tree's diamond stays at the middle of its parent's bottom.
+        // A tree's diamond, and the ends of its branches, stay put.
         let fixed: Vec<Point> = trunks
             .iter()
-            .filter(|(owner, ..)| *owner == node)
-            .map(|&(_, tip, ..)| tip)
+            .filter(|(owner, _)| *owner == node)
+            .map(|(_, trunk)| trunk.tip)
+            .chain(edges.iter().zip(&branches).filter_map(|(edge, branch)| {
+                let (_, _, child) = describe(edge, &nodes);
+                (child == node).then(|| branch.as_ref()?.last().copied())?
+            }))
             .collect();
         notation::spread_ends(*rect, &mut ends, &fixed);
     }
 
     let mut items: Vec<Item> = Vec::new();
-    for (owner, tip, bar_y, bar) in trunks {
+    for (owner, trunk) in &trunks {
         let depicts = Depicts::CompositionTree {
-            owner: nodes[owner].qualified_name.clone(),
+            owner: nodes[*owner].qualified_name.clone(),
         };
-        items.extend(notation::composition_trunk(depicts, tip, bar_y, bar));
+        items.extend(notation::composition_trunk(depicts, trunk));
     }
     for ((edge, path), tree) in edges.iter().zip(paths).zip(in_tree) {
         let (depicts, _, _) = describe(edge, &nodes);
@@ -516,6 +492,99 @@ fn general<'a>(
 
     page(items, &rects)
 }
+
+/// A parent's composition edges to children below it, without routes the
+/// user set, drawn as one tree as in the notation's parts trees: a
+/// diamond at the middle of its bottom, a trunk down to a bar, and a
+/// branch down to the top middle of each child. A child whose branch would
+/// cross another node keeps an edge of its own, and a parent with one
+/// child hangs it straight below where it can.
+fn composition_trees(
+    edges: &[Edge],
+    nodes: &[&Element],
+    rects: &[Rect],
+    routed_by_user: &[bool],
+) -> CompositionTrees {
+    let mut candidates: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
+    for (e, edge) in edges.iter().enumerate() {
+        let (_, owner, child) = describe(edge, nodes);
+        let composes = matches!(edge, Edge::Composition { .. } | Edge::Ownership { .. });
+        let below = rects[child].y >= rects[owner].bottom() + 2.0 * notation::DIAMOND_ROOM;
+        if composes && !routed_by_user[e] && owner != child && below {
+            candidates.entry(owner).or_default().push((e, child));
+        }
+    }
+    let mut trunks: Vec<(usize, notation::Trunk)> = Vec::new();
+    let mut branches: Vec<Option<Vec<Point>>> = vec![None; edges.len()];
+    for (owner, members) in candidates {
+        let parent = rects[owner];
+        let top = members
+            .iter()
+            .map(|&(_, c)| rects[c].y)
+            .fold(f32::INFINITY, f32::min);
+        let mut bar_y = (parent.bottom() + top) / 2.0;
+        let clear = |x: f32, child: usize| {
+            let from = Point::new(x, bar_y);
+            let to = Point::new(x, rects[child].y);
+            (0..rects.len())
+                .filter(|&i| i != owner && i != child)
+                .all(|i| !notation::crosses(from, to, rects[i]))
+        };
+        let kept: Vec<(usize, usize)> = members
+            .into_iter()
+            .filter(|&(_, c)| clear(rects[c].center_x(), c))
+            .collect();
+        let Some(&(_, first)) = kept.first() else {
+            continue;
+        };
+        // One child hangs straight below, as far along the bottom as goes.
+        let inset = notation::DIAMOND_ROOM;
+        let tip_x = if kept.len() == 1 {
+            rects[first]
+                .center_x()
+                .clamp(parent.x + inset, parent.right() - inset)
+        } else {
+            parent.center_x()
+        };
+        let bar = kept
+            .iter()
+            .map(|&(_, c)| rects[c].center_x())
+            .fold((tip_x, tip_x), |(low, high), x| (low.min(x), high.max(x)));
+        // Bars of neighbouring trees at one height would read as one.
+        while trunks.iter().any(|(_, other)| {
+            (other.bar_y - bar_y).abs() < BAR_STAGGER / 2.0
+                && other.bar.0 <= bar.1
+                && bar.0 <= other.bar.1
+        }) && bar_y + BAR_STAGGER < top - notation::DIAMOND_ROOM
+        {
+            bar_y += BAR_STAGGER;
+        }
+        for (e, c) in kept {
+            let x = rects[c].center_x();
+            branches[e] = Some(vec![Point::new(x, bar_y), Point::new(x, rects[c].y)]);
+        }
+        trunks.push((
+            owner,
+            notation::Trunk {
+                tip: Point::new(tip_x, parent.bottom()),
+                end: bar_y,
+                bar_y,
+                bar,
+            },
+        ));
+    }
+    CompositionTrees { trunks, branches }
+}
+
+/// A diagram's composition trees: each tree's trunk by its parent, and
+/// each edge's branch if it is in a tree.
+struct CompositionTrees {
+    trunks: Vec<(usize, notation::Trunk)>,
+    branches: Vec<Option<Vec<Point>>>,
+}
+
+/// How far apart the bars of two trees that would overlap are moved.
+const BAR_STAGGER: f32 = 8.0;
 
 /// A scene whose page holds every node rect with a margin, grown to
 /// anything drawn beyond that (such as labels beside edges).

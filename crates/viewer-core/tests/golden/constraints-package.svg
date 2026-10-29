@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="726" height="510" viewBox="0 0 726 510" font-family="sans-serif">
 <rect x="0" y="0" width="726" height="510" fill="#ffffff"/>
-<polygon points="503,180 497,189 503,198 509,189" fill="#000000" stroke="#000000"/>
-<polyline points="503,198 503,227.5" fill="none" stroke="#000000"/>
-<polyline points="390,227.5 503,227.5" fill="none" stroke="#000000"/>
+<polygon points="461,180 455,189 461,198 467,189" fill="#000000" stroke="#000000"/>
+<polyline points="461,198 461,227.5" fill="none" stroke="#000000"/>
+<polyline points="390,227.5 461,227.5" fill="none" stroke="#000000"/>
 <polyline points="390,227.5 390,275" fill="none" stroke="#000000"/>
 <text x="396" y="272" text-anchor="start" font-size="11">tank</text>
 <polyline points="555.71,220 543.77,192.82" fill="none" stroke="#000000"/>

@@ -58,6 +58,10 @@ A Layout entry whose element qualified name no longer matches anything in the Mo
 **Standard Notation**:
 The SysML v2 specification's graphical notation, which every Diagram follows by default.
 
+**Composition Tree**:
+How a General Diagram draws a parent's compositions to the children below it, as the Standard Notation's parts trees do: one filled diamond at the parent, a trunk, a bar, and a branch to each child. A child its branch can't reach straight keeps an edge of its own.
+_Avoid_: fan, composition fan
+
 **Satisfaction Claim**:
 A `satisfy` in the Model stating that a part (the satisfier) satisfies a requirement usage. It is drawn as a `«satisfy»` edge from the satisfier to the requirement.
 

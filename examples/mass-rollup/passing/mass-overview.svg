@@ -24,12 +24,12 @@
 <polyline points="1066.26,357 1066.17,318" fill="none" stroke="#000000"/>
 <polyline points="1074.2,331.98 1066.17,318 1058.2,332.02" fill="none" stroke="#000000"/>
 <text x="1072.21" y="341.17" text-anchor="start" font-size="11">«satisfy» ✓</text>
-<polyline points="285,644 285,318" fill="none" stroke="#000000"/>
-<polyline points="293,332 285,318 277,332" fill="none" stroke="#000000"/>
-<text x="291" y="484.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
-<polyline points="1608.5,604 1608.5,318" fill="none" stroke="#000000"/>
-<polyline points="1616.5,332 1608.5,318 1600.5,332" fill="none" stroke="#000000"/>
-<text x="1614.5" y="464.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
+<polyline points="299,644 285,318" fill="none" stroke="#000000"/>
+<polyline points="293.59,331.64 285,318 277.61,332.33" fill="none" stroke="#000000"/>
+<text x="298" y="484.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
+<polyline points="1622.5,604 1608.5,318" fill="none" stroke="#000000"/>
+<polyline points="1617.17,331.59 1608.5,318 1601.19,332.37" fill="none" stroke="#000000"/>
+<text x="1621.5" y="464.67" text-anchor="start" font-size="11">«satisfy» ✓</text>
 <rect x="490" y="644" width="264" height="144" rx="10" fill="#d9ead3" stroke="#000000"/>
 <text x="622" y="666" text-anchor="middle" font-size="12">«analysis»</text>
 <text x="622" y="684" text-anchor="middle" font-size="14">massAnalysis:MassAnalysis</text>
