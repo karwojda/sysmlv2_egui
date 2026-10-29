@@ -1,28 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="448" viewBox="0 0 640 448" font-family="sans-serif">
-<rect x="0" y="0" width="640" height="448" fill="#ffffff"/>
-<polyline points="432.93,212 422.75,243.83 438.93,293.68" fill="none" stroke="#000000"/>
-<polygon points="443.26,307 431.32,296.15 446.54,291.21" fill="#ffffff" stroke="#000000"/>
-<circle cx="433.59" cy="290.16" r="1.8" fill="#000000"/>
-<circle cx="441.19" cy="287.69" r="1.8" fill="#000000"/>
-<polyline points="458.72,230 458.89,307" fill="none" stroke="#000000"/>
-<polygon points="458.68,212 452.7,221.01 458.72,230 464.7,220.99" fill="#000000" stroke="#000000"/>
-<text x="464.84" y="284" text-anchor="start" font-size="11">engine</text>
-<polyline points="490.03,229.12 494.75,243.67 474.5,307" fill="none" stroke="#000000"/>
-<polygon points="484.47,212 481.54,222.41 490.03,229.12 492.96,218.71" fill="#000000" stroke="#000000"/>
-<text x="487.51" y="285.09" text-anchor="start" font-size="11">wheels [4]</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="448" viewBox="0 0 600 448" font-family="sans-serif">
+<rect x="0" y="0" width="600" height="448" fill="#ffffff"/>
+<polyline points="410.37,220 402.75,243.83 418.93,293.68" fill="none" stroke="#000000"/>
+<polygon points="423.26,307 411.32,296.15 426.54,291.21" fill="#ffffff" stroke="#000000"/>
+<circle cx="413.59" cy="290.16" r="1.8" fill="#000000"/>
+<circle cx="421.19" cy="287.69" r="1.8" fill="#000000"/>
+<polyline points="438.74,238 438.89,307" fill="none" stroke="#000000"/>
+<polygon points="438.7,220 432.72,229.01 438.74,238 444.72,228.99" fill="#000000" stroke="#000000"/>
+<text x="444.84" y="284" text-anchor="start" font-size="11">engine</text>
+<polyline points="472.62,237.12 474.75,243.67 454.5,307" fill="none" stroke="#000000"/>
+<polygon points="467.07,220 464.14,230.41 472.62,237.12 475.55,226.71" fill="#000000" stroke="#000000"/>
+<text x="467.51" y="285.09" text-anchor="start" font-size="11">wheels [4]</text>
 <polyline points="138.66,284 138.72,257" fill="none" stroke="#000000"/>
 <polygon points="138.75,243 146.72,257.02 130.72,256.98" fill="#ffffff" stroke="#000000"/>
 <circle cx="142.71" cy="262.01" r="1.8" fill="#000000"/>
 <circle cx="134.71" cy="261.99" r="1.8" fill="#000000"/>
-<polyline points="241.36,284 344.21,212" fill="none" stroke="#000000" stroke-dasharray="6 4"/>
-<polyline points="337.33,226.58 344.21,212 328.16,213.47" fill="none" stroke="#000000"/>
-<text x="292.79" y="242" text-anchor="middle" font-size="11">«subject»</text>
-<rect x="399" y="307" width="120" height="97" fill="#ffffff" stroke="#000000"/>
-<text x="459" y="329" text-anchor="middle" font-size="12">«part def»</text>
-<text x="459" y="347" text-anchor="middle" font-size="14" font-weight="bold">Component</text>
-<polyline points="399,357 519,357" fill="none" stroke="#000000"/>
-<text x="459" y="378" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="409" y="394" text-anchor="start" font-size="12">mass:Real</text>
+<polyline points="234.93,284 320.64,220" fill="none" stroke="#000000" stroke-dasharray="6 4"/>
+<polyline points="314.21,234.79 320.64,220 304.64,221.97" fill="none" stroke="#000000"/>
+<text x="277.79" y="246" text-anchor="middle" font-size="11">«subject»</text>
+<rect x="379" y="307" width="120" height="97" fill="#ffffff" stroke="#000000"/>
+<text x="439" y="329" text-anchor="middle" font-size="12">«part def»</text>
+<text x="439" y="347" text-anchor="middle" font-size="14" font-weight="bold">Component</text>
+<polyline points="379,357 499,357" fill="none" stroke="#000000"/>
+<text x="439" y="378" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="389" y="394" text-anchor="start" font-size="12">mass:Real</text>
 <rect x="21" y="20" width="236" height="223" fill="#ffffff" stroke="#000000"/>
 <text x="139" y="42" text-anchor="middle" font-size="12">«analysis def»</text>
 <text x="139" y="60" text-anchor="middle" font-size="14" font-weight="bold">MassCheck</text>
@@ -37,16 +37,17 @@
 <text x="139" y="201" text-anchor="middle" font-size="11" font-style="italic">parameters</text>
 <text x="31" y="217" text-anchor="start" font-size="12">in limit:Real = 300.0</text>
 <text x="31" y="233" text-anchor="start" font-size="12">return result:Real = c.mass</text>
-<rect x="297" y="52" width="323" height="160" rx="10" fill="#ffffff" stroke="#000000"/>
-<text x="458.5" y="74" text-anchor="middle" font-size="12">«part»</text>
-<text x="458.5" y="92" text-anchor="middle" font-size="14">car:Component</text>
-<polyline points="297,102 620,102" fill="none" stroke="#000000"/>
-<text x="458.5" y="123" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
-<text x="307" y="139" text-anchor="start" font-size="12">mass = engine.mass + sum(wheels.mass) = 230.0</text>
-<polyline points="297,149 620,149" fill="none" stroke="#000000"/>
-<text x="458.5" y="170" text-anchor="middle" font-size="11" font-style="italic">parts</text>
-<text x="307" y="186" text-anchor="start" font-size="12">engine:Component</text>
-<text x="307" y="202" text-anchor="start" font-size="12">wheels:Component [4]</text>
+<rect x="297" y="44" width="283" height="176" rx="10" fill="#ffffff" stroke="#000000"/>
+<text x="438.5" y="66" text-anchor="middle" font-size="12">«part»</text>
+<text x="438.5" y="84" text-anchor="middle" font-size="14">car:Component</text>
+<polyline points="297,94 580,94" fill="none" stroke="#000000"/>
+<text x="438.5" y="115" text-anchor="middle" font-size="11" font-style="italic">attributes</text>
+<text x="307" y="131" text-anchor="start" font-size="12">mass = engine.mass + sum(wheels.mass) =</text>
+<text x="307" y="147" text-anchor="start" font-size="12">  230.0</text>
+<polyline points="297,157 580,157" fill="none" stroke="#000000"/>
+<text x="438.5" y="178" text-anchor="middle" font-size="11" font-style="italic">parts</text>
+<text x="307" y="194" text-anchor="start" font-size="12">engine:Component</text>
+<text x="307" y="210" text-anchor="start" font-size="12">wheels:Component [4]</text>
 <rect x="20" y="284" width="237" height="144" rx="10" fill="#ffffff" stroke="#000000"/>
 <text x="138.5" y="306" text-anchor="middle" font-size="12">«analysis»</text>
 <text x="138.5" y="324" text-anchor="middle" font-size="14">carMass:MassCheck</text>
