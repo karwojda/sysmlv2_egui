@@ -25,7 +25,7 @@ fn an_expression_row_shows_what_it_comes_to() {
     let scene = build_scene(&common::analysis(), DiagramKind::General, &qn("A")).unwrap();
 
     assert!(
-        texts_of(&scene, "A::car")
+        common::rejoined(texts_of(&scene, "A::car"))
             .contains(&"mass = engine.mass + sum(wheels.mass) = 230.0".to_owned()),
         "{:?}",
         texts_of(&scene, "A::car")

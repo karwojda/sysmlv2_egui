@@ -67,7 +67,9 @@ const COLON_HALF_SPREAD: f32 = 4.0;
 /// the fonts installed on the machine doing the Export.
 pub(crate) fn text_width(text: &str, font: Font) -> f32 {
     let average = if font.bold { 0.62 } else { 0.56 };
-    text.chars().count() as f32 * font.size * average
+    // An em space, as a wrapped row's indent, is a whole em wide.
+    let ems = text.chars().filter(|&c| c == '\u{2003}').count() as f32;
+    (text.chars().count() as f32 - ems) * font.size * average + ems * font.size
 }
 
 /// The area `shape` covers, with text estimated like node sizes are.
@@ -129,11 +131,11 @@ const BADGE_SIZE: f32 = 16.0;
 const BADGE_INSET: f32 = 5.0;
 
 /// The compartments a node lists, in order, with the kinds of owned
-/// feature each one holds.
-const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
-    ("attributes", &[ElementKind::AttributeUsage]),
-    ("ports", &[ElementKind::PortUsage]),
-    ("parts", &[ElementKind::PartUsage]),
+/// feature each one holds, and whether it lists Inherited Members too.
+const COMPARTMENTS: [(&str, &[ElementKind], bool); 5] = [
+    ("attributes", &[ElementKind::AttributeUsage], true),
+    ("ports", &[ElementKind::PortUsage], true),
+    ("parts", &[ElementKind::PartUsage], true),
     (
         "connections",
         &[
@@ -142,12 +144,21 @@ const COMPARTMENTS: [(&str, &[ElementKind]); 5] = [
             ElementKind::FlowUsage,
             ElementKind::BindingConnection,
         ],
+        false,
     ),
-    ("requirements", &[ElementKind::RequirementUsage]),
+    ("requirements", &[ElementKind::RequirementUsage], false),
 ];
 
-/// Characters per line of a wrapped `doc` compartment.
+/// What marks an inherited row (`^mass`), drawn in italics.
+pub(crate) const INHERITED: &str = "^";
+
+/// Characters per line of a wrapped `doc` compartment, and of any other
+/// compartment row too long for one.
 const DOC_LINE_CHARS: usize = 40;
+
+/// What starts the continuation lines of a wrapped row: an indent of em
+/// spaces, which SVG keeps where it would collapse plain ones.
+const CONTINUED: &str = "\u{2003}\u{2003}";
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
 /// its header. Compartments list the owned features `listed` accepts.
@@ -169,11 +180,14 @@ pub fn node_content(
         .as_deref()
         .filter(|_| requirement && compartments)
         .map(|text| ("doc", wrap(text, DOC_LINE_CHARS)));
-    let features = COMPARTMENTS
-        .iter()
-        .filter(|_| compartments)
-        .filter_map(|(title, kinds)| {
-            let rows: Vec<String> = model
+    let inherited = if compartments {
+        model.inherited_members(element)
+    } else {
+        Vec::new()
+    };
+    let features = COMPARTMENTS.iter().filter(|_| compartments).filter_map(
+        |(title, kinds, lists_inherited)| {
+            let mut rows: Vec<String> = model
                 .owned_members(&element.qualified_name)
                 .filter(|m| kinds.contains(&m.kind) && listed(&m.qualified_name))
                 // The subject is on its own line in the header.
@@ -183,8 +197,22 @@ pub fn node_content(
                     None => feature_row(m),
                 })
                 .collect();
+            // Inherited Members follow, marked; they are never nodes. They
+            // carry no Verdict mark: a check found it for the definition's
+            // member, not this element's.
+            if *lists_inherited {
+                rows.extend(
+                    inherited
+                        .iter()
+                        .filter(|m| kinds.contains(&m.kind))
+                        // Nor is a definition's subject a part of what has it.
+                        .filter(|m| !model.is_subject(m))
+                        .map(|m| format!("{INHERITED}{}", feature_row(m))),
+                );
+            }
             (!rows.is_empty()).then_some((*title, rows))
-        });
+        },
+    );
     // A requirement names its subject under its title; an analysis lists it.
     let subtitle = element
         .subject
@@ -309,7 +337,7 @@ pub fn node_content(
                     crate::constraint::checks_on(model, part)
                         .filter(|(c, _)| c.owner.as_ref() != Some(part))
                         .map(|(c, check)| {
-                            format!("^{} {}", row(c), Status::of(&check.result).mark())
+                            format!("{INHERITED}{} {}", row(c), Status::of(&check.result).mark())
                         }),
                 );
             }
@@ -338,6 +366,10 @@ pub fn node_content(
             Some((_, rows)) => rows.extend(claims),
             None => compartments.push(("requirements", claims)),
         }
+    }
+    // A row too long for the node's normal width wraps, as `doc` does.
+    for (_, rows) in &mut compartments {
+        *rows = rows.iter().flat_map(|row| wrap_row(row)).collect();
     }
     let short_id = element
         .short_name
@@ -392,6 +424,112 @@ fn insert_after_attributes(
             |i| i + 1,
         );
     compartments.insert(after, (title, rows));
+}
+
+/// A compartment row as lines of at most [`DOC_LINE_CHARS`], continuation
+/// lines indented by [`CONTINUED`]. It breaks between [`row_words`], after
+/// an operator where that keeps at least half a line (`a + b and` / `c`);
+/// a word longer than a line keeps a line of its own.
+fn wrap_row(row: &str) -> Vec<String> {
+    if row.chars().count() <= DOC_LINE_CHARS {
+        return vec![row.to_owned()];
+    }
+    fit_lines(row_words(row))
+        .into_iter()
+        .enumerate()
+        .map(|(i, words)| {
+            let text = words.join(" ");
+            if i == 0 {
+                text
+            } else {
+                format!("{CONTINUED}{text}")
+            }
+        })
+        .collect()
+}
+
+/// The words a row may break between: at spaces, but never inside a unit
+/// or a quoted name (`['°C']`, `'max speed'`), nor between a value and its
+/// unit (`-10 ['°C']`) or a row and its closing mark (`… ✓`). A quote or
+/// bracket left open counts as plain text.
+fn row_words(row: &str) -> Vec<String> {
+    const MARKS: [&str; 4] = ["✓", "✗", "?", "○"];
+    let mut words: Vec<String> = vec![String::new()];
+    let (mut bracket, mut quote) = (0_u32, None::<char>);
+    for c in row.chars() {
+        if c == ' ' && bracket == 0 && quote.is_none() {
+            words.push(String::new());
+            continue;
+        }
+        match (c, quote) {
+            ('\'' | '"', None) => quote = Some(c),
+            (c, Some(q)) if c == q => quote = None,
+            ('[', None) => bracket += 1,
+            (']', None) => bracket = bracket.saturating_sub(1),
+            _ => {}
+        }
+        words.last_mut().expect("one word at least").push(c);
+    }
+    if bracket > 0 || quote.is_some() {
+        words = row.split(' ').map(str::to_owned).collect();
+    }
+    let mut glued: Vec<String> = Vec::new();
+    for word in words.into_iter().filter(|w| !w.is_empty()) {
+        let joins = word.starts_with('[') || MARKS.contains(&word.as_str());
+        match glued.last_mut() {
+            Some(last) if joins && !is_operator(last) => {
+                last.push(' ');
+                last.push_str(&word);
+            }
+            _ => glued.push(word),
+        }
+    }
+    glued
+}
+
+/// Whether `word` is an operator a wrapped row prefers to break after.
+fn is_operator(word: &str) -> bool {
+    const OPERATORS: [&str; 24] = [
+        "+", "-", "*", "/", "%", "**", "^", "<", ">", "<=", ">=", "==", "!=", "===", "!==", "=",
+        ":=", "and", "or", "xor", "implies", "not", "??", "|",
+    ];
+    OPERATORS.contains(&word)
+}
+
+/// `words` as lines that fit [`DOC_LINE_CHARS`], continuation lines
+/// counting their indent; each line is measured again once words carry
+/// over to it.
+fn fit_lines(words: Vec<String>) -> Vec<Vec<String>> {
+    let width = |line: &[String], first: bool| {
+        let indent = if first { 0 } else { CONTINUED.chars().count() };
+        indent
+            + line.iter().map(|w| w.chars().count()).sum::<usize>()
+            + line.len().saturating_sub(1)
+    };
+    let mut lines: Vec<Vec<String>> = Vec::new();
+    let mut line: Vec<String> = Vec::new();
+    for word in words {
+        line.push(word);
+        while line.len() > 1 && width(&line, lines.is_empty()) > DOC_LINE_CHARS {
+            let first = lines.is_empty();
+            // As many words as fit, then back to the last operator among
+            // them if that keeps at least half a line.
+            let fits = (1..line.len())
+                .rev()
+                .find(|&n| width(&line[..n], first) <= DOC_LINE_CHARS)
+                .unwrap_or(1);
+            let cut = line[..fits]
+                .iter()
+                .rposition(|w| is_operator(w))
+                .map(|at| at + 1)
+                .filter(|&n| 2 * width(&line[..n], first) >= DOC_LINE_CHARS)
+                .unwrap_or(fits);
+            let rest = line.split_off(cut);
+            lines.push(std::mem::replace(&mut line, rest));
+        }
+    }
+    lines.push(line);
+    lines
 }
 
 /// `text` broken into lines of at most `width` characters at spaces (a
@@ -651,11 +789,19 @@ pub fn node(element: &Element, content: &NodeContent, rect: Rect) -> Vec<Item> {
         });
         for row in rows {
             baseline += LINE_GAP + ROW_FONT.size;
+            let font = if row.starts_with(INHERITED) {
+                Font {
+                    italic: true,
+                    ..ROW_FONT
+                }
+            } else {
+                ROW_FONT
+            };
             shapes.push(Shape::Text {
                 position: Point::new(rect.x + PADDING, baseline),
                 text: row.clone(),
                 anchor: TextAnchor::Start,
-                font: ROW_FONT,
+                font,
                 fill: Fill::Stroke,
             });
         }
@@ -926,10 +1072,19 @@ fn labelled_arrow(depicts: Depicts, label: &str, dashed: bool, path: Vec<Point>)
 /// keep their labels apart.
 fn label_place(path: &[Point]) -> (Point, TextAnchor) {
     let (first, last) = (path[0], path[path.len() - 1]);
-    let chord_middle = Point::new((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
     if path.len() % 2 == 1 {
         let bend = path[path.len() / 2];
-        let (dx, dy) = (bend.x - chord_middle.x, bend.y - chord_middle.y);
+        // The side the bend bulges to: from the nearest point of the chord,
+        // which, unlike its middle, two fanned edges agree on.
+        let (cx, cy) = (last.x - first.x, last.y - first.y);
+        let along = ((bend.x - first.x) * cx + (bend.y - first.y) * cy) / (cx * cx + cy * cy);
+        let along = if along.is_finite() {
+            along.clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
+        let nearest = Point::new(first.x + along * cx, first.y + along * cy);
+        let (dx, dy) = (bend.x - nearest.x, bend.y - nearest.y);
         if dx.abs() < 0.5 && dy.abs() < 0.5 {
             (
                 Point::new(bend.x, bend.y - LABEL_OFFSET),

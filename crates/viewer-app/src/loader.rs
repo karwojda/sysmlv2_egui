@@ -15,6 +15,8 @@ pub type Request = (PathBuf, Analyses);
 pub struct Loaded {
     pub folder: PathBuf,
     pub result: Result<Model, BackendError>,
+    /// What loaded it, as the backend names itself after the load.
+    pub loaded_by: Option<String>,
 }
 
 pub struct Loader {
@@ -37,7 +39,13 @@ impl Loader {
             .spawn(move || {
                 for (folder, analyses) in incoming {
                     let result = backend.load_with(&folder, &analyses);
-                    if outgoing.send(Loaded { folder, result }).is_err() {
+                    let loaded_by = backend.loaded_by();
+                    let loaded = Loaded {
+                        folder,
+                        result,
+                        loaded_by,
+                    };
+                    if outgoing.send(loaded).is_err() {
                         break;
                     }
                     notify();

@@ -1,5 +1,7 @@
 //! Seam 1: the full first-slice language subset in General Diagrams.
 
+mod common;
+
 use std::path::Path;
 
 use viewer_core::model::Direction;
@@ -169,7 +171,7 @@ fn definitions_list_their_features_in_compartments() {
     let scene = scene();
 
     assert_eq!(
-        node_texts(&scene, "Structure::Vehicle"),
+        common::rejoined(node_texts(&scene, "Structure::Vehicle")),
         [
             "«part def»",
             "Vehicle",

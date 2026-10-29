@@ -8,6 +8,8 @@ Found 2026-10-18 with sysml-grpc 0.10.0 through the `opensysml` Rust client 0.10
 
 ## Issue 1: A `satisfy` nested in a usage is evaluated without binding the containing usage as its subject
 
+**Fixed in sysml-grpc 0.11.0** (checked 2026-10-28): the nested claim holds, as the `by` form does. Not to be filed.
+
 ### Summary
 
 A satisfy requirement usage declared inside a part, without `by`, should take the containing part as its satisfying feature. `VerifySatisfaction` doesn't bind it: the requirement's subject has no value, and the verdict is always `undecided`. The same claim written as `satisfy … by part` at package level evaluates correctly.
@@ -78,6 +80,8 @@ Declare the claim outside the part with an explicit satisfying feature: `satisfy
 ---
 
 ## Issue 2: `api-json` omits `declaredShortName` for standard-library elements
+
+**Moot in sysml-grpc 0.11.0** (checked 2026-10-28): the conversion no longer includes standard-library elements at all, so a reference to one is a bare id. The viewer now shows such a reference as written (`[kg]`), from the referencing expression's `sysx:sourceText`. Not to be filed as written; whether the library should be reachable from the form at all is a separate question.
 
 ### Summary
 

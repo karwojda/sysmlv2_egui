@@ -3,6 +3,24 @@
 #![allow(dead_code)]
 
 use viewer_core::Model;
+
+/// What starts the continuation lines of a wrapped compartment row.
+pub const CONTINUED: &str = "\u{2003}\u{2003}";
+
+/// Texts with each wrapped row's continuation lines joined back on.
+pub fn rejoined(texts: Vec<String>) -> Vec<String> {
+    let mut rows: Vec<String> = Vec::new();
+    for text in texts {
+        match (text.strip_prefix(CONTINUED), rows.last_mut()) {
+            (Some(rest), Some(row)) => {
+                row.push(' ');
+                row.push_str(rest);
+            }
+            _ => rows.push(text),
+        }
+    }
+    rows
+}
 use viewer_core::model::{ClaimResult, Direction, ExposeScope, ModelBuilder};
 
 /// A drivetrain after slide 40 of the notation reference: fuel tank,
@@ -414,10 +432,7 @@ pub fn requirements() -> Model {
             reason: "satisfaction satisfy vehicleSpec::costReq by vehicle: require condition evaluation failed: no value for feature v.cost".to_owned(),
         })
         .satisfy("Req::car::@1", "Req::vehicleSpec::carMassReq", "Req::car")
-        // The service leaves a `satisfy` inside a part without its subject.
-        .result(ClaimResult::Undecided {
-            reason: "satisfaction satisfy vehicleSpec::carMassReq: require condition evaluation failed: no value for feature v".to_owned(),
-        })
+        .result(ClaimResult::Holds)
         .build()
 }
 

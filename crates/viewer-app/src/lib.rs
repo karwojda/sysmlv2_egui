@@ -69,6 +69,8 @@ pub struct ViewerApp {
     export_path: String,
     save_name: String,
     status: Option<String>,
+    /// What loaded the Model, as the backend names itself.
+    loaded_by: Option<String>,
     drag: Option<Drag>,
     /// What a context menu on the canvas was opened for.
     context_target: ContextTarget,
@@ -178,6 +180,7 @@ impl ViewerApp {
             export_path: String::new(),
             save_name: String::new(),
             status: None,
+            loaded_by: None,
             drag: None,
             context_target: ContextTarget::Canvas,
             confirm: None,
@@ -199,6 +202,9 @@ impl ViewerApp {
         while let Some(loaded) = self.loader.poll() {
             if self.loading.as_ref() == Some(&loaded.folder) {
                 self.loading = None;
+            }
+            if loaded.loaded_by.is_some() {
+                self.loaded_by = loaded.loaded_by;
             }
             match loaded.result {
                 Ok(model) => {
@@ -788,7 +794,14 @@ impl ViewerApp {
 
     fn diagnostics(&self, ui: &mut egui::Ui) {
         let diagnostics = &self.diagnostics;
-        ui.label(format!("Diagnostics ({})", diagnostics.len()));
+        ui.horizontal(|ui| {
+            ui.label(format!("Diagnostics ({})", diagnostics.len()));
+            if let Some(name) = &self.loaded_by {
+                ui.separator();
+                ui.weak(format!("from {name}"))
+                    .on_hover_text("What loaded and checked the Model");
+            }
+        });
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
@@ -1469,9 +1482,8 @@ fn browser_entry(
     if response.clicked() {
         actions.push(BrowserAction::Select(entry.element.clone()));
     }
-    // Double-click opens a view's Diagram, else a General Diagram where one
-    // fits (packages and definitions), else an Interconnection Diagram
-    // (part usages).
+    // Double-click opens a view's Diagram, else the kind its element opens
+    // as by default.
     let is_view = context
         .model
         .element(&entry.element)
@@ -1479,16 +1491,12 @@ fn browser_entry(
     if response.double_clicked() {
         if is_view {
             actions.push(BrowserAction::OpenView(entry.element.clone()));
-        } else if general {
-            actions.push(BrowserAction::Open(
-                DiagramKind::General,
-                entry.element.clone(),
-            ));
-        } else if interconnection {
-            actions.push(BrowserAction::Open(
-                DiagramKind::Interconnection,
-                entry.element.clone(),
-            ));
+        } else if let Some(kind) = context
+            .model
+            .element(&entry.element)
+            .and_then(DiagramKind::default_for)
+        {
+            actions.push(BrowserAction::Open(kind, entry.element.clone()));
         }
     }
     if general || interconnection {
@@ -1544,17 +1552,10 @@ pub fn startup_kind(
     interconnection: bool,
 ) -> Option<DiagramKind> {
     let element = model.element(root)?;
-    let fits = |kind: DiagramKind| kind.accepts_root(element);
-    match (
-        interconnection,
-        fits(DiagramKind::General),
-        fits(DiagramKind::Interconnection),
-    ) {
-        (true, _, true) => Some(DiagramKind::Interconnection),
-        (_, true, _) => Some(DiagramKind::General),
-        (_, false, true) => Some(DiagramKind::Interconnection),
-        _ => None,
+    if interconnection && DiagramKind::Interconnection.accepts_root(element) {
+        return Some(DiagramKind::Interconnection);
     }
+    DiagramKind::default_for(element)
 }
 
 /// Opens `source` in VS Code at its line.

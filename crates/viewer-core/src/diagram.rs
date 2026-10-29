@@ -26,7 +26,7 @@ impl DiagramKind {
     pub fn description(self) -> &'static str {
         match self {
             DiagramKind::General => {
-                "a General Diagram (it must be a package, definition or requirement)"
+                "a General Diagram (it must be a package, a definition, or a part, attribute, port, requirement, constraint or analysis)"
             }
             DiagramKind::Interconnection => {
                 "an Interconnection Diagram (it must be a part or part def)"
@@ -35,18 +35,28 @@ impl DiagramKind {
     }
 
     /// Whether a Diagram of this kind can be rooted at `element`: a General
-    /// Diagram shows the members of a package or definition.
+    /// Diagram shows the members of a package or definition, or a usage on
+    /// top of its own members.
     pub fn accepts_root(self, element: &Element) -> bool {
         match self {
             DiagramKind::General => {
-                element.kind == ElementKind::Package
-                    || element.kind.is_definition()
-                    || element.kind == ElementKind::RequirementUsage
+                element.kind == ElementKind::Package || is_node_in_general(element)
             }
             DiagramKind::Interconnection => {
                 element.kind == ElementKind::PartDefinition
                     || element.kind == ElementKind::PartUsage
             }
+        }
+    }
+
+    /// The kind a Diagram of `element` opens as when none is asked for: an
+    /// Interconnection Diagram for a part, otherwise a General Diagram
+    /// where one fits.
+    pub fn default_for(element: &Element) -> Option<DiagramKind> {
+        if element.kind == ElementKind::PartUsage {
+            Some(DiagramKind::Interconnection)
+        } else {
+            Some(DiagramKind::General).filter(|kind| kind.accepts_root(element))
         }
     }
 }
@@ -167,9 +177,10 @@ pub fn build_scene_with_layout(
     }
     match kind {
         DiagramKind::General => {
-            // A requirement is drawn as the top of its tree, its nested
-            // requirements below it; its subject is on its header already.
-            let itself = (element.kind == ElementKind::RequirementUsage).then_some(element);
+            // A usage is drawn as the top of its tree, its own members
+            // below it; a requirement's subject is on its header already.
+            let itself = (!element.kind.is_definition() && element.kind != ElementKind::Package)
+                .then_some(element);
             let nodes: Vec<&Element> = itself
                 .into_iter()
                 .chain(model.owned_members(root).filter(|e| is_node_in_general(e)))
