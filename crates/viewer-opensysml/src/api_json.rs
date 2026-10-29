@@ -201,6 +201,10 @@ pub fn enrich(
             element.source = Some(SourceLocation {
                 file: file.clone(),
                 line: line as u32,
+                column: item
+                    .get("sysx:sourceColumn")
+                    .and_then(Value::as_u64)
+                    .map(|column| column as u32),
             });
         }
         if item.get("sysx:conjugatedTyping").and_then(Value::as_bool) == Some(true) {
@@ -429,6 +433,7 @@ fn tool_links(
                         .map(|line| SourceLocation {
                             file: PathBuf::from(&document),
                             line: line as u32,
+                            column: None,
                         }),
                     document,
                 });

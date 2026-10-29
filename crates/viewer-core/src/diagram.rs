@@ -268,10 +268,11 @@ fn general<'a>(
     connections: Vec<&'a Element>,
     saved: &Layout,
 ) -> Scene {
-    let nodes: Vec<&Element> = nodes
+    let mut nodes: Vec<&Element> = nodes
         .into_iter()
         .filter(|e| !saved.hidden.contains(&e.qualified_name))
         .collect();
+    nodes.sort_by(|a, b| a.model_order().cmp(&b.model_order()));
     let index_of = |name: &QualifiedName| nodes.iter().position(|e| &e.qualified_name == name);
 
     let mut edges = Vec::new();
@@ -372,7 +373,58 @@ fn general<'a>(
             notation::node_content(e, model, compartments, |member| index_of(member).is_none())
         })
         .collect();
-    let rects = place(&nodes, &contents, &layering, saved);
+    // Each parent's children in Model Order: an owned usage by where it is
+    // declared, a composed part type by where its usage is.
+    struct Child<'e> {
+        declared_by: &'e Element,
+        node: usize,
+    }
+    let mut children: BTreeMap<usize, Vec<Child>> = BTreeMap::new();
+    for edge in &edges {
+        let (owner, child) = match *edge {
+            Edge::Ownership { owner, usage } => (
+                owner,
+                Child {
+                    declared_by: nodes[usage],
+                    node: usage,
+                },
+            ),
+            Edge::Composition {
+                owner,
+                part_type,
+                usage,
+            } => (
+                owner,
+                Child {
+                    declared_by: usage,
+                    node: part_type,
+                },
+            ),
+            _ => continue,
+        };
+        children.entry(owner).or_default().push(child);
+    }
+    let families: Vec<layout::Family> = children
+        .into_iter()
+        .map(|(parent, mut children)| {
+            children.sort_by(|a, b| {
+                a.declared_by
+                    .model_order()
+                    .cmp(&b.declared_by.model_order())
+            });
+            let mut order: Vec<usize> = Vec::new();
+            for child in children {
+                if !order.contains(&child.node) {
+                    order.push(child.node);
+                }
+            }
+            layout::Family {
+                parent: Some(parent),
+                children: order,
+            }
+        })
+        .collect();
+    let rects = place(&nodes, &contents, &layering, &families, saved);
 
     // Edges without a saved route that join the same two nodes are fanned
     // out, numbered from the lower node index so direction doesn't matter.
@@ -673,6 +725,7 @@ fn place(
     nodes: &[&Element],
     contents: &[notation::NodeContent],
     layering: &[(usize, usize)],
+    families: &[layout::Family],
     saved: &Layout,
 ) -> Vec<Rect> {
     let saved_rect = |i: usize| {
@@ -701,7 +754,14 @@ fn place(
         .iter()
         .filter_map(|&(a, b)| Some((local(a)?, local(b)?)))
         .collect();
-    let auto = layout::layered(&sizes, &edges);
+    let families: Vec<layout::Family> = families
+        .iter()
+        .map(|f| layout::Family {
+            parent: f.parent.and_then(local),
+            children: f.children.iter().filter_map(|&i| local(i)).collect(),
+        })
+        .collect();
+    let auto = layout::layered(&sizes, &edges, &families);
 
     let saved_rects: Vec<Rect> = (0..nodes.len()).filter_map(saved_rect).collect();
     let (left, top) = if saved_rects.is_empty() {

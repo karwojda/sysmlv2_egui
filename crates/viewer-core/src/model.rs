@@ -264,6 +264,9 @@ impl fmt::Display for Expose {
 pub struct SourceLocation {
     pub file: PathBuf,
     pub line: u32,
+    /// Where on the line it starts, from 1, when known: two members on one
+    /// line keep their order.
+    pub column: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -336,6 +339,17 @@ pub struct Element {
 }
 
 impl Element {
+    /// Where the element is declared, for drawing members in Model Order:
+    /// by file, then line and column; an element without a location comes
+    /// after those with one, by name.
+    pub fn model_order(&self) -> impl Ord + '_ {
+        let at = self
+            .source
+            .as_ref()
+            .map(|s| (&s.file, s.line, s.column.unwrap_or(0)));
+        (at.is_none(), at, &self.qualified_name)
+    }
+
     /// How the element is named to a reader: its name, or for an unnamed
     /// connection-like element its ends (`a → b`, or `a = b` for a binding).
     pub fn display_name(&self) -> String {
@@ -835,6 +849,17 @@ impl ModelBuilder {
         self.last().source = Some(SourceLocation {
             file: file.into(),
             line,
+            column: None,
+        });
+        self
+    }
+
+    /// [`ModelBuilder::at`], at `column` of the line.
+    pub fn at_column(mut self, file: impl Into<PathBuf>, line: u32, column: u32) -> Self {
+        self.last().source = Some(SourceLocation {
+            file: file.into(),
+            line,
+            column: Some(column),
         });
         self
     }
