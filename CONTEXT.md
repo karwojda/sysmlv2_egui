@@ -46,6 +46,10 @@ A `view` whose rendering or definition has no matching Diagram Kind in this tool
 
 **Layout**:
 The user's adjustments to a Diagram's automatic arrangement (positions, sizes, edge routes, port positions, hidden, collapsed and opened elements), stored outside the Model.
+
+**Selection**:
+The nodes of one Diagram the user has picked to move, align, distribute or resize together, all drawn in the same box. It lasts until the user picks again and is never saved; it is not the selected element the Browser and Properties show.
+_Avoid_: group (a Selection is not kept), multi-selection
 _Avoid_: view, styling, diagram data
 
 **Frame**:
