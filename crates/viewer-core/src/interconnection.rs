@@ -160,11 +160,20 @@ pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Sce
         _ => return Err(unsuitable()),
     };
 
+    // A box whose port labels don't fit along a side grows along it, and
+    // everything is laid out again around it.
+    let mut grown: BTreeMap<String, (f32, f32)> = BTreeMap::new();
     let mut frame = open_box(model, root_element, definition, "", layout);
-    size(&mut frame, layout);
-    place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
-    place_own_ports(&mut frame);
-    place_child_ports(&mut frame, true);
+    for _ in 0..GROWTH_ROUNDS {
+        frame = open_box(model, root_element, definition, "", layout);
+        size(&mut frame, layout, &grown);
+        place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
+        place_own_ports(&mut frame);
+        place_child_ports(&mut frame, true);
+        if !separate_labels(&mut frame, &mut grown) {
+            break;
+        }
+    }
     apply_port_overrides(&mut frame, layout);
 
     let mut items = Vec::new();
@@ -475,7 +484,8 @@ fn label_stack_below(node: &BoxNode, c: usize) -> f32 {
 /// Sizes a box from the inside out, placing its children relative to its
 /// top-left corner: where the Layout saved them, the rest arranged
 /// automatically below those.
-fn size(node: &mut BoxNode, layout: &Layout) {
+fn size(node: &mut BoxNode, layout: &Layout, grown: &BTreeMap<String, (f32, f32)>) {
+    let at_least = grown.get(&node.path).copied().unwrap_or((0.0, 0.0));
     let title_width = text_width(&title(node.element), USAGE_NAME_FONT)
         .max(text_width("«part def»", KEYWORD_FONT));
     let ports_width = edge_room(node, Direction::In).max(edge_room(node, Direction::Out));
@@ -489,12 +499,12 @@ fn size(node: &mut BoxNode, layout: &Layout) {
             .max(ports_width);
         let height = 2.0 * PADDING + KEYWORD_FONT.size + LINE_GAP + USAGE_NAME_FONT.size;
         let [width, height] = saved.unwrap_or([width.ceil(), height.ceil()]);
-        node.rect.width = width;
-        node.rect.height = height;
+        node.rect.width = width.max(at_least.0);
+        node.rect.height = height.max(at_least.1);
         return;
     }
     for child in &mut node.children {
-        size(child, layout);
+        size(child, layout, grown);
     }
     // Layers top to bottom from each wire's `out` end to its `in` end, with
     // room for port labels above and below every child, and below it for
@@ -579,8 +589,65 @@ fn size(node: &mut BoxNode, layout: &Layout) {
     // A saved size can make a box with parts bigger, never smaller than
     // what it holds.
     let [width, height] = saved.map_or([width, height], |[w, h]| [w.max(width), h.max(height)]);
-    node.rect.width = width;
-    node.rect.height = height;
+    node.rect.width = width.max(at_least.0);
+    node.rect.height = height.max(at_least.1);
+}
+
+/// How many times a diagram is laid out again for boxes grown to fit their
+/// port labels; one round settles all but nested growth.
+const GROWTH_ROUNDS: usize = 4;
+
+/// How far along its side a port's label reaches from the port: across
+/// the label on the top or bottom, down one label's height on the left or
+/// right, with a gap before the next port.
+fn label_reach(slot: &PortSlot) -> f32 {
+    let beside = PORT_SIZE / 2.0 + 3.0;
+    if slot.side.vertical() {
+        beside
+            + bar_length(slot, true)
+            + text_width(&port_label(slot.port), LABEL_FONT)
+            + PORT_SPACING / 2.0
+    } else {
+        bar_length(slot, false) + LABEL_ROOM
+    }
+}
+
+/// Moves the ports along each side of every box apart where a label would
+/// reach the next port, keeping their order. A box whose labels then run
+/// past a side is noted in `grown` at the size it needs; returns whether
+/// any was.
+fn separate_labels(node: &mut BoxNode, grown: &mut BTreeMap<String, (f32, f32)>) -> bool {
+    let mut needs = (node.rect.width, node.rect.height);
+    for side in [Side::Top, Side::Bottom, Side::Left, Side::Right] {
+        let mut on_side: Vec<usize> = (0..node.ports.len())
+            .filter(|&q| node.ports[q].side == side)
+            .collect();
+        on_side.sort_by(|a, b| node.ports[*a].offset.total_cmp(&node.ports[*b].offset));
+        let mut reach = f32::NEG_INFINITY;
+        for &q in &on_side {
+            let offset = node.ports[q].offset.max(reach).round();
+            node.ports[q].offset = offset;
+            reach = offset + label_reach(&node.ports[q]);
+        }
+        if let Some(&last) = on_side.last() {
+            let length = (node.ports[last].offset + PORT_SPACING).ceil();
+            if side.vertical() {
+                needs.0 = needs.0.max(length);
+            } else {
+                needs.1 = needs.1.max(length);
+            }
+        }
+    }
+    let mut grew = false;
+    if needs.0 > node.rect.width + 0.5 || needs.1 > node.rect.height + 0.5 {
+        let entry = grown.entry(node.path.clone()).or_insert((0.0, 0.0));
+        *entry = (entry.0.max(needs.0), entry.1.max(needs.1));
+        grew = true;
+    }
+    for child in &mut node.children {
+        grew |= separate_labels(child, grown);
+    }
+    grew
 }
 
 /// Turns child positions relative to their box into absolute ones.
