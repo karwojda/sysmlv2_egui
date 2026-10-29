@@ -908,24 +908,41 @@ pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) 
     tag(depicts, shapes)
 }
 
-/// One child's branch of a composition tree: a line from the tree's bar to
-/// the child, labelled like a [`composition`].
+/// One child's branch of a composition tree: a line from the tree's bar
+/// down to the child, or `across` from its trunk into a stacked child's
+/// left edge, labelled like a [`composition`].
 pub fn composition_branch(
     depicts: Depicts,
     usage: Option<&Element>,
     path: Vec<Point>,
+    across: bool,
 ) -> Vec<Item> {
-    let end = path[path.len() - 1];
+    let (start, end) = (path[0], path[path.len() - 1]);
     let mut shapes = vec![Shape::Polyline {
         points: path,
         dashed: false,
     }];
-    // Beside the branch just above the child, clear of the bar however
-    // short the branch.
-    shapes.extend(composition_label(
-        usage,
-        Point::new(end.x + LABEL_OFFSET, end.y - LABEL_OFFSET / 2.0),
-    ));
+    // Beside a branch down, just above the child, clear of the bar however
+    // short the branch; a branch across into a stacked child's left edge
+    // has its label left of the trunk.
+    let label = if across {
+        composition_label(
+            usage,
+            Point::new(start.x - LABEL_OFFSET, end.y + LABEL_FONT.size / 3.0),
+        )
+        .map(|mut label| {
+            if let Shape::Text { anchor, .. } = &mut label {
+                *anchor = TextAnchor::End;
+            }
+            label
+        })
+    } else {
+        composition_label(
+            usage,
+            Point::new(end.x + LABEL_OFFSET, end.y - LABEL_OFFSET / 2.0),
+        )
+    };
+    shapes.extend(label);
     tag(depicts, shapes)
 }
 

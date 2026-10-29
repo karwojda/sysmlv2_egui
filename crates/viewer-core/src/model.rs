@@ -568,24 +568,44 @@ impl Model {
         };
         let mut visited: std::collections::HashSet<&QualifiedName> =
             std::iter::once(&element.qualified_name).collect();
-        let mut names: std::collections::HashSet<&str> = self
-            .owned_members(&element.qualified_name)
-            .map(|m| m.name.as_str())
-            .collect();
-        let mut inherited = Vec::new();
+        let mut kept: Vec<&Element> = self.owned_members(&element.qualified_name).collect();
+        let own = kept.len();
         while let Some(name) = next.pop_front() {
             let Some(definition) = self.element(name).filter(|_| visited.insert(name)) else {
                 continue;
             };
             let members: Vec<&Element> = self
                 .owned_members(name)
-                .filter(|m| m.name.is_empty() || !names.contains(m.name.as_str()))
+                .filter(|m| !kept.iter().any(|nearer| self.redefines(nearer, m)))
                 .collect();
-            names.extend(members.iter().map(|m| m.name.as_str()));
-            inherited.extend(members);
+            kept.extend(members);
             next.extend(&definition.specializes);
         }
-        inherited
+        kept.split_off(own)
+    }
+
+    /// Whether `feature` redefines `other`, a member of a definition that
+    /// `feature`'s owner has through `typed_by` or `specializes`. Until
+    /// redefinitions (`:>>`) are recorded, a feature of the same name
+    /// counts as redefining it.
+    pub fn redefines(&self, feature: &Element, other: &Element) -> bool {
+        if feature.name.is_empty() || feature.name != other.name || feature == other {
+            return false;
+        }
+        let (Some(from), Some(to)) = (&feature.owner, &other.owner) else {
+            return false;
+        };
+        let mut next = vec![from];
+        let mut visited = std::collections::HashSet::new();
+        while let Some(name) = next.pop() {
+            if name == to && name != from {
+                return true;
+            }
+            if let Some(owner) = self.element(name).filter(|_| visited.insert(name)) {
+                next.extend(owner.typed_by.iter().chain(&owner.specializes));
+            }
+        }
+        false
     }
 
     /// Whether `member` is its owner's subject (`subject v : Vehicle`).
