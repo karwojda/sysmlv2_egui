@@ -105,9 +105,16 @@ fn a_tree_edge_has_a_filled_diamond_and_no_label() {
 
     let door = composition("P::vehicle::body", "P::vehicle::body::door");
     let shapes: Vec<&Shape> = scene.items_depicting(&door).collect();
+    let tree = Depicts::CompositionTree {
+        owner: qn("P::vehicle::body"),
+    };
     assert!(
-        shapes.iter().any(|s| matches!(s, Shape::Polygon { .. })),
-        "the diamond"
+        shapes
+            .iter()
+            .copied()
+            .chain(scene.items_depicting(&tree))
+            .any(|s| matches!(s, Shape::Polygon { .. })),
+        "the diamond, its own or its tree's"
     );
     assert!(
         !shapes.iter().any(|s| matches!(s, Shape::Text { .. })),

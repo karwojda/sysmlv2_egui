@@ -205,8 +205,13 @@ fn composition_is_a_filled_diamond_at_the_owner_labelled_near_the_part_type() {
     };
     let owner = scene.node_bounds(&qn("Structure::Vehicle")).unwrap();
 
+    // Drawn in the tree of Vehicle's compositions, whose diamond they share.
+    let tree = Depicts::CompositionTree {
+        owner: qn("Structure::Vehicle"),
+    };
     let diamond = scene
         .items_depicting(&edge)
+        .chain(scene.items_depicting(&tree))
         .find_map(|shape| match shape {
             Shape::Polygon { points, fill } => Some((points.clone(), *fill)),
             _ => None,

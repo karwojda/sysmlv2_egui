@@ -863,14 +863,6 @@ pub fn defined_by(depicts: Depicts, path: Vec<Point>) -> Vec<Item> {
 pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) -> Vec<Item> {
     let (start, after) = (path[0], path[1]);
     let diamond_back = back_from(start, after, DIAMOND_LENGTH);
-    let middle = back_from(start, after, DIAMOND_LENGTH / 2.0);
-    let (nx, ny) = normal(start, after, DIAMOND_HALF_WIDTH);
-    let mut label = usage.map(|u| u.name.clone()).unwrap_or_default();
-    if let Some(multiplicity) = usage.and_then(|u| u.multiplicity.as_ref()) {
-        label.push_str(&format!(" {multiplicity}"));
-    }
-    let (before, end) = last_segment(&path);
-    let near_end = back_from(end, before, 2.0 * LABEL_OFFSET + LABEL_FONT.size);
     let mut line = path.clone();
     line[0] = diamond_back;
     let mut shapes = vec![
@@ -878,26 +870,103 @@ pub fn composition(depicts: Depicts, usage: Option<&Element>, path: Vec<Point>) 
             points: line,
             dashed: false,
         },
-        Shape::Polygon {
-            points: vec![
-                start,
-                Point::new(middle.x + nx, middle.y + ny),
-                diamond_back,
-                Point::new(middle.x - nx, middle.y - ny),
-            ],
-            fill: Fill::Stroke,
+        diamond(start, after),
+    ];
+    let (before, end) = last_segment(&path);
+    let near_end = back_from(end, before, 2.0 * LABEL_OFFSET + LABEL_FONT.size);
+    shapes.extend(composition_label(
+        usage,
+        Point::new(near_end.x + LABEL_OFFSET, near_end.y),
+    ));
+    tag(depicts, shapes)
+}
+
+/// One child's branch of a composition tree: a line from the tree's bar to
+/// the child, labelled like a [`composition`].
+pub fn composition_branch(
+    depicts: Depicts,
+    usage: Option<&Element>,
+    path: Vec<Point>,
+) -> Vec<Item> {
+    let end = path[path.len() - 1];
+    let mut shapes = vec![Shape::Polyline {
+        points: path,
+        dashed: false,
+    }];
+    // Beside the branch just above the child, clear of the bar however
+    // short the branch.
+    shapes.extend(composition_label(
+        usage,
+        Point::new(end.x + LABEL_OFFSET, end.y - LABEL_OFFSET / 2.0),
+    ));
+    tag(depicts, shapes)
+}
+
+/// What a composition tree's branches share.
+pub struct Trunk {
+    /// Where the diamond hangs from: on the parent's bottom.
+    pub tip: Point,
+    /// How far down the trunk runs.
+    pub end: f32,
+    /// The height of the bar the branches leave, and its two ends.
+    pub bar_y: f32,
+    pub bar: (f32, f32),
+}
+
+/// A composition tree's shared part: the filled diamond hanging from the
+/// trunk's tip, the trunk, and its bar, where it has one.
+pub fn composition_trunk(depicts: Depicts, trunk: &Trunk) -> Vec<Item> {
+    let below = Point::new(trunk.tip.x, trunk.end);
+    let mut shapes = vec![
+        diamond(trunk.tip, below),
+        Shape::Polyline {
+            points: vec![back_from(trunk.tip, below, DIAMOND_LENGTH), below],
+            dashed: false,
         },
     ];
-    if !label.is_empty() {
-        shapes.push(Shape::Text {
-            position: Point::new(near_end.x + LABEL_OFFSET, near_end.y),
-            text: label,
-            anchor: TextAnchor::Start,
-            font: LABEL_FONT,
-            fill: Fill::Stroke,
+    let (from, to) = trunk.bar;
+    if to - from > 0.5 {
+        shapes.push(Shape::Polyline {
+            points: vec![Point::new(from, trunk.bar_y), Point::new(to, trunk.bar_y)],
+            dashed: false,
         });
     }
     tag(depicts, shapes)
+}
+
+/// The length a composition diamond takes from the owner's border.
+pub(crate) const DIAMOND_ROOM: f32 = DIAMOND_LENGTH;
+
+/// A filled diamond with its tip at `tip`, pointing away from `toward`.
+fn diamond(tip: Point, toward: Point) -> Shape {
+    let back = back_from(tip, toward, DIAMOND_LENGTH);
+    let middle = back_from(tip, toward, DIAMOND_LENGTH / 2.0);
+    let (nx, ny) = normal(tip, toward, DIAMOND_HALF_WIDTH);
+    Shape::Polygon {
+        points: vec![
+            tip,
+            Point::new(middle.x + nx, middle.y + ny),
+            back,
+            Point::new(middle.x - nx, middle.y - ny),
+        ],
+        fill: Fill::Stroke,
+    }
+}
+
+/// A composition's `usage` name and multiplicity, starting at `position`;
+/// none without a usage (a line straight to the part's own node).
+fn composition_label(usage: Option<&Element>, position: Point) -> Option<Shape> {
+    let mut label = usage.map(|u| u.name.clone()).unwrap_or_default();
+    if let Some(multiplicity) = usage.and_then(|u| u.multiplicity.as_ref()) {
+        label.push_str(&format!(" {multiplicity}"));
+    }
+    (!label.is_empty()).then_some(Shape::Text {
+        position,
+        text: label,
+        anchor: TextAnchor::Start,
+        font: LABEL_FONT,
+        fill: Fill::Stroke,
+    })
 }
 
 /// A connection or interface: a plain solid line between the usages it
@@ -1142,7 +1211,7 @@ fn distance(a: Point, b: Point) -> f32 {
 
 /// Whether the segment from `a` to `b` passes through `rect`, kept a few
 /// units clear of its border (Liang–Barsky clipping).
-fn crosses(a: Point, b: Point, rect: Rect) -> bool {
+pub(crate) fn crosses(a: Point, b: Point, rect: Rect) -> bool {
     let (x0, y0) = (rect.x - OBSTACLE_CLEARANCE, rect.y - OBSTACLE_CLEARANCE);
     let (x1, y1) = (
         rect.right() + OBSTACLE_CLEARANCE,
@@ -1177,8 +1246,8 @@ fn crosses(a: Point, b: Point, rect: Rect) -> bool {
 
 /// Spreads edge ends that land close together on the same side of `rect`,
 /// so their markers don't stack. `ends` are the points to adjust; each is
-/// moved along its side only.
-pub fn spread_ends(rect: Rect, ends: &mut [&mut Point]) {
+/// moved along its side only, and clear of the `fixed` ones, which stay.
+pub fn spread_ends(rect: Rect, ends: &mut [&mut Point], fixed: &[Point]) {
     let side_of = |p: &Point| {
         if (p.y - rect.y).abs() < 0.5 {
             0
@@ -1201,17 +1270,25 @@ pub fn spread_ends(rect: Rect, ends: &mut [&mut Point]) {
         let mut on_side: Vec<&mut &mut Point> =
             ends.iter_mut().filter(|p| side_of(p) == side).collect();
         on_side.sort_by(|a, b| along(a).total_cmp(&along(b)));
-        for i in 1..on_side.len() {
-            let previous = along(on_side[i - 1]);
-            let point = &mut on_side[i];
-            if along(point) - previous < END_SEPARATION {
-                let moved = (previous + END_SEPARATION).min(high).max(low);
-                if horizontal {
-                    point.x = moved
-                } else {
-                    point.y = moved
-                }
+        let taken: Vec<f32> = fixed
+            .iter()
+            .filter(|p| side_of(p) == side)
+            .map(along)
+            .collect();
+        let mut previous = f32::NEG_INFINITY;
+        for point in on_side {
+            let mut at = along(point).max(previous + END_SEPARATION);
+            // Past any fixed end it would land on.
+            while let Some(&f) = taken.iter().find(|&&f| (at - f).abs() < END_SEPARATION) {
+                at = f + END_SEPARATION;
             }
+            let at = at.min(high).max(low);
+            if horizontal {
+                point.x = at
+            } else {
+                point.y = at
+            }
+            previous = at;
         }
     }
 }

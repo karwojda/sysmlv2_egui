@@ -110,6 +110,9 @@ fn edge_ends_on_the_same_side_of_a_node_are_spread_apart() {
     let ends: Vec<Point> = [
         scene
             .items_depicting(&composition)
+            .chain(scene.items_depicting(&Depicts::CompositionTree {
+                owner: qn("P::Vehicle"),
+            }))
             .find_map(|s| match s {
                 Shape::Polygon { points, .. } => Some(points[0]),
                 _ => None,
