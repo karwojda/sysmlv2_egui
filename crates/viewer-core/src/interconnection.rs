@@ -569,7 +569,7 @@ fn size(node: &mut BoxNode, layout: &Layout, grown: &BTreeMap<String, (f32, f32)
         .iter()
         .filter_map(|&(a, b)| Some((local(a)?, local(b)?)))
         .collect();
-    let auto = layout::layered(&unplaced_sizes, &unplaced_edges, &[]);
+    let auto = layout::layered(&unplaced_sizes, &unplaced_edges, &[]).rects;
     let saved_bottom = node
         .children
         .iter()

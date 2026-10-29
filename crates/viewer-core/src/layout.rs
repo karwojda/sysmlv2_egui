@@ -11,6 +11,15 @@ const COMPONENT_GAP: f32 = 40.0;
 /// Groups wrap onto a new row past this width, unless one group is wider.
 const MAX_ROW_WIDTH: f32 = 900.0;
 
+/// Where the layered layout puts each node, and which nodes it stacked in
+/// a column beside their parent's composition trunk, both indexed like the
+/// sizes it was given.
+#[derive(Default)]
+pub struct Layered {
+    pub rects: Vec<Rect>,
+    pub stacked: Vec<bool>,
+}
+
 /// A node's children in a tree, in the order they are drawn left to
 /// right. Its parent is `None` where it is placed by hand.
 pub struct Family {
@@ -24,9 +33,9 @@ pub struct Family {
 /// of `families` that share a layer keep its order left to right, under
 /// their parent. Returned rects are indexed like `sizes`, with the
 /// top-left of the whole arrangement at the origin.
-pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)], families: &[Family]) -> Vec<Rect> {
+pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)], families: &[Family]) -> Layered {
     if sizes.is_empty() {
-        return Vec::new();
+        return Layered::default();
     }
     let vertices: Vec<(u32, (f64, f64))> = sizes
         .iter()
@@ -40,9 +49,12 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)], families: &[Famil
     };
 
     let mut components = rust_sugiyama::from_vertices_and_edges(&vertices, &edges, &config);
+    let mut stacked = vec![false; sizes.len()];
     for (positions, _, _) in &mut components {
         positions.sort_by_key(|&(id, _)| id);
-        keep_sibling_order(positions, sizes, families);
+        for id in keep_sibling_order(positions, sizes, families) {
+            stacked[id] = true;
+        }
     }
     components.sort_by_key(|(positions, _, _)| positions.first().map(|&(id, _)| id));
 
@@ -99,7 +111,80 @@ pub fn layered(sizes: &[(f32, f32)], edges: &[(usize, usize)], families: &[Famil
         }
         offset_x += width.round() + COMPONENT_GAP;
     }
-    rects
+    Layered { rects, stacked }
+}
+
+/// Each node's id and centre, as the layered layout gives them.
+type Positions = [(usize, (f64, f64))];
+
+/// How far right of its parent's middle, where the composition trunk runs
+/// down, a column of stacked leaves starts.
+const STACK_INDENT: f64 = 24.0;
+/// The gap between two stacked leaves.
+const STACK_GAP: f64 = 16.0;
+
+/// Stacks the leaves among `members`, the children of `parent` in one
+/// layer, in a column just right of the parent's middle, in their order;
+/// the rest, with subtrees of their own, follow side by side right of the
+/// column, their subtrees with them. Everything below the layer moves down
+/// past the column, by as much as the tallest column of the layer needs,
+/// once: `pushed` keeps how far each layer's lower ones have moved, and
+/// `columns` the columns made, whose leaves stay where they are put.
+fn stack_leaves(
+    positions: &mut [(usize, (f64, f64))],
+    sizes: &[(f32, f32)],
+    below: &HashMap<usize, Vec<usize>>,
+    (parent, members): (usize, &[usize]),
+    shift: &dyn Fn(&mut Positions, usize, f64),
+    columns: &mut Vec<Vec<usize>>,
+    pushed: &mut HashMap<i64, f64>,
+) {
+    let width = |positions: &[(usize, (f64, f64))], i: usize| sizes[positions[i].0].0 as f64;
+    let height = |positions: &[(usize, (f64, f64))], i: usize| sizes[positions[i].0].1 as f64;
+    let (leaves, branches): (Vec<usize>, Vec<usize>) = members
+        .iter()
+        .partition(|i| below.get(i).is_none_or(Vec::is_empty));
+    if leaves.is_empty() {
+        return;
+    }
+    columns.push(leaves.clone());
+    let layer = positions[members[0]].1.1;
+    let top = members
+        .iter()
+        .map(|&i| positions[i].1.1 - height(positions, i) / 2.0)
+        .fold(f64::INFINITY, f64::min);
+    let bottom = members
+        .iter()
+        .map(|&i| positions[i].1.1 + height(positions, i) / 2.0)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let left = positions[parent].1.0 + STACK_INDENT;
+    let mut y = top;
+    let mut right = left;
+    for &i in &leaves {
+        positions[i].1 = (
+            left + width(positions, i) / 2.0,
+            y + height(positions, i) / 2.0,
+        );
+        y += height(positions, i) + STACK_GAP;
+        right = right.max(left + width(positions, i));
+    }
+    let mut x = right + NODE_SPACING;
+    for &i in &branches {
+        let dx = x + width(positions, i) / 2.0 - positions[i].1.0;
+        shift(positions, i, dx);
+        x += width(positions, i) + NODE_SPACING;
+    }
+    let done = pushed.entry(layer.round() as i64).or_default();
+    let past = y - STACK_GAP - bottom - *done;
+    if past > 0.0 {
+        *done += past;
+        let in_a_column: HashSet<usize> = columns.iter().flatten().copied().collect();
+        for (i, (_, (_, y))) in positions.iter_mut().enumerate() {
+            if *y > layer + 0.5 && !in_a_column.contains(&i) {
+                *y += past;
+            }
+        }
+    }
 }
 
 /// Lays each family's children out side by side in its order, centred
@@ -110,7 +195,9 @@ fn keep_sibling_order(
     positions: &mut [(usize, (f64, f64))],
     sizes: &[(f32, f32)],
     families: &[Family],
-) {
+) -> Vec<usize> {
+    let mut columns: Vec<Vec<usize>> = Vec::new();
+    let mut pushed: HashMap<i64, f64> = HashMap::new();
     let index: HashMap<usize, usize> = positions
         .iter()
         .enumerate()
@@ -164,6 +251,21 @@ fn keep_sibling_order(
                 .map(|&i| 2.0 * half(positions, i))
                 .sum::<f64>()
                 + NODE_SPACING * (members.len() - 1) as f64;
+            // Too wide for a page: its leaves stack beside the trunk.
+            if let Some(p) = parent.filter(|&p| layer_of(positions, p) < layer)
+                && width > MAX_ROW_WIDTH as f64
+            {
+                stack_leaves(
+                    positions,
+                    sizes,
+                    &below,
+                    (p, &members),
+                    &shift,
+                    &mut columns,
+                    &mut pushed,
+                );
+                continue;
+            }
             let centre = match parent {
                 Some(p) if layer_of(positions, *p) < layer => positions[*p].1.0,
                 _ => {
@@ -183,19 +285,56 @@ fn keep_sibling_order(
             }
         }
     }
+    // A column moves apart from its neighbours as one, with its first
+    // leaf's layer; its other leaves don't take part on their own.
+    let column_of: HashMap<usize, usize> = columns
+        .iter()
+        .enumerate()
+        .flat_map(|(c, column)| column.iter().map(move |&i| (i, c)))
+        .collect();
+    let extent = |positions: &Positions, i: usize| match column_of.get(&i) {
+        Some(&c) => {
+            let left = positions[i].1.0 - half(positions, i);
+            let right = columns[c]
+                .iter()
+                .map(|&j| positions[j].1.0 + half(positions, j))
+                .fold(f64::NEG_INFINITY, f64::max);
+            (left, right)
+        }
+        None => (
+            positions[i].1.0 - half(positions, i),
+            positions[i].1.0 + half(positions, i),
+        ),
+    };
     let mut layers: BTreeMap<i64, Vec<usize>> = BTreeMap::new();
     for i in 0..positions.len() {
-        layers.entry(layer_of(positions, i)).or_default().push(i);
+        let first = column_of.get(&i).is_none_or(|&c| columns[c][0] == i);
+        if first {
+            layers.entry(layer_of(positions, i)).or_default().push(i);
+        }
     }
     for mut layer in layers.into_values() {
         layer.sort_by(|&a, &b| positions[a].1.0.total_cmp(&positions[b].1.0));
         let mut right = f64::NEG_INFINITY;
         for i in layer {
-            let needed = right + NODE_SPACING + half(positions, i) - positions[i].1.0;
+            let (left, end) = extent(positions, i);
+            let needed = right + NODE_SPACING - left;
             if needed > 0.0 {
-                shift(positions, i, needed);
+                match column_of.get(&i) {
+                    Some(&c) => {
+                        for &j in &columns[c] {
+                            shift(positions, j, needed);
+                        }
+                    }
+                    None => shift(positions, i, needed),
+                }
             }
-            right = positions[i].1.0 + half(positions, i);
+            right = end + needed.max(0.0);
         }
     }
+    columns
+        .into_iter()
+        .flatten()
+        .map(|i| positions[i].0)
+        .collect()
 }
