@@ -35,6 +35,13 @@ pub trait ModelBackend {
 
     /// Loads, running the analyses `analyses` asks for.
     fn load_with(&mut self, folder: &Path, analyses: &Analyses) -> Result<Model, BackendError>;
+
+    /// What loaded the last Model, as the user is told it: `OpenSysML
+    /// sysml-grpc v0.11.0`. `None` before a load, or from a backend with
+    /// nothing to name.
+    fn loaded_by(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Serves a fixed Model regardless of the folder asked for. Its Analysis
@@ -42,16 +49,30 @@ pub trait ModelBackend {
 /// theirs, as on a real load.
 pub struct FakeBackend {
     model: Model,
+    /// What it names itself, and whether it has loaded yet.
+    name: Option<String>,
+    loaded: bool,
 }
 
 impl FakeBackend {
     pub fn new(model: Model) -> Self {
-        Self { model }
+        Self {
+            model,
+            name: None,
+            loaded: false,
+        }
+    }
+
+    /// Names itself `name` once it has loaded.
+    pub fn loaded_by(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
     }
 }
 
 impl ModelBackend for FakeBackend {
     fn load_with(&mut self, _folder: &Path, analyses: &Analyses) -> Result<Model, BackendError> {
+        self.loaded = true;
         let runs = |name: &QualifiedName| match analyses {
             Analyses::AsSet | Analyses::All => true,
             Analyses::None => false,
@@ -69,5 +90,9 @@ impl ModelBackend for FakeBackend {
                 self.model.design_values().to_vec(),
             ),
         )
+    }
+
+    fn loaded_by(&self) -> Option<String> {
+        self.name.clone().filter(|_| self.loaded)
     }
 }

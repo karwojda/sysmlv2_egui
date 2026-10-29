@@ -14,6 +14,10 @@ _Avoid_: project, workspace, repository
 The order a Model declares its elements in: by file, then by where each starts in it. A Diagram draws a parent's children left to right in Model Order.
 _Avoid_: declaration order, source order
 
+**Inherited Member**:
+A member an element has through its definition, or through a definition it specializes (`:>`), without declaring it. It is the same element as the one declared. A General Diagram shows it as a `^` row, in italics, in the compartments of the element that has it, never as a node of its own; an Interconnection Diagram draws it as it draws a declared part or port. A member that redefines it (`:>>`) hides it.
+_Avoid_: derived member, implicit member
+
 **Unsupported Element**:
 A Model element outside the language subset this tool draws; it is listed in the Browser Diagram but never appears in other Diagrams.
 _Avoid_: unknown element, opaque element
