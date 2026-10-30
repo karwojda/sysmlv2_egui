@@ -3,7 +3,7 @@
 
 use crate::diagram_file::{Layout, NodePlacement, PortPlacement, PortSide};
 use crate::model::{Model, QualifiedName};
-use crate::scene::Scene;
+use crate::scene::{Point, Rect, Scene};
 
 /// The smallest size a node can be resized to.
 pub const MIN_NODE_SIZE: [f32; 2] = [40.0, 24.0];
@@ -13,10 +13,12 @@ pub const MIN_NODE_SIZE: [f32; 2] = [40.0, 24.0];
 /// Interconnection Diagram.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Edit {
-    /// Moves a node by a scene-coordinate offset; it stops at the top and
-    /// left of the page (or of the box it's drawn in) at zero.
+    /// Moves nodes by a scene-coordinate offset, together: they all stop
+    /// when one reaches the top or left of the page (or of the box it's
+    /// drawn in). The bends of an edge whose ends are both on moved nodes
+    /// move with them.
     Move {
-        element: QualifiedName,
+        elements: Vec<QualifiedName>,
         dx: f32,
         dy: f32,
     },
@@ -79,20 +81,15 @@ pub fn apply_with(
         pin(&mut pinned, scene);
     }
     let mut edited = pinned.clone();
-    change(&mut edited, known, edit);
+    change(&mut edited, known, scene, edit);
     if edited != pinned {
         *layout = edited;
     }
 }
 
-fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, edit: &Edit) {
+fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, scene: &Scene, edit: &Edit) {
     match edit {
-        Edit::Move { element, dx, dy } => {
-            if let Some(placement) = layout.nodes.get_mut(element) {
-                placement.x = (placement.x + dx).max(0.0);
-                placement.y = (placement.y + dy).max(0.0);
-            }
-        }
+        Edit::Move { elements, dx, dy } => move_nodes(layout, scene, elements, *dx, *dy),
         Edit::Resize {
             element,
             width,
@@ -174,6 +171,75 @@ fn pin(layout: &mut Layout, scene: &Scene) {
             });
         }
     }
+}
+
+/// Moves `elements` by the largest part of (`dx`, `dy`) that keeps every
+/// one of them at or past zero, and the bends of edges between them.
+fn move_nodes(layout: &mut Layout, scene: &Scene, elements: &[QualifiedName], dx: f32, dy: f32) {
+    let placed: Vec<&QualifiedName> = elements
+        .iter()
+        .filter(|e| layout.nodes.contains_key(*e))
+        .collect();
+    let (mut dx, mut dy) = (dx, dy);
+    for element in &placed {
+        let placement = &layout.nodes[*element];
+        dx = dx.max(-placement.x.max(0.0));
+        dy = dy.max(-placement.y.max(0.0));
+    }
+    if placed.is_empty() || (dx == 0.0 && dy == 0.0) {
+        return;
+    }
+    for element in &placed {
+        let placement = layout.nodes.get_mut(*element).expect("placed above");
+        placement.x += dx;
+        placement.y += dy;
+    }
+    // An edge attaches to the node nearest each of its ends (they can
+    // stop short of it at an arrowhead), the innermost one where boxes
+    // nest. A node drawn inside a moved one moves too.
+    let nodes: Vec<Rect> = scene
+        .elements()
+        .into_iter()
+        .filter_map(|e| scene.node_bounds(e))
+        .collect();
+    let moved: Vec<Rect> = placed.iter().filter_map(|e| scene.node_bounds(e)).collect();
+    let on_moved = |p: &Point| {
+        let nearest = nodes.iter().min_by(|a, b| {
+            let key = |r: &Rect| (distance(r, *p), r.width * r.height);
+            key(a).partial_cmp(&key(b)).expect("finite")
+        });
+        nearest.is_some_and(|n| moved.iter().any(|m| inside(n, m)))
+    };
+    for (depicts, path) in scene.edges() {
+        let (Some(key), Some(first), Some(last)) = (depicts.edge_key(), path.first(), path.last())
+        else {
+            continue;
+        };
+        if on_moved(first)
+            && on_moved(last)
+            && let Some(bends) = layout.edges.get_mut(&key)
+        {
+            for bend in bends {
+                bend[0] += dx;
+                bend[1] += dy;
+            }
+        }
+    }
+}
+
+/// How far `p` is from `r`: zero inside it.
+fn distance(r: &Rect, p: Point) -> f32 {
+    let dx = (r.x - p.x).max(p.x - r.right()).max(0.0);
+    let dy = (r.y - p.y).max(p.y - r.bottom()).max(0.0);
+    dx.hypot(dy)
+}
+
+/// Whether `inner` lies within `outer` (or is it).
+fn inside(inner: &Rect, outer: &Rect) -> bool {
+    inner.x >= outer.x
+        && inner.y >= outer.y
+        && inner.right() <= outer.right()
+        && inner.bottom() <= outer.bottom()
 }
 
 fn natural_size(layout: &mut Layout, element: &QualifiedName) {

@@ -25,7 +25,7 @@ fn moved() -> (Model, OpenDiagram) {
     diagram.edit(
         &model,
         &Edit::Move {
-            element: qn("P::Car"),
+            elements: vec![qn("P::Car")],
             dx: 40.0,
             dy: 25.0,
         },

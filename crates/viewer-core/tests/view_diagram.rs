@@ -163,7 +163,7 @@ fn moving_and_hiding_work_on_a_view_s_diagram() {
         &known,
         &before,
         &Edit::Move {
-            element: qn("P::vehicle::engine"),
+            elements: vec![qn("P::vehicle::engine")],
             dx: 40.0,
             dy: 10.0,
         },

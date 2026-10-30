@@ -63,7 +63,7 @@ fn a_view_is_saved_under_a_file_safe_version_of_its_name_referring_to_the_view()
     diagram.edit(
         &model,
         &Edit::Move {
-            element: qn("P::vehicle"),
+            elements: vec![qn("P::vehicle")],
             dx: 30.0,
             dy: 0.0,
         },
@@ -86,7 +86,7 @@ fn a_reloaded_model_redraws_the_view_with_its_new_exposes_keeping_the_layout() {
     diagram.edit(
         &before,
         &Edit::Move {
-            element: qn("P::vehicle"),
+            elements: vec![qn("P::vehicle")],
             dx: 30.0,
             dy: 0.0,
         },
@@ -121,7 +121,7 @@ fn layout_entries_of_elements_no_longer_exposed_are_kept() {
     diagram.edit(
         &before,
         &Edit::Move {
-            element: qn("P::vehicle::body"),
+            elements: vec![qn("P::vehicle::body")],
             dx: 10.0,
             dy: 10.0,
         },

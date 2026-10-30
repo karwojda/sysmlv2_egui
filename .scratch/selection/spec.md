@@ -33,7 +33,7 @@ All of this changes only the Layout (ADR-0002). Exports and the CLI need no chan
 
 - It belongs to the canvas of one open Diagram: a set of node keys (`Depicts::node_key`: elements in a General Diagram, feature paths in an Interconnection Diagram). It is never saved.
 - It is separate from the app's `selected` element, which drives the Browser and Properties. Clicking a node still sets `selected` to that node's element, so Properties follows the node clicked last.
-- **Same box.** All nodes in a Selection are drawn in the same box (they have the same parent in `scene.origins`, or none). Adding a node from another box starts a new Selection with only that node. A box drag only picks nodes in one box: the box the drag starts in.
+- **Same box.** All nodes in a Selection are drawn in the same box (they have the same parent in `scene.origins`, or none). Adding a node from another box starts a new Selection with only that node. A box drag picks the outermost nodes lying wholly inside it (nodes inside a picked box move with it anyway). If those lie in several boxes, it picks only the nodes in the first box, in paint order.
 - Ports, edges and the Interconnection Frame can never be selected.
 - **Gestures:** a plain click on a node selects only that node. Ctrl- or Shift-click adds the node, or removes it if it's already selected. Shift-drag on empty canvas draws a selection box. A plain drag on empty canvas still pans. A plain click on empty canvas, or Escape, empties the Selection.
 - It also empties on Reset and when another Diagram tab becomes active. When the scene is rebuilt (after an edit or a Model reload), keys that are no longer drawn drop out, for example hidden nodes.
@@ -43,8 +43,8 @@ All of this changes only the Layout (ADR-0002). Exports and the CLI need no chan
 ### Moving
 
 - Dragging a selected node moves every selected node by the same offset. The offset is clamped so that no node goes past zero at the top or left of its page or box; all nodes stop together.
-- Manual bends of an edge whose two ends are both selected shift by the same offset. Bends of edges with only one selected end stay put, as for a single-node move today.
-- This is a new `Edit` (for example `MoveAll { elements, dx, dy }`), so that clamping and bends happen in one place in `editing.rs`.
+- Manual bends of an edge whose two ends are both selected shift by the same offset. An end belongs to the node nearest it, or to a node drawn inside a selected one (edges can stop short of a node at an arrowhead). Bends of edges with only one selected end stay put, as for a single-node move today.
+- `Edit::Move` takes a list of nodes, so that clamping and bends happen in one place in `editing.rs`. A single-node move is a list of one.
 
 ### Arrange commands
 

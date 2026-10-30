@@ -106,7 +106,7 @@ fn moving_a_part_saves_its_position_relative_to_its_box() {
     let engine = diagram.part("engine");
 
     diagram.edit(Edit::Move {
-        element: qn("engine"),
+        elements: vec![qn("engine")],
         dx: 40.0,
         dy: 10.0,
     });
@@ -128,7 +128,7 @@ fn moving_an_opened_part_moves_what_is_inside_it() {
     let differential = diagram.part("rearAxleAssembly.differential");
 
     diagram.edit(Edit::Move {
-        element: qn("rearAxleAssembly"),
+        elements: vec![qn("rearAxleAssembly")],
         dx: 60.0,
         dy: 30.0,
     });
@@ -141,12 +141,62 @@ fn moving_an_opened_part_moves_what_is_inside_it() {
 }
 
 #[test]
+fn parts_moved_together_take_the_bends_of_wires_between_them() {
+    let mut diagram = Editing::new(&["rearAxleAssembly"]);
+    let between = Depicts::Connection(qn("D::AxleAssembly::toLeft"))
+        .edge_key()
+        .unwrap();
+    let outward = Depicts::Connection(qn("D::AxleAssembly::toRight"))
+        .edge_key()
+        .unwrap();
+    let wheel = diagram.part("rearAxleAssembly.leftWheel");
+    let other = diagram.part("rearAxleAssembly.rightWheel");
+    diagram.edit(Edit::Route {
+        edge: between.clone(),
+        bends: vec![[wheel.x - 20.0, wheel.y - 20.0]],
+    });
+    diagram.edit(Edit::Route {
+        edge: outward.clone(),
+        bends: vec![[other.x - 20.0, other.y - 20.0]],
+    });
+    let (bend, kept) = (
+        diagram.layout.edges[&between][0],
+        diagram.layout.edges[&outward][0],
+    );
+    let differential = diagram.part("rearAxleAssembly.differential");
+
+    diagram.edit(Edit::Move {
+        elements: vec![
+            qn("rearAxleAssembly.differential"),
+            qn("rearAxleAssembly.leftWheel"),
+        ],
+        dx: 30.0,
+        dy: 20.0,
+    });
+
+    let moved = diagram.part("rearAxleAssembly.differential");
+    assert_eq!(
+        (moved.x, moved.y),
+        (differential.x + 30.0, differential.y + 20.0)
+    );
+    assert_eq!(
+        diagram.layout.edges[&between],
+        vec![[bend[0] + 30.0, bend[1] + 20.0]]
+    );
+    assert_eq!(
+        diagram.layout.edges[&outward],
+        vec![kept],
+        "its wheel stayed"
+    );
+}
+
+#[test]
 fn a_part_cannot_leave_its_box_and_the_box_grows_to_hold_it() {
     let mut diagram = Editing::new(&["rearAxleAssembly"]);
     let axle = diagram.part("rearAxleAssembly");
 
     diagram.edit(Edit::Move {
-        element: qn("rearAxleAssembly.leftWheel"),
+        elements: vec![qn("rearAxleAssembly.leftWheel")],
         dx: -5000.0,
         dy: -5000.0,
     });
@@ -157,7 +207,7 @@ fn a_part_cannot_leave_its_box_and_the_box_grows_to_hold_it() {
     );
 
     diagram.edit(Edit::Move {
-        element: qn("rearAxleAssembly.leftWheel"),
+        elements: vec![qn("rearAxleAssembly.leftWheel")],
         dx: 400.0,
         dy: 600.0,
     });
@@ -271,7 +321,7 @@ fn reset_keeps_orphaned_entries_and_opened_parts() {
 
     diagram
         .edit(Edit::Move {
-            element: qn("engine"),
+            elements: vec![qn("engine")],
             dx: 50.0,
             dy: 0.0,
         })
