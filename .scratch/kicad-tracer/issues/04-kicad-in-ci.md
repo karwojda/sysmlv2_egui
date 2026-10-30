@@ -28,3 +28,7 @@ Not checked: Docker Desktop was paused, so the install never ran in an `ubuntu:2
 - the PPA install works on the runner;
 - `kicad-cli` runs headless with no display set;
 - the two real-KiCad tests pass against 10.0.7.
+
+## Comments
+
+- 2026-10-30: the PPA published 10.0.8 and dropped 10.0.7 (a PPA keeps only its newest build), so the pinned install failed with "Version 10.0.7~ubuntu24.04.1 was not found". The job now installs the latest `kicad` from the 10.0 PPA and logs `kicad-cli version`.

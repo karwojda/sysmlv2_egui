@@ -50,20 +50,22 @@ jobs:
   # The workspace tests run with SYSML_VIEWER_KICAD naming kicad-cli from
   # the KiCad 10 release PPA, headless: the runner sets no display.
   # Without KiCad the real-KiCad tests print "note: skipping" and pass, so
-  # this job fails on that note. The pinned package is built for Ubuntu
-  # 24.04, hence the pinned runner.
+  # this job fails on that note. It takes the PPA's latest 10.0.x: a PPA
+  # keeps only its newest build, so pinning an exact version breaks CI at
+  # every KiCad release. The runner is pinned so the PPA's Ubuntu series
+  # doesn't change under it.
   kicad:
-    name: KiCad tests (kicad-cli 10.0.7)
+    name: KiCad tests (kicad-cli 10.0.x)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - name: Install KiCad 10.0.7
+      - name: Install KiCad 10.0
         run: |
           sudo add-apt-repository --yes ppa:kicad/kicad-10.0-releases
-          sudo apt-get install --yes --no-install-recommends kicad=10.0.7~ubuntu24.04.1
+          sudo apt-get install --yes --no-install-recommends kicad
           kicad-cli version
       - name: Test the workspace against KiCad
         env:
