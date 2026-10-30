@@ -1,6 +1,6 @@
 # 08: Undirected ports are only ever placed on the top or bottom edge
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 **Category:** enhancement
 
@@ -29,3 +29,46 @@ Changing it is a layout policy decision, so it needs a short grilling before it'
 - Should the layout run left-to-right for Interconnection Diagrams instead, as many SysML tools draw an internal block diagram?
 - What about unwired ports?
 - How does the Standard Notation constrain this, if at all? (The notation reference PDF settles questions like this.)
+
+### Triage decisions (2026-10-30)
+
+From a grilling with the maintainer:
+- **Layout direction:** Interconnection Diagrams keep their top-to-bottom layers. No left-to-right layout and no per-diagram option.
+- **Directed ports:** `in` and `out` no longer pin a port to the top or bottom. A directed port faces its peer, the same as an undirected one.
+- **Unwired ports:** they spread over the free sides and no longer all go on the bottom.
+- **Standard Notation:** slides 40–44 put ports on any side, so the notation imposes no constraint here.
+
+## Agent Brief
+
+**Category:** enhancement
+**Summary:** In an Interconnection Diagram, a port takes whichever side of its box actually faces the other end of its wire, and unwired ports spread out instead of crowding the bottom edge.
+
+**Current behavior:**
+In `crates/viewer-core/src/interconnection.rs`, `place_own_ports` and `place_child_ports` choose each port's side in this order:
+1. `by_direction` puts `in` on top and `out` on the bottom.
+2. Otherwise `facing` points the port at its peer, with `VERTICAL_BIAS = 0.5`: the top or bottom wins unless the peer is within about 27° of horizontal.
+3. A port with no wire goes on the bottom.
+
+Since the layers run top to bottom, almost every port lands on the top or bottom edge, wires detour around boxes and labels crowd.
+
+**Desired behavior:**
+- Every port, directed or not, faces its peer, with no preference for top and bottom: the side is chosen by the true angle to the peer, so the boundary is 45°. If the bike-radar pictures read better at another value, change it and give the reason in the PR. The layers themselves stay top to bottom.
+- Once the wired ports have their sides, the unwired ports go together on the side of their box with the fewest wired ports. Ties go bottom, right, left, top, in that order, so a box with only unwired ports looks the way it does today. (Counting every port as each one is placed would spread an all-unwired box over four sides.)
+- Port sides saved in a Layout (`PortSide` in the Diagram File) still override all of this.
+
+**Key interfaces:**
+- `facing`, `by_direction`, `VERTICAL_BIAS`, `place_own_ports`, `place_child_ports` and `spread` in `interconnection.rs`. `by_direction` probably goes away.
+- `end_point` (also calls `facing`) for wire ends on parts without ports. Leave it alone unless the change needs it for consistency.
+
+**Acceptance criteria:**
+- [ ] A test: an undirected port whose peer sits below-right at less than 45° from horizontal goes on the right side.
+- [ ] A test: an `in` port whose peer is below it goes on the bottom, not the top.
+- [ ] A test: a box with three wired ports on the bottom and two unwired ports puts the unwired ones on other sides.
+- [ ] A test: a box with only unwired ports keeps them on the bottom.
+- [ ] A port with a saved `PortSide` in the Layout stays where it was saved.
+- [ ] Golden files are regenerated, and the PR shows before and after pictures of bike-radar-model `rideContext` and `internalStructure` (commit `b6a3056`).
+
+**Out of scope:**
+- Left-to-right or per-diagram layout direction (decided against above).
+- General Diagrams and tree diagrams.
+- Wire routing and port label placement, already handled in [07](07-interconnection-wires-overlap.md) and [04](04-layouts-hard-to-read.md).

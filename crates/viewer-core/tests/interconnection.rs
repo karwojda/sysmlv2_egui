@@ -158,8 +158,10 @@ fn only_parts_can_be_roots() {
     }
 }
 
+/// Layers run from `out` to `in`, so a port facing its peer enters a part
+/// from the top and leaves it from the bottom.
 #[test]
-fn in_ports_sit_on_top_out_ports_at_the_bottom() {
+fn a_flow_from_above_enters_the_top_and_leaves_the_bottom() {
     let scene = interconnection("S::Vehicle");
     let engine = scene.element_bounds(&qn("S::Vehicle::engine")).unwrap();
     let tanks = scene.element_bounds(&qn("S::Vehicle::tanks")).unwrap();
