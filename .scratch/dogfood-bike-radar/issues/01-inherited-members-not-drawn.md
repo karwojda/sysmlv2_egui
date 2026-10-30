@@ -1,6 +1,6 @@
 # 01: An Interconnection Diagram drops members inherited from a specialised definition
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

@@ -1,6 +1,6 @@
 # 03: Nothing shows which OpenSysML version checked the Model
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

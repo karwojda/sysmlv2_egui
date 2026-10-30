@@ -1,6 +1,6 @@
 # Spec: Design Values from FreeCAD (tracer build)
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

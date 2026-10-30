@@ -6,7 +6,7 @@ See `.scratch/kicad-tracer/spec.md` (story 34) and the existing workflow's `cont
 
 **Blocked by:** 03 (Part count and summed fields from the netlist)
 
-**Status:** ready-for-human
+**Status:** done
 
 - [ ] A CI job installs KiCad 10.0.7 and sets `SYSML_VIEWER_KICAD`
 - [ ] The real-KiCad tests run in that job and pass, without the "skipped" note in the log
@@ -32,3 +32,4 @@ Not checked: Docker Desktop was paused, so the install never ran in an `ubuntu:2
 ## Comments
 
 - 2026-10-30: the PPA published 10.0.8 and dropped 10.0.7 (a PPA keeps only its newest build), so the pinned install failed with "Version 10.0.7~ubuntu24.04.1 was not found". The job now installs the latest `kicad` from the 10.0 PPA and logs `kicad-cli version`.
+- 2026-10-30: CI on master passed after #23 (run 41130491456), which confirms the PPA install, headless `kicad-cli` and the real-KiCad tests on the runner. Closed.

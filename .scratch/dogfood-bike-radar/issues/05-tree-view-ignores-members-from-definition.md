@@ -1,6 +1,6 @@
 # 05: A usage's Inherited Members are not shown in General Diagrams
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

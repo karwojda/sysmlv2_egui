@@ -1,6 +1,6 @@
 # 09: Tree diagram children are not in Model order
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

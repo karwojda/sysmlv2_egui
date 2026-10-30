@@ -1,6 +1,6 @@
 # Spec: SysML v2 Viewer: first slice
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

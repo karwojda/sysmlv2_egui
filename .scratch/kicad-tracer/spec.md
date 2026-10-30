@@ -1,6 +1,6 @@
 # Spec: Board budgets from KiCad (tracer build)
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
