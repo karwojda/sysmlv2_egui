@@ -1,6 +1,6 @@
 # Spec: Selection, alignment and undo
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

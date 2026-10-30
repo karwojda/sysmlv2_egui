@@ -1,6 +1,6 @@
 # 04: Port labels overlap on a crowded edge
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

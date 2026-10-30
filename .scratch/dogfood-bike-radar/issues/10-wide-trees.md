@@ -1,6 +1,6 @@
 # 10: Composition edges should be drawn as a tree, one diamond per parent
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** enhancement
 

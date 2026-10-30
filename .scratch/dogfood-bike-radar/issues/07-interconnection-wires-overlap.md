@@ -1,6 +1,6 @@
 # 07: Interconnection wires share a trunk, stack their labels and cross boxes
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

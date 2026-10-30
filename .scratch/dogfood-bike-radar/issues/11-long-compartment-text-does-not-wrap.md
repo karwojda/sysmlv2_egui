@@ -1,6 +1,6 @@
 # 11: Long compartment text doesn't wrap
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** bug
 

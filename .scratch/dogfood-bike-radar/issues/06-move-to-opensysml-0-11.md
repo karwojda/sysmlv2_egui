@@ -1,6 +1,6 @@
 # 06: Move to OpenSysML 0.11
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Category:** enhancement
 

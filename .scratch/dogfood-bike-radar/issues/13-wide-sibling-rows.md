@@ -1,6 +1,6 @@
 # 13: Wide sibling rows: a parent with many children doesn't fit a page
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 10, 09
 
