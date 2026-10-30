@@ -4,12 +4,16 @@
 
 **Blocked by:** None (can start immediately; 01 and 02's edits are covered once they go through `OpenDiagram::edit`)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `OpenDiagram` keeps undo and redo stacks of Layouts
-- [ ] A drag from press to release is one step; edits that change nothing record no step
-- [ ] Context-menu and top-bar edits, including Reset, are one step each
-- [ ] A new edit clears the redo stack
-- [ ] Undo/redo set the unsaved flag correctly, and it clears when back at the saved Layout
-- [ ] The history survives saving and is dropped when the Diagram closes or its Layout is replaced from outside
-- [ ] Unit tests on `OpenDiagram` for all of the above
+- [x] `OpenDiagram` keeps undo and redo stacks of Layouts
+- [x] A drag from press to release is one step; edits that change nothing record no step
+- [x] Context-menu and top-bar edits, including Reset, are one step each
+- [x] A new edit clears the redo stack
+- [x] Undo/redo set the unsaved flag correctly, and it clears when back at the saved Layout
+- [x] The history survives saving and is dropped when the Diagram closes or its Layout is replaced from outside
+- [x] Unit tests on `OpenDiagram` for all of the above
+
+## Comments
+
+- Done. `OpenDiagram` keeps up to `UNDO_STEPS` (200) Layouts to go back to, and the redo stack. `begin_drag`/`end_drag` group a drag into one step. The canvas calls them when a primary-button drag starts and stops. The toolbar has Undo and Redo buttons, and the shortcuts work unless a text field has focus. Diagram Files are only read when a Diagram is opened, so nothing currently replaces a Layout from outside; the history ends with the open Diagram. Tests: `crates/viewer-app/tests/undo.rs`.
