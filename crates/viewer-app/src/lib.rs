@@ -1239,6 +1239,12 @@ impl ViewerApp {
             select = Some(port.or(node).or(connection));
         }
         if response.secondary_clicked() {
+            // Right-clicking a node outside the Selection picks it alone.
+            if let Some(Grab::Resize(e) | Grab::Move(e)) = &hover
+                && !diagram.selection.contains(e)
+            {
+                diagram.selection.only(scene, e);
+            }
             self.context_target = match &hover {
                 Some(Grab::Resize(e) | Grab::Move(e)) => ContextTarget::Node(e.clone()),
                 Some(Grab::Bend { edge, .. } | Grab::Segment { edge, .. }) => {
@@ -1422,6 +1428,9 @@ impl ViewerApp {
                         edit = Some(toggle);
                         ui.close();
                     }
+                }
+                if let Some(arrange) = arrange_menu(ui, &diagram.selection, key, collapsed) {
+                    edit = Some(arrange);
                 }
                 if ui.button("Hide").clicked() {
                     edit = Some(Edit::Hide(key.clone()));
@@ -1692,6 +1701,93 @@ fn open_in_editor(source: &viewer_core::SourceLocation) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Could not open {target} with `code -g` ({e}). Is VS Code's `code` command on your PATH?"))
+}
+
+/// The Align, Same size and Distribute menus for the Selection, opened on
+/// its node `reference`, which the others are lined up with or sized to.
+/// They need two selected nodes (Distribute three); Same size can't copy a
+/// `collapsed` reference.
+fn arrange_menu(
+    ui: &mut egui::Ui,
+    selection: &canvas::Selection,
+    reference: &QualifiedName,
+    collapsed: bool,
+) -> Option<Edit> {
+    use viewer_core::editing::{Alignment, Axis, Dimension};
+    let elements = || selection.keys().to_vec();
+    let mut chosen = None;
+    let mut item = |ui: &mut egui::Ui, label: &str, edit: &dyn Fn() -> Edit| {
+        if ui.button(label).clicked() {
+            chosen = Some(edit());
+            ui.close();
+        }
+    };
+    let picked = selection.len();
+    let hint = "Ctrl- or Shift-click to select more nodes";
+    ui.add_enabled_ui(picked >= 2, |ui| {
+        ui.menu_button("Align", |ui| {
+            for (label, to) in [
+                ("Left edges", Alignment::Left),
+                ("Horizontal centers", Alignment::HorizontalCenter),
+                ("Right edges", Alignment::Right),
+                ("Top edges", Alignment::Top),
+                ("Vertical centers", Alignment::VerticalCenter),
+                ("Bottom edges", Alignment::Bottom),
+            ] {
+                item(ui, label, &|| Edit::Align {
+                    elements: elements(),
+                    reference: reference.clone(),
+                    to,
+                });
+            }
+        })
+        .response
+        .on_hover_text("To this node");
+    })
+    .response
+    .on_disabled_hover_text(hint);
+    ui.add_enabled_ui(picked >= 2 && !collapsed, |ui| {
+        ui.menu_button("Same size", |ui| {
+            for (label, dimension) in [
+                ("Width", Dimension::Width),
+                ("Height", Dimension::Height),
+                ("Width and height", Dimension::Both),
+            ] {
+                item(ui, label, &|| Edit::MatchSize {
+                    elements: elements(),
+                    reference: reference.clone(),
+                    dimension,
+                });
+            }
+        })
+        .response
+        .on_hover_text("As this node");
+    })
+    .response
+    .on_disabled_hover_text(if collapsed {
+        "A collapsed node is drawn at its natural size"
+    } else {
+        hint
+    });
+    ui.add_enabled_ui(picked >= 3, |ui| {
+        ui.menu_button("Distribute", |ui| {
+            for (label, axis) in [
+                ("Horizontally", Axis::Horizontal),
+                ("Vertically", Axis::Vertical),
+            ] {
+                item(ui, label, &|| Edit::Distribute {
+                    elements: elements(),
+                    axis,
+                });
+            }
+        })
+        .response
+        .on_hover_text("Equal gaps; the outermost nodes stay");
+    })
+    .response
+    .on_disabled_hover_text("Select three or more nodes");
+    ui.separator();
+    chosen
 }
 
 /// The rect spanned by two corners, in either order.

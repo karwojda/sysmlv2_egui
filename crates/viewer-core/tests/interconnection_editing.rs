@@ -3,7 +3,7 @@
 
 mod common;
 
-use viewer_core::editing::{Edit, apply_with};
+use viewer_core::editing::{Alignment, Dimension, Edit, apply_with};
 use viewer_core::scene::{Depicts, Point, Rect, Shape};
 use viewer_core::{
     DiagramFile, DiagramKind, Layout, Model, NodePlacement, PortSide, QualifiedName, Scene,
@@ -188,6 +188,43 @@ fn parts_moved_together_take_the_bends_of_wires_between_them() {
         vec![kept],
         "its wheel stayed"
     );
+}
+
+#[test]
+fn parts_inside_a_box_align_and_take_the_same_size() {
+    let mut diagram = Editing::new(&["rearAxleAssembly"]);
+    let wheels = vec![
+        qn("rearAxleAssembly.leftWheel"),
+        qn("rearAxleAssembly.rightWheel"),
+    ];
+    diagram.edit(Edit::Move {
+        elements: vec![qn("rearAxleAssembly.rightWheel")],
+        dx: 0.0,
+        dy: 45.0,
+    });
+    diagram.edit(Edit::Resize {
+        element: qn("rearAxleAssembly.leftWheel"),
+        width: 150.0,
+        height: 90.0,
+    });
+
+    diagram.edit(Edit::Align {
+        elements: wheels.clone(),
+        reference: qn("rearAxleAssembly.leftWheel"),
+        to: Alignment::Top,
+    });
+    diagram.edit(Edit::MatchSize {
+        elements: wheels,
+        reference: qn("rearAxleAssembly.leftWheel"),
+        dimension: Dimension::Both,
+    });
+
+    let (left, right) = (
+        diagram.part("rearAxleAssembly.leftWheel"),
+        diagram.part("rearAxleAssembly.rightWheel"),
+    );
+    assert_eq!(right.y, left.y);
+    assert_eq!((right.width, right.height), (left.width, left.height));
 }
 
 #[test]
