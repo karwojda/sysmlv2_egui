@@ -160,27 +160,23 @@ pub fn build(model: &Model, root: &QualifiedName, layout: &Layout) -> Result<Sce
         _ => return Err(unsuitable()),
     };
 
-    // A box whose port labels don't fit along a side grows along it, one
-    // whose labels reach out of its left or right side takes that room
-    // beside it, and everything is laid out again around it.
+    // A box whose port labels don't fit along a side grows along it, and
+    // everything is laid out again around it.
     let mut grown: BTreeMap<String, (f32, f32)> = BTreeMap::new();
-    let mut reach: BTreeMap<String, (f32, f32)> = BTreeMap::new();
-    let lay_out = |grown: &BTreeMap<String, (f32, f32)>, reach: &BTreeMap<String, (f32, f32)>| {
+    let lay_out = |grown: &BTreeMap<String, (f32, f32)>| {
         let mut frame = open_box(model, root_element, definition, "", layout);
-        size(&mut frame, layout, grown, reach);
+        size(&mut frame, layout, grown);
         place(&mut frame, crate::diagram::MARGIN, crate::diagram::MARGIN);
         place_own_ports(&mut frame);
         place_child_ports(&mut frame, true);
         frame
     };
-    let mut frame = lay_out(&grown, &reach);
+    let mut frame = lay_out(&grown);
     for _ in 0..GROWTH_ROUNDS {
-        let grew = separate_labels(&mut frame, layout, &mut grown);
-        let widened = side_reach(&frame, &mut reach);
-        if !grew && !widened {
+        if !separate_labels(&mut frame, layout, &mut grown) {
             break;
         }
-        frame = lay_out(&grown, &reach);
+        frame = lay_out(&grown);
     }
     separate_labels(&mut frame, layout, &mut grown);
     apply_port_overrides(&mut frame, layout);
@@ -507,12 +503,7 @@ fn label_stack_below(node: &BoxNode, c: usize) -> f32 {
 /// Sizes a box from the inside out, placing its children relative to its
 /// top-left corner: where the Layout saved them, the rest arranged
 /// automatically below those.
-fn size(
-    node: &mut BoxNode,
-    layout: &Layout,
-    grown: &BTreeMap<String, (f32, f32)>,
-    reach: &BTreeMap<String, (f32, f32)>,
-) {
+fn size(node: &mut BoxNode, layout: &Layout, grown: &BTreeMap<String, (f32, f32)>) {
     let at_least = grown.get(&node.path).copied().unwrap_or((0.0, 0.0));
     let title_width = text_width(&title(node.element), USAGE_NAME_FONT)
         .max(text_width("«part def»", KEYWORD_FONT));
@@ -534,7 +525,7 @@ fn size(
         return;
     }
     for child in &mut node.children {
-        size(child, layout, grown, reach);
+        size(child, layout, grown);
     }
     // Layers top to bottom from each wire's `out` end to its `in` end, with
     // room for port labels above and below every child, and below it for
@@ -542,23 +533,11 @@ fn size(
     let below: Vec<f32> = (0..node.children.len())
         .map(|c| LABEL_ROOM + label_stack_below(node, c))
         .collect();
-    // Room beside each child for the labels of its left and right ports.
-    let beside: Vec<(f32, f32)> = node
-        .children
-        .iter()
-        .map(|c| reach.get(&c.path).copied().unwrap_or((0.0, 0.0)))
-        .collect();
     let sizes: Vec<(f32, f32)> = node
         .children
         .iter()
         .zip(&below)
-        .zip(&beside)
-        .map(|((c, below), (left, right))| {
-            (
-                left + c.rect.width + right,
-                c.rect.height + LABEL_ROOM + below,
-            )
-        })
+        .map(|(c, below)| (c.rect.width, c.rect.height + LABEL_ROOM + below))
         .collect();
     let edges: Vec<(usize, usize)> = node
         .wires
@@ -605,10 +584,7 @@ fn size(
             Some(p) => p,
             None => {
                 let placed = auto[local(c).expect("an unplaced child has an automatic place")];
-                Point::new(
-                    placed.x + content.x + beside[c].0,
-                    placed.y + auto_top + LABEL_ROOM,
-                )
+                Point::new(placed.x + content.x, placed.y + auto_top + LABEL_ROOM)
             }
         };
         node.children[c].rect.x = position.x;
@@ -617,8 +593,7 @@ fn size(
     let right = node
         .children
         .iter()
-        .zip(&beside)
-        .map(|(c, (_, right))| c.rect.right() + right)
+        .map(|c| c.rect.right())
         .fold(content.x, f32::max);
     let bottom = node
         .children
@@ -640,42 +615,6 @@ fn size(
         });
     node.rect.width = width;
     node.rect.height = height;
-}
-
-/// How far the labels of each part's left and right ports reach out of its
-/// box, noted in `reach` by feature path where that is further than before;
-/// returns whether any was. Only ever widening keeps the rounds from
-/// swinging back and forth.
-fn side_reach(node: &BoxNode, reach: &mut BTreeMap<String, (f32, f32)>) -> bool {
-    let mut widened = false;
-    for child in &node.children {
-        widened |= side_reach(child, reach);
-        let out = |side: Side| {
-            child
-                .ports
-                .iter()
-                .filter(|s| s.side == side)
-                .map(|s| {
-                    let nested = s
-                        .nested
-                        .iter()
-                        .map(|n| NESTED_SIZE + 6.0 + text_width(&port_label(n), LABEL_FONT))
-                        .fold(0.0, f32::max);
-                    LABEL_BESIDE
-                        + text_width(&port_label(s.port), LABEL_FONT).max(nested)
-                        + LABEL_GAP
-                })
-                .fold(0.0, f32::max)
-        };
-        // Whole pixels, like box sizes, so ports stay in line across a wire.
-        let (left, right) = (out(Side::Left).ceil(), out(Side::Right).ceil());
-        let noted = reach.entry(child.path.clone()).or_insert((0.0, 0.0));
-        if left > noted.0 || right > noted.1 {
-            *noted = (noted.0.max(left), noted.1.max(right));
-            widened = true;
-        }
-    }
-    widened
 }
 
 /// How many times a diagram is laid out again for boxes grown to fit their
@@ -861,15 +800,16 @@ fn facing(from: Point, to: Point) -> Side {
     }
 }
 
-/// The side of `rect` that faces `to`: left or right only when `to` is
-/// level with the box, so a wire to a part in another layer leaves from
-/// the top or bottom instead of jogging round a corner.
-fn level_facing(rect: Rect, to: Point) -> Side {
-    if to.y < rect.y {
+/// The side of `rect` that faces `to`: left or right only when the two
+/// share a row (their heights overlap), so a wire to a part in another
+/// layer leaves from the top or bottom instead of jogging round a corner.
+/// Overlap is mutual, so both ends of a wire agree.
+fn level_facing(rect: Rect, to: Rect) -> Side {
+    if to.bottom() < rect.y {
         Side::Top
     } else if to.y > rect.bottom() {
         Side::Bottom
-    } else if to.x >= rect.center_x() {
+    } else if to.center_x() >= rect.center_x() {
         Side::Right
     } else {
         Side::Left
@@ -917,16 +857,29 @@ fn spread(slots: &mut [PortSlot], rect: Rect, along: &dyn Fn(usize) -> f32) {
 
 /// Where the other end of a wire is, roughly, for choosing sides.
 fn rough_point(node: &BoxNode, end: &End) -> Point {
+    center(rough_extent(node, end))
+}
+
+/// The box the other end of a wire lies on; a port of `node` itself, as
+/// a box of no size at the port.
+fn rough_extent(node: &BoxNode, end: &End) -> Rect {
     match end {
         End::Port { path, port, .. } if path.is_empty() => {
-            port_point(node.rect, &node.ports[*port])
+            let p = port_point(node.rect, &node.ports[*port]);
+            Rect {
+                x: p.x,
+                y: p.y,
+                width: 0.0,
+                height: 0.0,
+            }
         }
-        _ => center(node.at(end.path()).rect),
+        _ => node.at(end.path()).rect,
     }
 }
 
 /// The Frame's own ports: facing their inner peer, else on the side with
-/// the fewest wired ports.
+/// the fewest wired ports. Every peer lies within the Frame's height, so
+/// the Frame faces by direction from its centre, not `level_facing`.
 fn place_own_ports(node: &mut BoxNode) {
     let rect = node.rect;
     let mut peers: BTreeMap<usize, Point> = BTreeMap::new();
@@ -954,18 +907,19 @@ fn place_own_ports(node: &mut BoxNode) {
 }
 
 /// Puts each child's ports on a side (facing the other end, sideways only
-/// when it is level, else the side with the fewest wired ports) and spaces them in the order of what
-/// they connect to; then does the same inside each Opened Part. With
-/// `align_own`, the box's own ports line up with the child ports they're
-/// wired to (only the Frame: an Opened Part's ports are placed from outside).
+/// when it is level; unwired ones on the side with the fewest wired ports)
+/// and spaces them in the order of what they connect to; then does the same
+/// inside each Opened Part. With `align_own`, the box's own ports line up
+/// with the child ports they're wired to (only the Frame: an Opened Part's
+/// ports are placed from outside).
 fn place_child_ports(node: &mut BoxNode, align_own: bool) {
-    let mut peers: BTreeMap<(usize, usize), Point> = BTreeMap::new();
+    let mut peers: BTreeMap<(usize, usize), Rect> = BTreeMap::new();
     for wire in &node.wires {
         for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
             if let End::Port { path, port, .. } = this
                 && path.len() == 1
             {
-                peers.insert((path[0], *port), rough_point(node, other));
+                peers.insert((path[0], *port), rough_extent(node, other));
             }
         }
     }
@@ -979,8 +933,8 @@ fn place_child_ports(node: &mut BoxNode, align_own: bool) {
         }
         let sides: Vec<Side> = child.ports.iter().map(|s| s.side).collect();
         spread(&mut child.ports, rect, &|q| match peers.get(&(c, q)) {
-            Some(peer) if sides[q].vertical() => peer.x,
-            Some(peer) => peer.y,
+            Some(peer) if sides[q].vertical() => center(*peer).x,
+            Some(peer) => center(*peer).y,
             None => f32::MAX,
         });
     }

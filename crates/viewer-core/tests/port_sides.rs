@@ -37,19 +37,12 @@ fn system(wiring: impl FnOnce(ModelBuilder) -> ModelBuilder) -> Model {
     wiring(builder).build()
 }
 
-/// The diagram of `System` with each named part pinned at a position
-/// relative to the Frame.
-fn diagram(model: &Model, at: &[(&str, f32, f32)]) -> Scene {
+/// The diagram of `System` with each named part pinned as given, relative
+/// to the Frame.
+fn diagram(model: &Model, placements: &[(&str, NodePlacement)]) -> Scene {
     let mut layout = Layout::default();
-    for (part, x, y) in at {
-        layout.nodes.insert(
-            qn(part),
-            NodePlacement {
-                x: *x,
-                y: *y,
-                size: None,
-            },
-        );
+    for (part, placement) in placements {
+        layout.nodes.insert(qn(part), *placement);
     }
     build_scene_with_layout(
         model,
@@ -58,6 +51,15 @@ fn diagram(model: &Model, at: &[(&str, f32, f32)]) -> Scene {
         &layout,
     )
     .unwrap()
+}
+
+/// A part 140 wide and `height` tall with its top-left corner at `x`, `y`.
+fn at(x: f32, y: f32, height: f32) -> NodePlacement {
+    NodePlacement {
+        x,
+        y,
+        size: Some([140.0, height]),
+    }
 }
 
 /// The side of `part`'s box that the port `key` (`a.p`) sits on.
@@ -110,7 +112,10 @@ fn linked() -> Model {
 
 #[test]
 fn ports_of_parts_in_one_row_face_each_other_sideways() {
-    let scene = diagram(&linked(), &[("a", 20.0, 40.0), ("b", 420.0, 60.0)]);
+    let scene = diagram(
+        &linked(),
+        &[("a", at(20.0, 40.0, 60.0)), ("b", at(420.0, 60.0, 60.0))],
+    );
 
     assert_eq!(side(&scene, "a", "a.p"), Side::Right);
     assert_eq!(side(&scene, "b", "b.q"), Side::Left);
@@ -118,12 +123,27 @@ fn ports_of_parts_in_one_row_face_each_other_sideways() {
 
 #[test]
 fn a_port_whose_peer_is_below_and_aside_faces_down_however_far_aside() {
-    // b is 400 right of a and wholly below it: closer to level than not,
-    // but a side port would make the wire jog round a corner.
-    let scene = diagram(&linked(), &[("a", 20.0, 40.0), ("b", 420.0, 290.0)]);
+    // b is wholly below a but 400 to its right, far closer to level than
+    // not; a side port would make the wire jog round a corner.
+    let scene = diagram(
+        &linked(),
+        &[("a", at(20.0, 40.0, 60.0)), ("b", at(420.0, 130.0, 60.0))],
+    );
 
     assert_eq!(side(&scene, "a", "a.p"), Side::Bottom);
     assert_eq!(side(&scene, "b", "b.q"), Side::Top);
+}
+
+#[test]
+fn parts_of_different_heights_in_one_row_face_each_other_sideways() {
+    // b is tall: its centre is below a, but the two boxes share a row.
+    let scene = diagram(
+        &linked(),
+        &[("a", at(20.0, 40.0, 60.0)), ("b", at(420.0, 60.0, 240.0))],
+    );
+
+    assert_eq!(side(&scene, "a", "a.p"), Side::Right);
+    assert_eq!(side(&scene, "b", "b.q"), Side::Left);
 }
 
 #[test]
@@ -141,14 +161,17 @@ fn a_directed_port_faces_its_peer_too() {
     });
 
     // b, the source, sits below a.
-    let scene = diagram(&model, &[("a", 20.0, 40.0), ("b", 20.0, 340.0)]);
+    let scene = diagram(
+        &model,
+        &[("a", at(20.0, 40.0, 60.0)), ("b", at(20.0, 340.0, 60.0))],
+    );
 
     assert_eq!(side(&scene, "a", "a.input"), Side::Bottom);
     assert_eq!(side(&scene, "b", "b.output"), Side::Top);
 }
 
 #[test]
-fn unwired_ports_keep_off_the_side_the_wired_ones_crowd() {
+fn unwired_ports_go_together_off_the_side_the_wired_ones_crowd() {
     let model = system(|mut b| {
         for n in 1..=3 {
             b = b
@@ -166,13 +189,17 @@ fn unwired_ports_keep_off_the_side_the_wired_ones_crowd() {
             .typed_by("P::Link")
     });
 
-    let scene = diagram(&model, &[("a", 20.0, 40.0), ("b", 20.0, 340.0)]);
+    let scene = diagram(
+        &model,
+        &[("a", at(20.0, 40.0, 60.0)), ("b", at(20.0, 340.0, 60.0))],
+    );
 
     for n in 1..=3 {
         assert_eq!(side(&scene, "a", &format!("a.p{n}")), Side::Bottom);
     }
-    assert_ne!(side(&scene, "a", "a.u1"), Side::Bottom);
-    assert_ne!(side(&scene, "a", "a.u2"), Side::Bottom);
+    let unwired = side(&scene, "a", "a.u1");
+    assert_ne!(unwired, Side::Bottom);
+    assert_eq!(side(&scene, "a", "a.u2"), unwired, "together on one side");
 }
 
 #[test]
