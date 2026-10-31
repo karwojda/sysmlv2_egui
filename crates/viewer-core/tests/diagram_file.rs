@@ -131,3 +131,15 @@ fn missing_style_fields_take_their_defaults() {
         }
     );
 }
+
+#[test]
+fn inherited_members_turned_off_are_saved_and_on_writes_nothing() {
+    let mut file = DiagramFile::new("x", DiagramKind::General, "P".into());
+    assert!(!file.to_text().contains("inherited_hidden"));
+
+    file.layout.inherited_hidden = true;
+    let text = file.to_text();
+
+    assert!(text.contains(r#""inherited_hidden": true"#), "{text}");
+    assert!(DiagramFile::parse(&text).unwrap().layout.inherited_hidden);
+}

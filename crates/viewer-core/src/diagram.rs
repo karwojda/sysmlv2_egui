@@ -381,7 +381,7 @@ fn general<'a>(
         .iter()
         .map(|e| {
             let compartments = !saved.collapsed.contains(&e.qualified_name);
-            notation::node_content(e, model, compartments, !saved.inherited_hidden, |member| {
+            notation::node_content(e, model, compartments, saved.inherited_hidden, |member| {
                 index_of(member).is_none()
             })
         })

@@ -956,7 +956,7 @@ impl ViewerApp {
                 let mut shown = !self.diagrams[active].layout.inherited_hidden;
                 if ui
                     .checkbox(&mut shown, "Inherited")
-                    .on_hover_text("Show members a definition gives (^ rows)")
+                    .on_hover_text("Show Inherited Members as ^ rows")
                     .changed()
                 {
                     edits.push(if shown {

@@ -121,10 +121,9 @@ pub fn apply(layout: &mut Layout, model: &Model, scene: &Scene, edit: &Edit) {
 /// Applies `edit` to `layout`. `scene` is the Diagram as currently drawn:
 /// every edit except `Reset` and showing or hiding Inherited Members first
 /// pins each drawn node where it is, so changing one node never rearranges
-/// the others. `known` tells whether a
-/// node key still names something in the Model, so `Reset` keeps Orphaned
-/// Layout Entries. An edit that changes nothing leaves the Layout exactly
-/// as it was.
+/// the others. `known` tells whether a node key still names something in
+/// the Model, so `Reset` keeps Orphaned Layout Entries. An edit that
+/// changes nothing leaves the Layout exactly as it was.
 pub fn apply_with(
     layout: &mut Layout,
     known: &dyn Fn(&QualifiedName) -> bool,
