@@ -6,7 +6,9 @@ mod common;
 use std::path::Path;
 
 use viewer_core::scene::{Depicts, Shape};
-use viewer_core::{DiagramKind, QualifiedName, Scene, build_general_scene, build_scene, svg};
+use viewer_core::{
+    DiagramKind, Layout, QualifiedName, Scene, build_general_scene, build_scene, svg,
+};
 
 fn qn(s: &str) -> QualifiedName {
     QualifiedName::new(s)
@@ -196,13 +198,17 @@ fn a_constraint_usage_node_matches_the_golden_file() {
 
 /// The vehicle and its tank as nodes, as a view exposing both would draw them.
 fn vehicle_and_tank() -> Scene {
+    vehicle_and_tank_with(&Layout::default())
+}
+
+fn vehicle_and_tank_with(layout: &Layout) -> Scene {
     let elements = [
         qn("C::vehicle"),
         qn("C::vehicle::tank"),
         qn("C::vehicle::heavy"),
         qn("C::vehicle::powerToWeight"),
     ];
-    build_general_scene(&common::assertions(), &elements, &Default::default())
+    build_general_scene(&common::assertions(), &elements, layout)
 }
 
 #[test]
@@ -213,6 +219,18 @@ fn a_part_shows_constraints_it_inherits_with_its_own_result() {
         compartment(&tank, "assert constraints", &TITLES),
         ["^{fuelMass <= fuelMassMax} ✗"]
     );
+}
+
+#[test]
+fn a_diagram_with_inherited_members_turned_off_drops_inherited_constraints() {
+    let layout = Layout {
+        inherited_hidden: true,
+        ..Layout::default()
+    };
+
+    let tank = texts_of(&vehicle_and_tank_with(&layout), "C::vehicle::tank");
+
+    assert!(compartment(&tank, "assert constraints", &TITLES).is_empty());
 }
 
 #[test]

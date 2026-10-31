@@ -241,3 +241,25 @@ fn a_node_whose_definitions_add_nothing_is_unchanged() {
         [row("q", false)]
     );
 }
+
+#[test]
+fn a_diagram_with_inherited_members_turned_off_lists_only_declared_ones() {
+    let model = snippet().build();
+    let elements = [qn("P::specialised")];
+    let shown = build_general_scene(&model, &elements, &Layout::default());
+    let layout = Layout {
+        inherited_hidden: true,
+        ..Layout::default()
+    };
+
+    let scene = build_general_scene(&model, &elements, &layout);
+
+    let texts = texts_of(&scene, "P::specialised");
+    assert_eq!(compartment(&texts, "parts"), [row("own", false)]);
+    assert!(
+        texts.iter().all(|(t, _)| !t.starts_with('^')),
+        "no ^ rows: {texts:?}"
+    );
+    let height = |s: &Scene| s.node_bounds(&qn("P::specialised")).unwrap().height;
+    assert!(height(&scene) < height(&shown), "the box shrinks to fit");
+}

@@ -952,6 +952,20 @@ impl ViewerApp {
             {
                 edits.push(Edit::Reset);
             }
+            if self.diagrams[active].kind == Some(DiagramKind::General) {
+                let mut shown = !self.diagrams[active].layout.inherited_hidden;
+                if ui
+                    .checkbox(&mut shown, "Inherited")
+                    .on_hover_text("Show Inherited Members as ^ rows")
+                    .changed()
+                {
+                    edits.push(if shown {
+                        Edit::ShowInherited
+                    } else {
+                        Edit::HideInherited
+                    });
+                }
+            }
             let mut legend = self.diagrams[active].style.legend;
             if ui
                 .checkbox(&mut legend, "Legend")

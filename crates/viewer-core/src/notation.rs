@@ -161,11 +161,13 @@ const DOC_LINE_CHARS: usize = 40;
 const CONTINUED: &str = "\u{2003}\u{2003}";
 
 /// What `element`'s node shows; without `compartments` (collapsed), only
-/// its header. Compartments list the owned features `listed` accepts.
+/// its header. Compartments list the owned features `listed` accepts, and
+/// the Inherited Members too unless `inherited_hidden`.
 pub fn node_content(
     element: &Element,
     model: &Model,
     compartments: bool,
+    inherited_hidden: bool,
     listed: impl Fn(&QualifiedName) -> bool,
 ) -> NodeContent {
     let usage = !element.kind.is_definition();
@@ -180,7 +182,7 @@ pub fn node_content(
         .as_deref()
         .filter(|_| requirement && compartments)
         .map(|text| ("doc", wrap(text, DOC_LINE_CHARS)));
-    let inherited = if compartments {
+    let inherited = if compartments && !inherited_hidden {
         model.inherited_members(element)
     } else {
         Vec::new()
@@ -332,7 +334,7 @@ pub fn node_content(
                     }
                 })
                 .collect();
-            if checked {
+            if checked && !inherited_hidden {
                 asserted.extend(
                     crate::constraint::checks_on(model, part)
                         .filter(|(c, _)| c.owner.as_ref() != Some(part))

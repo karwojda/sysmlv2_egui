@@ -381,7 +381,9 @@ fn general<'a>(
         .iter()
         .map(|e| {
             let compartments = !saved.collapsed.contains(&e.qualified_name);
-            notation::node_content(e, model, compartments, |member| index_of(member).is_none())
+            notation::node_content(e, model, compartments, saved.inherited_hidden, |member| {
+                index_of(member).is_none()
+            })
         })
         .collect();
     // Each parent's children in Model Order: an owned usage by where it is
