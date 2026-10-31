@@ -73,3 +73,7 @@ Since the layers run top to bottom, almost every port lands on the top or bottom
 - Left-to-right or per-diagram layout direction (decided against above).
 - General Diagrams and tree diagrams.
 - Wire routing and port label placement, already handled in [07](07-interconnection-wires-overlap.md) and [04](04-layouts-hard-to-read.md).
+
+## Comments (implementation)
+
+Draft PR #25 (branch feat/port-sides). The side rule was revised during the build, from true angle to sideways only for level peers; see the PR's Decisions.
