@@ -1,6 +1,7 @@
 //! A port in an Interconnection Diagram sits on the side of its box that
-//! faces the other end of its wire, whatever its direction; unwired ports
-//! go to the side with the fewest wired ones.
+//! faces the other end of its wire, whatever its direction: left or right
+//! only when that end is level with the box, else top or bottom. Unwired
+//! ports go to the side with the fewest wired ones.
 
 use viewer_core::model::{Direction, ModelBuilder};
 use viewer_core::scene::{Depicts, Point, Rect, Scene, Shape};
@@ -94,9 +95,9 @@ fn on_side(rect: Rect, p: Point) -> Option<Side> {
     }
 }
 
-#[test]
-fn a_port_whose_peer_is_below_right_but_closer_to_level_faces_right() {
-    let model = system(|b| {
+/// `a.p` wired to `b.q`.
+fn linked() -> Model {
+    system(|b| {
         b.port("P::A::p")
             .typed_by("P::Link")
             .port("P::B::q")
@@ -104,13 +105,25 @@ fn a_port_whose_peer_is_below_right_but_closer_to_level_faces_right() {
             .connection("P::System::link")
             .end(&["P::System::a", "P::A::p"])
             .end(&["P::System::b", "P::B::q"])
-    });
+    })
+}
 
-    // b's centre is 400 right of and 250 below a's: about 32° from level.
-    let scene = diagram(&model, &[("a", 20.0, 40.0), ("b", 420.0, 290.0)]);
+#[test]
+fn ports_of_parts_in_one_row_face_each_other_sideways() {
+    let scene = diagram(&linked(), &[("a", 20.0, 40.0), ("b", 420.0, 60.0)]);
 
     assert_eq!(side(&scene, "a", "a.p"), Side::Right);
     assert_eq!(side(&scene, "b", "b.q"), Side::Left);
+}
+
+#[test]
+fn a_port_whose_peer_is_below_and_aside_faces_down_however_far_aside() {
+    // b is 400 right of a and wholly below it: closer to level than not,
+    // but a side port would make the wire jog round a corner.
+    let scene = diagram(&linked(), &[("a", 20.0, 40.0), ("b", 420.0, 290.0)]);
+
+    assert_eq!(side(&scene, "a", "a.p"), Side::Bottom);
+    assert_eq!(side(&scene, "b", "b.q"), Side::Top);
 }
 
 #[test]

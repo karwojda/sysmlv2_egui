@@ -52,7 +52,7 @@ In `crates/viewer-core/src/interconnection.rs`, `place_own_ports` and `place_chi
 Since the layers run top to bottom, almost every port lands on the top or bottom edge, wires detour around boxes and labels crowd.
 
 **Desired behavior:**
-- Every port, directed or not, faces its peer, with no preference for top and bottom: the side is chosen by the true angle to the peer, so the boundary is 45°. If the bike-radar pictures read better at another value, change it and give the reason in the PR. The layers themselves stay top to bottom.
+- Every port on a part, directed or not, faces its peer. It goes on the left or right side only when the peer is level with the box (within its height), otherwise on the top or bottom. The layers themselves stay top to bottom. (Revised 2026-10-31: with the true angle, a 45° boundary, bike-radar `internalStructure` grew from 907×1237 to 1422×1268, and diagonal wires jogged round corners.)
 - Once the wired ports have their sides, the unwired ports go together on the side of their box with the fewest wired ports. Ties go bottom, right, left, top, in that order, so a box with only unwired ports looks the way it does today. (Counting every port as each one is placed would spread an all-unwired box over four sides.)
 - Port sides saved in a Layout (`PortSide` in the Diagram File) still override all of this.
 
@@ -61,7 +61,8 @@ Since the layers run top to bottom, almost every port lands on the top or bottom
 - `end_point` (also calls `facing`) for wire ends on parts without ports. Leave it alone unless the change needs it for consistency.
 
 **Acceptance criteria:**
-- [ ] A test: an undirected port whose peer sits below-right at less than 45° from horizontal goes on the right side.
+- [ ] A test: ports of two parts in one row face each other sideways.
+- [ ] A test: a port whose peer is wholly below and far to the side still goes on the bottom.
 - [ ] A test: an `in` port whose peer is below it goes on the bottom, not the top.
 - [ ] A test: a box with three wired ports on the bottom and two unwired ports puts the unwired ones on other sides.
 - [ ] A test: a box with only unwired ports keeps them on the bottom.

@@ -32,6 +32,9 @@ const PORT_SPACING: f32 = 20.0;
 const CONNECTOR_STUB: f32 = 16.0;
 /// How close two ports must be across the connector to count as in line.
 const ALIGNED: f32 = 2.0;
+/// How much more level than not a peer must be for a port to face it
+/// sideways.
+const VERTICAL_BIAS: f32 = 0.5;
 /// How far connectors keep from boxes they pass.
 const CLEARANCE: f32 = 10.0;
 /// What a bend costs in a route, in units of length.
@@ -845,13 +848,28 @@ fn center(rect: Rect) -> Point {
     Point::new(rect.center_x(), rect.y + rect.height / 2.0)
 }
 
-/// The side of a box at `from` that faces `to`: top or bottom when `to` is
-/// further off vertically than horizontally, else left or right.
+/// The side of a box at `from` that faces `to`. Top and bottom win unless
+/// `to` is mostly level with `from`, since layers run top to bottom.
 fn facing(from: Point, to: Point) -> Side {
     let (dx, dy) = (to.x - from.x, to.y - from.y);
-    if dy.abs() >= dx.abs() {
+    if dy.abs() >= VERTICAL_BIAS * dx.abs() {
         if dy >= 0.0 { Side::Bottom } else { Side::Top }
     } else if dx >= 0.0 {
+        Side::Right
+    } else {
+        Side::Left
+    }
+}
+
+/// The side of `rect` that faces `to`: left or right only when `to` is
+/// level with the box, so a wire to a part in another layer leaves from
+/// the top or bottom instead of jogging round a corner.
+fn level_facing(rect: Rect, to: Point) -> Side {
+    if to.y < rect.y {
+        Side::Top
+    } else if to.y > rect.bottom() {
+        Side::Bottom
+    } else if to.x >= rect.center_x() {
         Side::Right
     } else {
         Side::Left
@@ -935,8 +953,8 @@ fn place_own_ports(node: &mut BoxNode) {
     });
 }
 
-/// Puts each child's ports on a side (facing the other end, else the side
-/// with the fewest wired ports) and spaces them in the order of what
+/// Puts each child's ports on a side (facing the other end, sideways only
+/// when it is level, else the side with the fewest wired ports) and spaces them in the order of what
 /// they connect to; then does the same inside each Opened Part. With
 /// `align_own`, the box's own ports line up with the child ports they're
 /// wired to (only the Frame: an Opened Part's ports are placed from outside).
@@ -952,15 +970,14 @@ fn place_child_ports(node: &mut BoxNode, align_own: bool) {
         }
     }
     for (c, child) in node.children.iter_mut().enumerate() {
-        let here = center(child.rect);
+        let rect = child.rect;
         let facing_peer = (0..child.ports.len())
-            .map(|q| peers.get(&(c, q)).map(|peer| facing(here, *peer)))
+            .map(|q| peers.get(&(c, q)).map(|peer| level_facing(rect, *peer)))
             .collect();
         for (slot, side) in child.ports.iter_mut().zip(with_unwired(facing_peer)) {
             slot.side = side;
         }
         let sides: Vec<Side> = child.ports.iter().map(|s| s.side).collect();
-        let rect = child.rect;
         spread(&mut child.ports, rect, &|q| match peers.get(&(c, q)) {
             Some(peer) if sides[q].vertical() => peer.x,
             Some(peer) => peer.y,
