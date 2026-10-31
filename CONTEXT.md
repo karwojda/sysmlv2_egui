@@ -15,7 +15,7 @@ The order a Model declares its elements in: by file, then by where each starts i
 _Avoid_: declaration order, source order
 
 **Inherited Member**:
-A member an element has through its definition, or through a definition it specializes (`:>`), without declaring it. It is the same element as the one declared. A General Diagram shows it as a `^` row, in italics, in the compartments of the element that has it, never as a node of its own; an Interconnection Diagram draws it as it draws a declared part or port. A member that redefines it (`:>>`) hides it.
+A member an element has through its definition, or through a definition it specializes (`:>`), without declaring it. It is the same element as the one declared. A General Diagram shows it as a `^` row, in italics, in the compartments of the element that has it, never as a node of its own, unless that Diagram turns Inherited Members off; an Interconnection Diagram draws it as it draws a declared part or port. A member that redefines it (`:>>`) hides it.
 _Avoid_: derived member, implicit member
 
 **Unsupported Element**:
@@ -45,7 +45,7 @@ An element a `view` names with `expose`, so it appears in the view's Model-defin
 A `view` whose rendering or definition has no matching Diagram Kind in this tool (for example a table or a sequence view). It is listed but can't be drawn.
 
 **Layout**:
-The user's adjustments to a Diagram's automatic arrangement (positions, sizes, edge routes, port positions, hidden, collapsed and opened elements), stored outside the Model.
+The user's adjustments to a Diagram's automatic arrangement (positions, sizes, edge routes, port positions, hidden, collapsed and opened elements, and whether Inherited Members are shown), stored outside the Model.
 
 **Selection**:
 The nodes of one Diagram the user has picked to move, align, distribute or resize together, all drawn in the same box. It lasts until the user picks again and is never saved; it is not the selected element the Browser and Properties show.

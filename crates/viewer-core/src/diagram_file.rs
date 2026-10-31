@@ -84,6 +84,9 @@ pub struct Layout {
     /// from the root (`engine.fuelIn`; a Frame port by its name).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ports: BTreeMap<String, PortPlacement>,
+    /// In a General Diagram, Inherited Members left out of compartments.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inherited_hidden: bool,
 }
 
 /// Which side of its box a port sits on, and how far along it (from the

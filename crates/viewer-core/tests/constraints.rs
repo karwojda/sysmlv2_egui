@@ -468,3 +468,22 @@ mod styles {
         assert_golden("constraints-styled.svg", &styled());
     }
 }
+
+#[test]
+fn a_diagram_with_inherited_members_turned_off_drops_inherited_constraints() {
+    let elements = [
+        qn("C::vehicle"),
+        qn("C::vehicle::tank"),
+        qn("C::vehicle::heavy"),
+        qn("C::vehicle::powerToWeight"),
+    ];
+    let layout = viewer_core::diagram_file::Layout {
+        inherited_hidden: true,
+        ..Default::default()
+    };
+    let scene = build_general_scene(&common::assertions(), &elements, &layout);
+
+    let tank = texts_of(&scene, "C::vehicle::tank");
+
+    assert!(compartment(&tank, "assert constraints", &TITLES).is_empty());
+}

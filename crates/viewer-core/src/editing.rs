@@ -34,6 +34,11 @@ pub enum Edit {
     /// Draws a node without its compartments, at its natural size.
     Collapse(QualifiedName),
     Expand(QualifiedName),
+    /// Leaves Inherited Members out of a General Diagram's compartments, or
+    /// lists them again. No node moves: boxes change height where they are,
+    /// and those never placed rearrange at their new size.
+    HideInherited,
+    ShowInherited,
     /// Sets the bend points of the edge with key `edge` (see
     /// [`crate::scene::Depicts::edge_key`]), in scene coordinates from
     /// source to target. No bends returns it to automatic routing.
@@ -114,8 +119,9 @@ pub fn apply(layout: &mut Layout, model: &Model, scene: &Scene, edit: &Edit) {
 }
 
 /// Applies `edit` to `layout`. `scene` is the Diagram as currently drawn:
-/// every edit except `Reset` first pins each drawn node where it is, so
-/// changing one node never rearranges the others. `known` tells whether a
+/// every edit except `Reset` and showing or hiding Inherited Members first
+/// pins each drawn node where it is, so changing one node never rearranges
+/// the others. `known` tells whether a
 /// node key still names something in the Model, so `Reset` keeps Orphaned
 /// Layout Entries. An edit that changes nothing leaves the Layout exactly
 /// as it was.
@@ -126,7 +132,10 @@ pub fn apply_with(
     edit: &Edit,
 ) {
     let mut pinned = layout.clone();
-    if *edit != Edit::Reset {
+    if !matches!(
+        edit,
+        Edit::Reset | Edit::HideInherited | Edit::ShowInherited
+    ) {
         pin(&mut pinned, scene);
     }
     let mut edited = pinned.clone();
@@ -155,6 +164,8 @@ fn change(layout: &mut Layout, known: &dyn Fn(&QualifiedName) -> bool, scene: &S
             layout.hidden.remove(element);
         }
         Edit::ShowAll => layout.hidden.clear(),
+        Edit::HideInherited => layout.inherited_hidden = true,
+        Edit::ShowInherited => layout.inherited_hidden = false,
         Edit::Collapse(element) => {
             layout.collapsed.insert(element.clone());
             natural_size(layout, element);
