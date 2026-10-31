@@ -800,12 +800,30 @@ fn facing(from: Point, to: Point) -> Side {
     }
 }
 
-fn by_direction(direction: Option<Direction>) -> Option<Side> {
-    match direction {
-        Some(Direction::In) => Some(Side::Top),
-        Some(Direction::Out) => Some(Side::Bottom),
-        _ => None,
+/// The side of `rect` that faces `to`: left or right only when the two
+/// share a row (their heights overlap), so a wire to a part in another
+/// layer leaves from the top or bottom instead of jogging round a corner.
+/// Overlap is mutual, so both ends of a wire agree.
+fn level_facing(rect: Rect, to: Rect) -> Side {
+    if to.bottom() < rect.y {
+        Side::Top
+    } else if to.y > rect.bottom() {
+        Side::Bottom
+    } else if to.center_x() >= rect.center_x() {
+        Side::Right
+    } else {
+        Side::Left
     }
+}
+
+/// Puts the unwired ports (`None`) together on the side with the fewest
+/// wired ports: bottom, right, left, then top on a tie.
+fn with_unwired(sides: Vec<Option<Side>>) -> Vec<Side> {
+    let free = [Side::Bottom, Side::Right, Side::Left, Side::Top]
+        .into_iter()
+        .min_by_key(|side| sides.iter().filter(|s| **s == Some(*side)).count())
+        .unwrap_or(Side::Bottom);
+    sides.into_iter().map(|s| s.unwrap_or(free)).collect()
 }
 
 fn port_point(rect: Rect, slot: &PortSlot) -> Point {
@@ -839,15 +857,29 @@ fn spread(slots: &mut [PortSlot], rect: Rect, along: &dyn Fn(usize) -> f32) {
 
 /// Where the other end of a wire is, roughly, for choosing sides.
 fn rough_point(node: &BoxNode, end: &End) -> Point {
+    center(rough_extent(node, end))
+}
+
+/// The box the other end of a wire lies on; a port of `node` itself, as
+/// a box of no size at the port.
+fn rough_extent(node: &BoxNode, end: &End) -> Rect {
     match end {
         End::Port { path, port, .. } if path.is_empty() => {
-            port_point(node.rect, &node.ports[*port])
+            let p = port_point(node.rect, &node.ports[*port]);
+            Rect {
+                x: p.x,
+                y: p.y,
+                width: 0.0,
+                height: 0.0,
+            }
         }
-        _ => center(node.at(end.path()).rect),
+        _ => node.at(end.path()).rect,
     }
 }
 
-/// The Frame's own ports: by direction, or facing their inner peer.
+/// The Frame's own ports: facing their inner peer, else on the side with
+/// the fewest wired ports. Every peer lies within the Frame's height, so
+/// the Frame faces by direction from its centre, not `level_facing`.
 fn place_own_ports(node: &mut BoxNode) {
     let rect = node.rect;
     let mut peers: BTreeMap<usize, Point> = BTreeMap::new();
@@ -860,12 +892,11 @@ fn place_own_ports(node: &mut BoxNode) {
             }
         }
     }
-    for (q, slot) in node.ports.iter_mut().enumerate() {
-        slot.side = match (by_direction(slot.port.direction), peers.get(&q)) {
-            (Some(side), _) => side,
-            (None, Some(peer)) => facing(center(rect), *peer),
-            (None, None) => Side::Bottom,
-        };
+    let facing_peer = (0..node.ports.len())
+        .map(|q| peers.get(&q).map(|peer| facing(center(rect), *peer)))
+        .collect();
+    for (slot, side) in node.ports.iter_mut().zip(with_unwired(facing_peer)) {
+        slot.side = side;
     }
     let sides: Vec<Side> = node.ports.iter().map(|s| s.side).collect();
     spread(&mut node.ports, rect, &|q| match peers.get(&q) {
@@ -875,36 +906,35 @@ fn place_own_ports(node: &mut BoxNode) {
     });
 }
 
-/// Puts each child's ports on a side (`in` top, `out` bottom, undirected
-/// facing the other end, else bottom) and spaces them in the order of what
-/// they connect to; then does the same inside each Opened Part. With
-/// `align_own`, the box's own ports line up with the child ports they're
-/// wired to (only the Frame: an Opened Part's ports are placed from outside).
+/// Puts each child's ports on a side (facing the other end, sideways only
+/// when it is level; unwired ones on the side with the fewest wired ports)
+/// and spaces them in the order of what they connect to; then does the same
+/// inside each Opened Part. With `align_own`, the box's own ports line up
+/// with the child ports they're wired to (only the Frame: an Opened Part's
+/// ports are placed from outside).
 fn place_child_ports(node: &mut BoxNode, align_own: bool) {
-    let mut peers: BTreeMap<(usize, usize), Point> = BTreeMap::new();
+    let mut peers: BTreeMap<(usize, usize), Rect> = BTreeMap::new();
     for wire in &node.wires {
         for (this, other) in [(&wire.a, &wire.b), (&wire.b, &wire.a)] {
             if let End::Port { path, port, .. } = this
                 && path.len() == 1
             {
-                peers.insert((path[0], *port), rough_point(node, other));
+                peers.insert((path[0], *port), rough_extent(node, other));
             }
         }
     }
     for (c, child) in node.children.iter_mut().enumerate() {
-        let here = center(child.rect);
-        for (q, slot) in child.ports.iter_mut().enumerate() {
-            slot.side = match (by_direction(slot.port.direction), peers.get(&(c, q))) {
-                (Some(side), _) => side,
-                (None, Some(peer)) => facing(here, *peer),
-                (None, None) => Side::Bottom,
-            };
+        let rect = child.rect;
+        let facing_peer = (0..child.ports.len())
+            .map(|q| peers.get(&(c, q)).map(|peer| level_facing(rect, *peer)))
+            .collect();
+        for (slot, side) in child.ports.iter_mut().zip(with_unwired(facing_peer)) {
+            slot.side = side;
         }
         let sides: Vec<Side> = child.ports.iter().map(|s| s.side).collect();
-        let rect = child.rect;
         spread(&mut child.ports, rect, &|q| match peers.get(&(c, q)) {
-            Some(peer) if sides[q].vertical() => peer.x,
-            Some(peer) => peer.y,
+            Some(peer) if sides[q].vertical() => center(*peer).x,
+            Some(peer) => center(*peer).y,
             None => f32::MAX,
         });
     }

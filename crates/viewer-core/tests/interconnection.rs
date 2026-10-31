@@ -159,27 +159,6 @@ fn only_parts_can_be_roots() {
 }
 
 #[test]
-fn in_ports_sit_on_top_out_ports_at_the_bottom() {
-    let scene = interconnection("S::Vehicle");
-    let engine = scene.element_bounds(&qn("S::Vehicle::engine")).unwrap();
-    let tanks = scene.element_bounds(&qn("S::Vehicle::tanks")).unwrap();
-
-    assert_eq!(
-        centre(port_square(
-            &scene,
-            "S::Vehicle::engine",
-            "S::Engine::fuelIn"
-        ))
-        .y,
-        engine.y
-    );
-    assert_eq!(
-        centre(port_square(&scene, "S::Vehicle::tanks", "S::Tank::fuelOut")).y,
-        tanks.bottom()
-    );
-}
-
-#[test]
 fn ports_are_labelled_with_name_and_type() {
     let scene = interconnection("S::Vehicle");
 
@@ -204,30 +183,6 @@ fn flow_runs_top_to_bottom_from_out_to_in() {
         tanks.bottom() < engine.y,
         "tanks feed the engine from above"
     );
-}
-
-#[test]
-fn undirected_ports_face_what_they_connect_to() {
-    let scene = interconnection("S::Vehicle");
-    let engine = centre(scene.element_bounds(&qn("S::Vehicle::engine")).unwrap());
-    let controller = centre(scene.element_bounds(&qn("S::Vehicle::controller")).unwrap());
-
-    let status = centre(port_square(
-        &scene,
-        "S::Vehicle::engine",
-        "S::Engine::status",
-    ));
-
-    let toward = (controller.x - engine.x, controller.y - engine.y);
-    let placed = (status.x - engine.x, status.y - engine.y);
-    let dominant = |(x, y): (f32, f32)| {
-        if y.abs() >= x.abs() {
-            (0.0, y.signum())
-        } else {
-            (x.signum(), 0.0)
-        }
-    };
-    assert_eq!(dominant(placed), dominant(toward));
 }
 
 #[test]
