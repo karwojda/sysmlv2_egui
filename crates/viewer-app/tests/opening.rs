@@ -1,9 +1,10 @@
 //! Which Diagram opens for a root, and saving Interconnection Diagrams.
 
+use std::sync::Arc;
 use tempfile::TempDir;
 use viewer_app::startup_kind;
 use viewer_core::OpenDiagram;
-use viewer_core::{DiagramFile, DiagramKind, Model, QualifiedName, diagram_file};
+use viewer_core::{DiagramFile, DiagramKind, DiagramSource, Model, QualifiedName, diagram_file};
 
 fn model() -> Model {
     Model::builder()
@@ -16,6 +17,15 @@ fn model() -> Model {
         .typed_by("P::Vehicle")
         .attribute_def("P::Mass")
         .build()
+}
+
+/// Opens the Tool-defined Diagram of `kind` rooted at `root`, unstyled.
+fn open_tool(model: &Model, kind: DiagramKind, root: QualifiedName) -> OpenDiagram {
+    OpenDiagram::open(
+        Arc::new(model.clone()),
+        None,
+        DiagramSource::Tool { kind, root },
+    )
 }
 
 fn qn(name: &str) -> QualifiedName {
@@ -70,13 +80,17 @@ fn a_root_no_diagram_fits_opens_nothing() {
 fn an_interconnection_diagram_saves_and_reopens_as_one() {
     let folder = TempDir::new().unwrap();
     let model = model();
-    let mut diagram = OpenDiagram::open(&model, DiagramKind::Interconnection, qn("P::Vehicle"));
+    let mut diagram = open_tool(&model, DiagramKind::Interconnection, qn("P::Vehicle"));
 
     diagram.save_as(folder.path(), "wiring").unwrap();
 
     let text = std::fs::read_to_string(diagram_file::path_for(folder.path(), "wiring")).unwrap();
     assert!(text.contains(r#""kind": "interconnection""#));
-    let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
+    let reopened = OpenDiagram::open_saved(
+        Arc::new(model.clone()),
+        None,
+        DiagramFile::parse(&text).unwrap(),
+    );
     assert_eq!(reopened.kind, Some(DiagramKind::Interconnection));
     assert!(
         reopened

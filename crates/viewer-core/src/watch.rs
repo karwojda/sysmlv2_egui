@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::model::{Diagnostic, Model};
@@ -87,7 +88,7 @@ impl ChangeDetector {
 /// keeps being drawn (`stale`) while the new diagnostics are listed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shown {
-    pub model: Model,
+    pub model: Arc<Model>,
     pub diagnostics: Vec<Diagnostic>,
     pub stale: bool,
 }
@@ -106,7 +107,7 @@ pub fn accept(previous: Option<Shown>, loaded: Model) -> Shown {
             }
         }
         _ => Shown {
-            model: loaded,
+            model: Arc::new(loaded),
             diagnostics,
             stale: false,
         },

@@ -1,6 +1,8 @@
 //! The Selection: which nodes clicks and selection boxes pick, keeping it
 //! within one box, and what drops out of it.
 
+mod common;
+
 use viewer_core::editing::Edit;
 use viewer_core::open_diagram::{OpenDiagram, Selection};
 use viewer_core::scene::Rect;
@@ -10,7 +12,7 @@ fn qn(name: &str) -> QualifiedName {
     QualifiedName::from(name)
 }
 
-fn general() -> (Model, OpenDiagram) {
+fn general() -> OpenDiagram {
     let model = Model::builder()
         .package("P")
         .part_def("P::Vehicle")
@@ -19,8 +21,7 @@ fn general() -> (Model, OpenDiagram) {
         .part_def("P::Truck")
         .specializes("P::Vehicle")
         .build();
-    let diagram = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
-    (model, diagram)
+    common::open_tool(&model, DiagramKind::General, qn("P"))
 }
 
 /// A Vehicle with an engine and an axle, the axle opened in place to show
@@ -38,8 +39,8 @@ fn interconnection() -> (Model, OpenDiagram) {
         .part("P::Vehicle::axle")
         .typed_by("P::Axle")
         .build();
-    let mut diagram = OpenDiagram::open(&model, DiagramKind::Interconnection, qn("P::Vehicle"));
-    diagram.edit(&model, &Edit::Open("axle".into()));
+    let mut diagram = common::open_tool(&model, DiagramKind::Interconnection, qn("P::Vehicle"));
+    diagram.edit(&Edit::Open("axle".into()));
     (model, diagram)
 }
 
@@ -71,7 +72,7 @@ fn around(scene: &Scene, keys: &[&str]) -> Rect {
 
 #[test]
 fn a_plain_click_picks_one_node_and_adding_toggles_others() {
-    let (_, diagram) = general();
+    let diagram = general();
     let scene = scene(&diagram);
     let mut selection = Selection::default();
 
@@ -116,7 +117,7 @@ fn adding_a_node_from_another_box_starts_a_new_selection() {
 
 #[test]
 fn a_selection_box_picks_the_nodes_wholly_inside_it() {
-    let (_, diagram) = general();
+    let diagram = general();
     let scene = scene(&diagram);
     let mut selection = Selection::default();
 
@@ -152,14 +153,14 @@ fn a_selection_box_around_an_opened_part_picks_it_without_what_is_inside() {
 
 #[test]
 fn hidden_nodes_drop_out_and_reset_empties_it() {
-    let (model, mut diagram) = general();
+    let mut diagram = general();
     let scene = diagram.scene.as_ref().unwrap().clone();
     diagram.selection.only(&scene, &qn("P::Car"));
     diagram.selection.toggle(&scene, &qn("P::Truck"));
 
-    diagram.edit(&model, &Edit::Hide(qn("P::Truck")));
+    diagram.edit(&Edit::Hide(qn("P::Truck")));
     assert_eq!(keys(&diagram.selection), ["P::Car"]);
 
-    diagram.edit(&model, &Edit::Reset);
+    diagram.edit(&Edit::Reset);
     assert!(diagram.selection.is_empty());
 }

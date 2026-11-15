@@ -1,12 +1,16 @@
 //! Styles on open Diagrams: the Model Style colors them, and a Diagram's
 //! own Style is an unsaved change until saved with it.
 
+mod common;
+
+use std::sync::Arc;
 use tempfile::TempDir;
 use viewer_core::open_diagram::OpenDiagram;
 use viewer_core::scene::{Depicts, Fill, Rgb, Shape};
 use viewer_core::style::{Condition, Style, StyleRule};
 use viewer_core::{
-    DiagramFile, DiagramKind, DiagramStyle, Model, QualifiedName, Scene, diagram_file,
+    DiagramFile, DiagramKind, DiagramSource, DiagramStyle, Model, QualifiedName, Scene,
+    diagram_file,
 };
 
 fn qn(name: &str) -> QualifiedName {
@@ -38,10 +42,10 @@ fn engine_fill(scene: &Scene) -> Fill {
 #[test]
 fn the_model_style_colors_an_open_diagram_without_making_it_unsaved() {
     let model = model();
-    let mut diagram = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
+    let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
 
-    diagram.set_model_style(
-        &model,
+    diagram.reload(
+        Arc::new(model.clone()),
         Some(Style::new(vec![rule("part def", Rgb(9, 9, 9))])),
     );
 
@@ -51,7 +55,7 @@ fn the_model_style_colors_an_open_diagram_without_making_it_unsaved() {
     );
     assert!(!diagram.dirty);
 
-    diagram.set_model_style(&model, None);
+    diagram.reload(Arc::new(model.clone()), None);
     assert_eq!(
         engine_fill(diagram.scene.as_ref().unwrap()),
         Fill::Background,
@@ -60,12 +64,30 @@ fn the_model_style_colors_an_open_diagram_without_making_it_unsaved() {
 }
 
 #[test]
+fn a_diagram_opens_already_colored_by_the_model_style() {
+    let diagram = OpenDiagram::open(
+        Arc::new(model()),
+        Some(Style::new(vec![rule("part def", Rgb(9, 9, 9))])),
+        DiagramSource::Tool {
+            kind: DiagramKind::General,
+            root: qn("P"),
+        },
+    );
+
+    assert_eq!(
+        engine_fill(diagram.scene.as_ref().unwrap()),
+        Fill::Color(Rgb(9, 9, 9))
+    );
+    assert!(!diagram.dirty);
+}
+
+#[test]
 fn a_diagram_style_is_an_unsaved_change_saved_and_reopened_with_the_diagram() {
     let folder = TempDir::new().unwrap();
     let model = model();
-    let mut diagram = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
-    diagram.set_model_style(
-        &model,
+    let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
+    diagram.reload(
+        Arc::new(model.clone()),
         Some(Style::new(vec![rule("part def", Rgb(9, 9, 9))])),
     );
 
@@ -74,7 +96,7 @@ fn a_diagram_style_is_an_unsaved_change_saved_and_reopened_with_the_diagram() {
         rules: vec![rule("part def", Rgb(200, 0, 0))],
         legend: false,
     };
-    diagram.set_style(&model, own.clone());
+    diagram.set_style(own.clone());
 
     assert!(diagram.dirty);
     assert_eq!(
@@ -84,6 +106,10 @@ fn a_diagram_style_is_an_unsaved_change_saved_and_reopened_with_the_diagram() {
     );
     diagram.save_as(folder.path(), "overview").unwrap();
     let text = std::fs::read_to_string(diagram_file::path_for(folder.path(), "overview")).unwrap();
-    let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
+    let reopened = OpenDiagram::open_saved(
+        Arc::new(model.clone()),
+        None,
+        DiagramFile::parse(&text).unwrap(),
+    );
     assert_eq!(reopened.style, own);
 }

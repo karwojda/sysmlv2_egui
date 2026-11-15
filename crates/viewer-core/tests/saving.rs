@@ -1,6 +1,9 @@
 //! Open Diagrams: editing marks them unsaved, saving writes a Diagram File,
 //! and reopening it restores the Layout. The Model files are never written.
 
+mod common;
+
+use std::sync::Arc;
 use tempfile::TempDir;
 use viewer_core::editing::Edit;
 use viewer_core::open_diagram::{OpenDiagram, OpenDiagramError, check_name};
@@ -21,21 +24,18 @@ fn qn(name: &str) -> QualifiedName {
 
 fn moved() -> (Model, OpenDiagram) {
     let model = model();
-    let mut diagram = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
-    diagram.edit(
-        &model,
-        &Edit::Move {
-            elements: vec![qn("P::Car")],
-            dx: 40.0,
-            dy: 25.0,
-        },
-    );
+    let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
+    diagram.edit(&Edit::Move {
+        elements: vec![qn("P::Car")],
+        dx: 40.0,
+        dy: 25.0,
+    });
     (model, diagram)
 }
 
 #[test]
 fn an_ad_hoc_diagram_starts_saved_and_unnamed() {
-    let diagram = OpenDiagram::open(&model(), DiagramKind::General, qn("P"));
+    let diagram = common::open_tool(&model(), DiagramKind::General, qn("P"));
 
     assert!(!diagram.dirty);
     assert_eq!(diagram.name, None);
@@ -51,9 +51,9 @@ fn an_edit_marks_the_diagram_unsaved() {
 #[test]
 fn an_edit_that_changes_nothing_leaves_it_saved() {
     let model = model();
-    let mut diagram = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
+    let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
 
-    diagram.edit(&model, &Edit::ShowAll);
+    diagram.edit(&Edit::ShowAll);
 
     assert!(!diagram.dirty);
 }
@@ -74,7 +74,11 @@ fn saving_writes_a_diagram_file_that_reopens_with_the_same_layout() {
     assert!(!diagram.dirty);
     assert_eq!(diagram.name.as_deref(), Some("overview"));
     let text = std::fs::read_to_string(diagram_file::path_for(folder.path(), "overview")).unwrap();
-    let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
+    let reopened = OpenDiagram::open_saved(
+        Arc::new(model.clone()),
+        None,
+        DiagramFile::parse(&text).unwrap(),
+    );
     assert_eq!(
         reopened.scene.unwrap().node_bounds(&qn("P::Car")).unwrap(),
         car
@@ -110,11 +114,11 @@ fn saving_again_under_its_own_name_overwrites_but_another_diagrams_name_is_refus
     let folder = TempDir::new().unwrap();
     let (model, mut first) = moved();
     first.save_as(folder.path(), "overview").unwrap();
-    first.edit(&model, &Edit::Hide(qn("P::Vehicle")));
+    first.edit(&Edit::Hide(qn("P::Vehicle")));
 
     assert!(first.save_as(folder.path(), "overview").is_ok());
 
-    let mut second = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
+    let mut second = common::open_tool(&model, DiagramKind::General, qn("P"));
     let error = second.save_as(folder.path(), "overview").unwrap_err();
     assert!(matches!(error, OpenDiagramError::NameTaken(_)), "{error}");
 }
@@ -148,7 +152,7 @@ fn a_saved_diagram_is_rebuilt_with_its_layout_when_the_model_reloads() {
         .part_def("P::Bus")
         .build();
 
-    diagram.refresh(&grown);
+    diagram.reload(Arc::new(grown), None);
 
     let scene = diagram.scene.unwrap();
     assert_eq!(scene.node_bounds(&qn("P::Car")).unwrap(), car);

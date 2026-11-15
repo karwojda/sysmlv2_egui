@@ -8,6 +8,7 @@ pub mod style_panel;
 pub mod watcher;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use eframe::egui;
 use viewer_core::browser::{self, BrowserEntry};
@@ -34,7 +35,7 @@ pub struct ViewerApp {
     folder_input: String,
     loading: Option<PathBuf>,
     folder: Option<PathBuf>,
-    model: Option<Model>,
+    model: Option<Arc<Model>>,
     /// The latest load's diagnostics, which may belong to a broken Model
     /// while `model` is still the last good one.
     diagnostics: Vec<Diagnostic>,
@@ -245,7 +246,7 @@ impl ViewerApp {
                     // A broken settings file is reported by the load itself.
                     self.settings = viewer_core::settings::load(&loaded.folder).unwrap_or_default();
                     for diagram in self.tabs.iter_mut().map(|t| &mut t.diagram) {
-                        diagram.set_model_style(&shown.model, self.model_style.clone());
+                        diagram.reload(Arc::clone(&shown.model), self.model_style.clone());
                     }
                     self.saved_names = diagram_file::names_in(&loaded.folder).unwrap_or_default();
                     self.folder = Some(loaded.folder);
@@ -305,8 +306,7 @@ impl ViewerApp {
             self.activate(index);
             return;
         }
-        let mut diagram = OpenDiagram::open_source(model, source);
-        diagram.set_model_style(model, self.model_style.clone());
+        let diagram = OpenDiagram::open(Arc::clone(model), self.model_style.clone(), source);
         self.tabs.push(Tab::new(diagram));
         self.activate(self.tabs.len() - 1);
     }
@@ -351,8 +351,8 @@ impl ViewerApp {
             .and_then(|text| DiagramFile::parse(&text).map_err(|e| e.to_string()));
         match file {
             Ok(file) => {
-                let mut diagram = OpenDiagram::open_saved(model, file);
-                diagram.set_model_style(model, self.model_style.clone());
+                let diagram =
+                    OpenDiagram::open_saved(Arc::clone(model), self.model_style.clone(), file);
                 self.tabs.push(Tab::new(diagram));
                 self.activate(self.tabs.len() - 1);
             }
@@ -410,10 +410,8 @@ impl ViewerApp {
     }
 
     fn edit_active(&mut self, edit: Edit) {
-        let (Some(active), Some(model)) = (self.active, &self.model) else {
-            return;
-        };
-        self.tabs[active].diagram.edit(model, &edit);
+        let Some(active) = self.active else { return };
+        self.tabs[active].diagram.edit(&edit);
     }
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
@@ -641,7 +639,7 @@ impl ViewerApp {
                     ui.checkbox(&mut style.legend, "Legend");
                     ui.weak("This Diagram's rules win over the Model's.");
                     style_panel::rule_list(ui, "diagram", &mut style.rules, model);
-                    diagram.set_style(model, style);
+                    diagram.set_style(style);
                 }
                 _ => {
                     ui.weak(format!(
@@ -663,7 +661,7 @@ impl ViewerApp {
                     if edited.changed {
                         self.model_style = Some(viewer_core::style::Style::new(rules));
                         for diagram in self.tabs.iter_mut().map(|t| &mut t.diagram) {
-                            diagram.set_model_style(model, self.model_style.clone());
+                            diagram.reload(Arc::clone(model), self.model_style.clone());
                         }
                     }
                     if edited.commit
@@ -972,14 +970,13 @@ impl ViewerApp {
                 .checkbox(&mut legend, "Legend")
                 .on_hover_text("Key the Style's colors on the Diagram")
                 .changed()
-                && let Some(model) = &self.model
             {
                 let diagram = &mut self.tabs[active].diagram;
                 let style = viewer_core::DiagramStyle {
                     legend,
                     ..diagram.style.clone()
                 };
-                diagram.set_style(model, style);
+                diagram.set_style(style);
             }
             ui.separator();
 
@@ -1012,11 +1009,11 @@ impl ViewerApp {
                 }
             });
         }
-        if let (Some(history), Some(model)) = (history, &self.model) {
+        if let Some(history) = history {
             let diagram = &mut self.tabs[active].diagram;
             match history {
-                History::Undo => diagram.undo(model),
-                History::Redo => diagram.redo(model),
+                History::Undo => diagram.undo(),
+                History::Redo => diagram.redo(),
             }
         }
     }

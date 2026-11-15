@@ -2,6 +2,9 @@
 //! Diagram File that refers to the view, and following the view as the
 //! Model changes.
 
+mod common;
+
+use std::sync::Arc;
 use tempfile::TempDir;
 use viewer_core::editing::Edit;
 use viewer_core::model::ExposeScope;
@@ -41,7 +44,7 @@ fn tree() -> DiagramSource {
 fn a_view_opens_as_its_model_defined_diagram() {
     let model = model_exposing(&["P::vehicle", "P::vehicle::body"]);
 
-    let diagram = OpenDiagram::open_source(&model, tree());
+    let diagram = OpenDiagram::open(Arc::new(model.clone()), None, tree());
 
     assert_eq!(diagram.kind, Some(DiagramKind::General));
     let scene = diagram.scene.unwrap();
@@ -56,24 +59,25 @@ fn a_view_opens_as_its_model_defined_diagram() {
 fn a_view_is_saved_under_a_file_safe_version_of_its_name_referring_to_the_view() {
     let folder = TempDir::new().unwrap();
     let model = model_exposing(&["P::vehicle"]);
-    let mut diagram = OpenDiagram::open_source(&model, tree());
+    let mut diagram = OpenDiagram::open(Arc::new(model.clone()), None, tree());
     assert_eq!(diagram.default_name(), "vehicle-tree");
 
-    diagram.edit(
-        &model,
-        &Edit::Move {
-            elements: vec![qn("P::vehicle")],
-            dx: 30.0,
-            dy: 0.0,
-        },
-    );
+    diagram.edit(&Edit::Move {
+        elements: vec![qn("P::vehicle")],
+        dx: 30.0,
+        dy: 0.0,
+    });
     diagram.save_as(folder.path(), "vehicle-tree").unwrap();
 
     let text =
         std::fs::read_to_string(diagram_file::path_for(folder.path(), "vehicle-tree")).unwrap();
     assert!(text.contains(r#""view": "P::vehicle tree""#));
     assert!(!text.contains(r#""kind""#) && !text.contains(r#""root""#));
-    let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
+    let reopened = OpenDiagram::open_saved(
+        Arc::new(model.clone()),
+        None,
+        DiagramFile::parse(&text).unwrap(),
+    );
     assert_eq!(reopened.name.as_deref(), Some("vehicle-tree"));
     assert_eq!(reopened.layout, diagram.layout);
 }
@@ -81,15 +85,12 @@ fn a_view_is_saved_under_a_file_safe_version_of_its_name_referring_to_the_view()
 #[test]
 fn a_reloaded_model_redraws_the_view_with_its_new_exposes_keeping_the_layout() {
     let before = model_exposing(&["P::vehicle"]);
-    let mut diagram = OpenDiagram::open_source(&before, tree());
-    diagram.edit(
-        &before,
-        &Edit::Move {
-            elements: vec![qn("P::vehicle")],
-            dx: 30.0,
-            dy: 0.0,
-        },
-    );
+    let mut diagram = OpenDiagram::open(Arc::new(before.clone()), None, tree());
+    diagram.edit(&Edit::Move {
+        elements: vec![qn("P::vehicle")],
+        dx: 30.0,
+        dy: 0.0,
+    });
     let placed = diagram
         .scene
         .as_ref()
@@ -98,7 +99,7 @@ fn a_reloaded_model_redraws_the_view_with_its_new_exposes_keeping_the_layout() {
         .unwrap();
 
     let after = model_exposing(&["P::vehicle", "P::vehicle::engine"]);
-    diagram.refresh(&after);
+    diagram.reload(Arc::new(after), None);
 
     let scene = diagram.scene.as_ref().unwrap();
     assert!(
@@ -116,19 +117,16 @@ fn a_reloaded_model_redraws_the_view_with_its_new_exposes_keeping_the_layout() {
 #[test]
 fn layout_entries_of_elements_no_longer_exposed_are_kept() {
     let before = model_exposing(&["P::vehicle", "P::vehicle::body"]);
-    let mut diagram = OpenDiagram::open_source(&before, tree());
-    diagram.edit(
-        &before,
-        &Edit::Move {
-            elements: vec![qn("P::vehicle::body")],
-            dx: 10.0,
-            dy: 10.0,
-        },
-    );
+    let mut diagram = OpenDiagram::open(Arc::new(before.clone()), None, tree());
+    diagram.edit(&Edit::Move {
+        elements: vec![qn("P::vehicle::body")],
+        dx: 10.0,
+        dy: 10.0,
+    });
 
     let after = model_exposing(&["P::vehicle"]);
-    diagram.refresh(&after);
-    diagram.edit(&after, &Edit::Reset);
+    diagram.reload(Arc::new(after), None);
+    diagram.edit(&Edit::Reset);
 
     assert!(
         diagram.layout.nodes.contains_key(&qn("P::vehicle::body")),
@@ -146,7 +144,7 @@ fn a_diagram_whose_view_is_gone_says_so() {
         },
     );
 
-    let diagram = OpenDiagram::open_saved(&model, file);
+    let diagram = OpenDiagram::open_saved(Arc::new(model.clone()), None, file);
 
     let error = diagram.scene.unwrap_err();
     assert!(matches!(error, DiagramError::View(_)));

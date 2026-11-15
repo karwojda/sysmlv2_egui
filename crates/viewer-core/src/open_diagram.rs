@@ -4,6 +4,7 @@
 //! through it; how it is shown on screen is theirs.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::diagram::{DiagramError, DiagramKind, DiagramSource};
 use crate::diagram_file::{self, DiagramFile, DiagramStyle, Layout};
@@ -35,6 +36,8 @@ pub enum OpenDiagramError {
 /// has been saved as a Diagram File; until then it is an ad hoc Diagram
 /// that leaves no file behind.
 pub struct OpenDiagram {
+    /// The Model it is drawn from; every Scene is built from this one.
+    model: Arc<Model>,
     pub source: DiagramSource,
     /// The Diagram Kind it was last drawn as; a view's can change with the
     /// Model, and is unknown while the view can't be drawn.
@@ -61,14 +64,12 @@ pub struct OpenDiagram {
 }
 
 impl OpenDiagram {
-    /// Opens the Tool-defined Diagram of `kind` rooted at `root`.
-    pub fn open(model: &Model, kind: DiagramKind, root: QualifiedName) -> Self {
-        Self::open_source(model, DiagramSource::Tool { kind, root })
-    }
-
-    pub fn open_source(model: &Model, source: DiagramSource) -> Self {
+    /// Opens the Diagram `source` shows, drawn from `model` with
+    /// `model_style`, with no Layout adjustments yet.
+    pub fn open(model: Arc<Model>, model_style: Option<Style>, source: DiagramSource) -> Self {
         Self::with_layout(
             model,
+            model_style,
             source,
             Layout::default(),
             DiagramStyle::default(),
@@ -77,25 +78,34 @@ impl OpenDiagram {
     }
 
     /// Opens a saved Diagram File.
-    pub fn open_saved(model: &Model, file: DiagramFile) -> Self {
-        Self::with_layout(model, file.source, file.layout, file.style, Some(file.name))
+    pub fn open_saved(model: Arc<Model>, model_style: Option<Style>, file: DiagramFile) -> Self {
+        Self::with_layout(
+            model,
+            model_style,
+            file.source,
+            file.layout,
+            file.style,
+            Some(file.name),
+        )
     }
 
     fn with_layout(
-        model: &Model,
+        model: Arc<Model>,
+        model_style: Option<Style>,
         source: DiagramSource,
         layout: Layout,
         style: DiagramStyle,
         name: Option<String>,
     ) -> Self {
         let mut diagram = Self {
+            model,
             scene: Ok(Scene::default()),
             kind: None,
             source,
             saved: (layout.clone(), style.clone()),
             layout,
             style,
-            model_style: None,
+            model_style,
             name,
             dirty: false,
             undo: Vec::new(),
@@ -103,28 +113,31 @@ impl OpenDiagram {
             drag_step: None,
             selection: Selection::default(),
         };
-        diagram.refresh(model);
+        diagram.redraw();
         diagram
     }
 
-    /// Draws with `model_style` from now on.
-    pub fn set_model_style(&mut self, model: &Model, model_style: Option<Style>) {
+    /// Draws from a newly loaded Model and Model Style, keeping the Layout,
+    /// its undo history, and the Selection's nodes that are still drawn.
+    pub fn reload(&mut self, model: Arc<Model>, model_style: Option<Style>) {
+        self.model = model;
         self.model_style = model_style;
-        self.refresh(model);
+        self.redraw();
     }
 
     /// Changes the Diagram's own Style, as an unsaved change.
-    pub fn set_style(&mut self, model: &Model, style: DiagramStyle) {
+    pub fn set_style(&mut self, style: DiagramStyle) {
         if style != self.style {
             self.style = style;
             self.dirty = true;
-            self.refresh(model);
+            self.redraw();
         }
     }
 
-    /// Rebuilds the scene from a newly loaded Model, keeping the Layout,
-    /// and the Selection's nodes that are still drawn.
-    pub fn refresh(&mut self, model: &Model) {
+    /// Rebuilds the scene from the Model, Layout and Styles, keeping the
+    /// Selection's nodes that are still drawn.
+    fn redraw(&mut self) {
+        let model = &*self.model;
         self.scene = self.source.build_scene(model, &self.layout);
         match &mut self.scene {
             Ok(scene) => {
@@ -154,10 +167,10 @@ impl OpenDiagram {
 
     /// Applies a Layout edit and redraws. Each edit that changes the
     /// Layout is an undo step, unless it is part of a drag.
-    pub fn edit(&mut self, model: &Model, edit: &Edit) {
+    pub fn edit(&mut self, edit: &Edit) {
         let Ok(scene) = &self.scene else { return };
         let before = self.layout.clone();
-        let source = &self.source;
+        let (source, model) = (&self.source, &*self.model);
         let known = |key: &QualifiedName| source.layout_key_exists(model, key);
         editing::apply_with(&mut self.layout, &known, scene, edit);
         if *edit == Edit::Reset {
@@ -175,7 +188,7 @@ impl OpenDiagram {
                 }
             }
             self.dirty = true;
-            self.refresh(model);
+            self.redraw();
         }
     }
 
@@ -198,25 +211,25 @@ impl OpenDiagram {
     }
 
     /// Goes back to the Layout before the last undo step, and redraws.
-    pub fn undo(&mut self, model: &Model) {
+    pub fn undo(&mut self) {
         if let Some(layout) = self.undo.pop() {
             self.redo.push(std::mem::replace(&mut self.layout, layout));
-            self.restored(model);
+            self.restored();
         }
     }
 
     /// Goes forward again to the Layout the last undo left.
-    pub fn redo(&mut self, model: &Model) {
+    pub fn redo(&mut self) {
         if let Some(layout) = self.redo.pop() {
             self.undo.push(std::mem::replace(&mut self.layout, layout));
-            self.restored(model);
+            self.restored();
         }
     }
 
     /// After undo or redo: unsaved unless back at the saved Diagram.
-    fn restored(&mut self, model: &Model) {
+    fn restored(&mut self) {
         self.dirty = (&self.layout, &self.style) != (&self.saved.0, &self.saved.1);
-        self.refresh(model);
+        self.redraw();
     }
 
     /// Saves as the Diagram File `name` in `model_folder`, refusing to

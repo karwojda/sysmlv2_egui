@@ -4,12 +4,14 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `reload(model, model_style)` replaces `refresh` and `set_model_style`
-- [ ] `edit`, `undo`, `redo` and `set_style` take no Model
-- [ ] Opening draws with the Model Style at once
-- [ ] Undo history survives a reload
-- [ ] The app holds the Model in an `Arc` and reloads every open Diagram with it
+- [x] `reload(model, model_style)` replaces `refresh` and `set_model_style`
+- [x] `edit`, `undo`, `redo` and `set_style` take no Model
+- [x] Opening draws with the Model Style at once
+- [x] Undo history survives a reload
+- [x] The app holds the Model in an `Arc` and reloads every open Diagram with it
 
 ## Comments
+
+- Done. `OpenDiagram::open(model, model_style, source)` and `open_saved(model, model_style, file)` replace the three old constructors; `reload(model, model_style)` replaces `refresh` and `set_model_style`, and the private `redraw` does the rebuild. `watch::Shown` now holds an `Arc<Model>`, so a stale Model kept after a failed reload is the same `Arc` the Diagrams hold. The style panel's live edits to the Model Style reload each Diagram with the same Model. The core tests open Diagrams through `common::open_tool`; the app's tests have a local copy. New tests: `a_diagram_opens_already_colored_by_the_model_style`, `undo_history_survives_a_model_reload`.
