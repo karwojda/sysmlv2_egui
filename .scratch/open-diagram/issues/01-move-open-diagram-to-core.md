@@ -9,7 +9,7 @@
 - [x] `viewer_core::open_diagram` exists, and `OpenDiagram` and `Selection` are re-exported from the crate root
 - [x] The app keeps its viewing state beside the Open Diagram, not in it
 - [x] `save_as` and `export_svg` return `OpenDiagramError`
-- [x] The app's `undo`, `selection`, `saving` and `export` tests run in `viewer-core`
+- [x] The app's `undo`, `selection` and `saving` tests (and `styles`, `views`) run in `viewer-core`; `export` waits for 04
 - [x] The app behaves as before
 
 ## Comments
