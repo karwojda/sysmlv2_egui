@@ -64,6 +64,10 @@ _Avoid_: expanded part, drilled-down part (collapsing is about compartments, not
 A saved Diagram: its Diagram Kind and root element (or, for a Model-defined Diagram, the `view` it comes from), and its Layout, in one file beside the Model. Diagrams that are opened but never saved leave no Diagram File.
 _Avoid_: layout file, diagram definition
 
+**Open Diagram**:
+A Diagram being viewed or adjusted, in the GUI or by the command line on its way to an Export: its Layout and Style with any unsaved changes, their undo history, and its Selection. Closing it without saving leaves nothing behind; saving it writes its Diagram File.
+_Avoid_: session, document, tab
+
 **Orphaned Layout Entry**:
 A Layout entry whose element qualified name no longer matches anything in the Model, for example after a rename. It is kept in the Diagram File, not deleted.
 
