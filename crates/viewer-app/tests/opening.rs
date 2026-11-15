@@ -91,10 +91,10 @@ fn an_interconnection_diagram_saves_and_reopens_as_one() {
         None,
         DiagramFile::parse(&text).unwrap(),
     );
-    assert_eq!(reopened.kind, Some(DiagramKind::Interconnection));
+    assert_eq!(reopened.kind(), Some(DiagramKind::Interconnection));
     assert!(
         reopened
-            .scene
+            .scene()
             .unwrap()
             .element_bounds(&qn("P::Vehicle::engine"))
             .is_some()

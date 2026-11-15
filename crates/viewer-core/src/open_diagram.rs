@@ -38,18 +38,18 @@ pub enum OpenDiagramError {
 pub struct OpenDiagram {
     /// The Model it is drawn from; every Scene is built from this one.
     model: Arc<Model>,
-    pub source: DiagramSource,
+    source: DiagramSource,
     /// The Diagram Kind it was last drawn as; a view's can change with the
     /// Model, and is unknown while the view can't be drawn.
-    pub kind: Option<DiagramKind>,
-    pub layout: Layout,
+    kind: Option<DiagramKind>,
+    layout: Layout,
     /// The Diagram's own Style, saved with it.
-    pub style: DiagramStyle,
+    style: DiagramStyle,
     /// The Model Style it is drawn with, as last loaded.
-    pub model_style: Option<Style>,
-    pub name: Option<String>,
+    model_style: Option<Style>,
+    name: Option<String>,
     /// Layout changes not yet saved.
-    pub dirty: bool,
+    dirty: bool,
     /// The Layout and Style as last saved (or as opened), to tell whether
     /// undoing has brought the Diagram back to them.
     saved: (Layout, DiagramStyle),
@@ -59,8 +59,8 @@ pub struct OpenDiagram {
     /// While a drag is under way: whether it has recorded its undo step
     /// yet. A whole drag is one step, though it edits on every frame.
     drag_step: Option<bool>,
-    pub selection: Selection,
-    pub scene: Result<Scene, DiagramError>,
+    selection: Selection,
+    scene: Result<Scene, DiagramError>,
 }
 
 impl OpenDiagram {
@@ -147,6 +147,74 @@ impl OpenDiagram {
             Err(_) => self.selection.clear(),
         }
         self.kind = self.source.kind(model);
+    }
+
+    /// What the Diagram shows: a Diagram Kind and root, or a `view`.
+    pub fn source(&self) -> &DiagramSource {
+        &self.source
+    }
+
+    /// The Diagram Kind it was last drawn as; a view's can change with the
+    /// Model, and is unknown while the view can't be drawn.
+    pub fn kind(&self) -> Option<DiagramKind> {
+        self.kind
+    }
+
+    pub fn layout(&self) -> &Layout {
+        &self.layout
+    }
+
+    /// The Diagram's own Style, saved with it.
+    pub fn style(&self) -> &DiagramStyle {
+        &self.style
+    }
+
+    /// The Scene as last drawn, or why it can't be drawn.
+    pub fn scene(&self) -> Result<&Scene, &DiagramError> {
+        self.scene.as_ref()
+    }
+
+    /// The name it is saved under, once saved as a Diagram File.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// Whether it has Layout or Style changes not yet saved.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
+    /// A plain click: selects `key` alone, or nothing if it can't be
+    /// selected.
+    pub fn select_only(&mut self, key: &QualifiedName) {
+        if let Ok(scene) = &self.scene {
+            self.selection.only(scene, key);
+        }
+    }
+
+    /// A Ctrl- or Shift-click: adds `key` to the Selection, or takes it out
+    /// if it was in. A node in another box than the rest starts a new
+    /// Selection.
+    pub fn toggle_selected(&mut self, key: &QualifiedName) {
+        if let Ok(scene) = &self.scene {
+            self.selection.toggle(scene, key);
+        }
+    }
+
+    /// A selection box: selects the outermost nodes lying wholly inside
+    /// `area`, in scene coordinates.
+    pub fn select_in(&mut self, area: Rect) {
+        if let Ok(scene) = &self.scene {
+            self.selection.boxed(scene, area);
+        }
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection.clear();
     }
 
     /// Whether this is the Interconnection Diagram rooted at `element`, so
@@ -289,30 +357,30 @@ impl Selection {
         self.0.is_empty()
     }
 
-    pub fn clear(&mut self) {
+    fn clear(&mut self) {
         self.0.clear();
     }
 
     /// A plain click: `key` alone, or nothing if it can't be selected.
-    pub fn only(&mut self, scene: &Scene, key: &QualifiedName) {
+    fn only(&mut self, scene: &Scene, key: &QualifiedName) {
         self.0.clear();
-        if movable(scene, key) {
+        if scene.movable(key) {
             self.0.push(key.clone());
         }
     }
 
     /// A Ctrl- or Shift-click: adds `key`, or takes it out if it was in.
     /// A node in another box than the rest starts a new Selection.
-    pub fn toggle(&mut self, scene: &Scene, key: &QualifiedName) {
+    fn toggle(&mut self, scene: &Scene, key: &QualifiedName) {
         if let Some(index) = self.0.iter().position(|k| k == key) {
             self.0.remove(index);
         } else if self
             .0
             .first()
-            .is_some_and(|k| container(scene, k) != container(scene, key))
+            .is_some_and(|k| scene.container_of(k) != scene.container_of(key))
         {
             self.only(scene, key);
-        } else if movable(scene, key) {
+        } else if scene.movable(key) {
             self.0.push(key.clone());
         }
     }
@@ -321,7 +389,7 @@ impl Selection {
     /// coordinates). Nodes inside a box that is in the area move with it,
     /// so only the outermost ones count; where several boxes' nodes are
     /// equally outermost, those of the first in paint order.
-    pub fn boxed(&mut self, scene: &Scene, area: Rect) {
+    fn boxed(&mut self, scene: &Scene, area: Rect) {
         let inside = |r: Rect| {
             r.x >= area.x
                 && r.y >= area.y
@@ -331,47 +399,26 @@ impl Selection {
         let candidates: Vec<&QualifiedName> = scene
             .elements()
             .into_iter()
-            .filter(|k| movable(scene, k) && scene.node_bounds(k).is_some_and(inside))
+            .filter(|k| scene.movable(k) && scene.node_bounds(k).is_some_and(inside))
             .collect();
-        let depth = |k: &QualifiedName| container(scene, k).map_or(0, |c| c.split('.').count());
+        let depth = |k: &QualifiedName| scene.container_of(k).map_or(0, |c| c.split('.').count());
         let outermost = candidates.iter().map(|k| depth(k)).min();
         let first = candidates
             .iter()
             .find(|k| Some(depth(k)) == outermost)
-            .map(|k| container(scene, k));
+            .map(|k| scene.container_of(k));
         self.0 = candidates
             .into_iter()
-            .filter(|k| Some(container(scene, k)) == first)
+            .filter(|k| Some(scene.container_of(k)) == first)
             .cloned()
             .collect();
     }
 
     /// Drops the nodes that are no longer drawn, such as hidden ones.
-    pub fn keep_drawn(&mut self, scene: &Scene) {
+    fn keep_drawn(&mut self, scene: &Scene) {
         let drawn = scene.elements();
         self.0.retain(|k| drawn.contains(&k));
     }
-}
-
-/// Whether the node under `key` can be moved, resized and selected: any
-/// node of a General Diagram, any part but the Frame in an Interconnection
-/// Diagram.
-pub fn movable(scene: &Scene, key: &QualifiedName) -> bool {
-    scene.origins.is_empty() || scene.origins.contains_key(key)
-}
-
-/// The box the node under `key` is drawn in: the feature path of the part
-/// it's inside in an Interconnection Diagram (`""` for the Frame), none on
-/// a General Diagram's page.
-fn container<'a>(scene: &Scene, key: &'a QualifiedName) -> Option<&'a str> {
-    if scene.origins.is_empty() {
-        return None;
-    }
-    Some(
-        key.as_str()
-            .rsplit_once('.')
-            .map_or("", |(parent, _)| parent),
-    )
 }
 
 /// Diagram names become file names, so they are limited to letters, digits,

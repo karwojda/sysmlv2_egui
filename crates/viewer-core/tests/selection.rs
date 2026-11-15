@@ -26,7 +26,7 @@ fn general() -> OpenDiagram {
 
 /// A Vehicle with an engine and an axle, the axle opened in place to show
 /// its two wheels.
-fn interconnection() -> (Model, OpenDiagram) {
+fn interconnection() -> OpenDiagram {
     let model = Model::builder()
         .package("P")
         .part_def("P::Engine")
@@ -41,11 +41,11 @@ fn interconnection() -> (Model, OpenDiagram) {
         .build();
     let mut diagram = common::open_tool(&model, DiagramKind::Interconnection, qn("P::Vehicle"));
     diagram.edit(&Edit::Open("axle".into()));
-    (model, diagram)
+    diagram
 }
 
 fn scene(diagram: &OpenDiagram) -> &Scene {
-    diagram.scene.as_ref().unwrap()
+    diagram.scene().unwrap()
 }
 
 fn keys(selection: &Selection) -> Vec<&str> {
@@ -72,81 +72,71 @@ fn around(scene: &Scene, keys: &[&str]) -> Rect {
 
 #[test]
 fn a_plain_click_picks_one_node_and_adding_toggles_others() {
-    let diagram = general();
-    let scene = scene(&diagram);
-    let mut selection = Selection::default();
+    let mut diagram = general();
 
-    selection.only(scene, &qn("P::Car"));
-    selection.toggle(scene, &qn("P::Truck"));
-    assert_eq!(keys(&selection), ["P::Car", "P::Truck"]);
+    diagram.select_only(&qn("P::Car"));
+    diagram.toggle_selected(&qn("P::Truck"));
+    assert_eq!(keys(diagram.selection()), ["P::Car", "P::Truck"]);
 
-    selection.toggle(scene, &qn("P::Car"));
-    assert_eq!(keys(&selection), ["P::Truck"]);
+    diagram.toggle_selected(&qn("P::Car"));
+    assert_eq!(keys(diagram.selection()), ["P::Truck"]);
 
-    selection.only(scene, &qn("P::Vehicle"));
-    assert_eq!(keys(&selection), ["P::Vehicle"]);
+    diagram.select_only(&qn("P::Vehicle"));
+    assert_eq!(keys(diagram.selection()), ["P::Vehicle"]);
 }
 
 #[test]
 fn the_interconnection_frame_cannot_be_selected() {
-    let (_, diagram) = interconnection();
-    let scene = scene(&diagram);
-    let mut selection = Selection::default();
+    let mut diagram = interconnection();
 
-    selection.only(scene, &qn("P::Vehicle"));
-    assert!(selection.is_empty());
+    diagram.select_only(&qn("P::Vehicle"));
+    assert!(diagram.selection().is_empty());
 
-    selection.only(scene, &qn("engine"));
-    selection.toggle(scene, &qn("P::Vehicle"));
-    assert_eq!(keys(&selection), ["engine"]);
+    diagram.select_only(&qn("engine"));
+    diagram.toggle_selected(&qn("P::Vehicle"));
+    assert_eq!(keys(diagram.selection()), ["engine"]);
 }
 
 #[test]
 fn adding_a_node_from_another_box_starts_a_new_selection() {
-    let (_, diagram) = interconnection();
-    let scene = scene(&diagram);
-    let mut selection = Selection::default();
+    let mut diagram = interconnection();
 
-    selection.only(scene, &qn("axle.left"));
-    selection.toggle(scene, &qn("axle.right"));
-    assert_eq!(keys(&selection), ["axle.left", "axle.right"]);
+    diagram.select_only(&qn("axle.left"));
+    diagram.toggle_selected(&qn("axle.right"));
+    assert_eq!(keys(diagram.selection()), ["axle.left", "axle.right"]);
 
-    selection.toggle(scene, &qn("engine"));
-    assert_eq!(keys(&selection), ["engine"]);
+    diagram.toggle_selected(&qn("engine"));
+    assert_eq!(keys(diagram.selection()), ["engine"]);
 }
 
 #[test]
 fn a_selection_box_picks_the_nodes_wholly_inside_it() {
-    let diagram = general();
-    let scene = scene(&diagram);
-    let mut selection = Selection::default();
+    let mut diagram = general();
 
-    selection.boxed(scene, around(scene, &["P::Car", "P::Truck"]));
+    diagram.select_in(around(scene(&diagram), &["P::Car", "P::Truck"]));
+    let selection = diagram.selection();
     assert_eq!(selection.len(), 2);
     assert!(selection.contains(&qn("P::Car")) && selection.contains(&qn("P::Truck")));
 
-    let car = scene.node_bounds(&qn("P::Car")).unwrap();
-    selection.boxed(
-        scene,
-        Rect {
-            width: car.width / 2.0,
-            ..car
-        },
-    );
-    assert!(selection.is_empty(), "Car is only half inside");
+    let car = scene(&diagram).node_bounds(&qn("P::Car")).unwrap();
+    diagram.select_in(Rect {
+        width: car.width / 2.0,
+        ..car
+    });
+    assert!(diagram.selection().is_empty(), "Car is only half inside");
 }
 
 #[test]
 fn a_selection_box_around_an_opened_part_picks_it_without_what_is_inside() {
-    let (_, diagram) = interconnection();
-    let scene = scene(&diagram);
-    let mut selection = Selection::default();
+    let mut diagram = interconnection();
 
-    selection.boxed(scene, around(scene, &["engine", "axle"]));
+    diagram.select_in(around(scene(&diagram), &["engine", "axle"]));
+    let selection = diagram.selection();
     assert_eq!(selection.len(), 2);
     assert!(selection.contains(&qn("engine")) && selection.contains(&qn("axle")));
 
-    selection.boxed(scene, around(scene, &["axle.left", "axle.right"]));
+    diagram.select_in(around(scene(&diagram), &["axle.left", "axle.right"]));
+    let selection = diagram.selection();
     assert_eq!(selection.len(), 2);
     assert!(selection.contains(&qn("axle.left")) && selection.contains(&qn("axle.right")));
 }
@@ -154,13 +144,12 @@ fn a_selection_box_around_an_opened_part_picks_it_without_what_is_inside() {
 #[test]
 fn hidden_nodes_drop_out_and_reset_empties_it() {
     let mut diagram = general();
-    let scene = diagram.scene.as_ref().unwrap().clone();
-    diagram.selection.only(&scene, &qn("P::Car"));
-    diagram.selection.toggle(&scene, &qn("P::Truck"));
+    diagram.select_only(&qn("P::Car"));
+    diagram.toggle_selected(&qn("P::Truck"));
 
     diagram.edit(&Edit::Hide(qn("P::Truck")));
-    assert_eq!(keys(&diagram.selection), ["P::Car"]);
+    assert_eq!(keys(diagram.selection()), ["P::Car"]);
 
     diagram.edit(&Edit::Reset);
-    assert!(diagram.selection.is_empty());
+    assert!(diagram.selection().is_empty());
 }

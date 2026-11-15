@@ -50,14 +50,14 @@ fn the_model_style_colors_an_open_diagram_without_making_it_unsaved() {
     );
 
     assert_eq!(
-        engine_fill(diagram.scene.as_ref().unwrap()),
+        engine_fill(diagram.scene().unwrap()),
         Fill::Color(Rgb(9, 9, 9))
     );
-    assert!(!diagram.dirty);
+    assert!(!diagram.is_dirty());
 
     diagram.reload(Arc::new(model.clone()), None);
     assert_eq!(
-        engine_fill(diagram.scene.as_ref().unwrap()),
+        engine_fill(diagram.scene().unwrap()),
         Fill::Background,
         "a removed Style file un-colors"
     );
@@ -75,10 +75,10 @@ fn a_diagram_opens_already_colored_by_the_model_style() {
     );
 
     assert_eq!(
-        engine_fill(diagram.scene.as_ref().unwrap()),
+        engine_fill(diagram.scene().unwrap()),
         Fill::Color(Rgb(9, 9, 9))
     );
-    assert!(!diagram.dirty);
+    assert!(!diagram.is_dirty());
 }
 
 #[test]
@@ -98,9 +98,9 @@ fn a_diagram_style_is_an_unsaved_change_saved_and_reopened_with_the_diagram() {
     };
     diagram.set_style(own.clone());
 
-    assert!(diagram.dirty);
+    assert!(diagram.is_dirty());
     assert_eq!(
-        engine_fill(diagram.scene.as_ref().unwrap()),
+        engine_fill(diagram.scene().unwrap()),
         Fill::Color(Rgb(200, 0, 0)),
         "its own rule wins"
     );
@@ -111,5 +111,5 @@ fn a_diagram_style_is_an_unsaved_change_saved_and_reopened_with_the_diagram() {
         None,
         DiagramFile::parse(&text).unwrap(),
     );
-    assert_eq!(reopened.style, own);
+    assert_eq!(*reopened.style(), own);
 }

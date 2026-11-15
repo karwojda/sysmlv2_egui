@@ -3,7 +3,6 @@
 //! ones the SVG renderer writes, on a white page like the Export.
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Stroke, StrokeKind, Vec2};
-use viewer_core::open_diagram::movable;
 use viewer_core::scene::{Depicts, Fill, Point, Rect, Shape, TextAnchor};
 use viewer_core::{DiagramKind, DiagramSource, OpenDiagram, QualifiedName, Scene};
 
@@ -42,8 +41,8 @@ impl Tab {
     /// marked while there are unsaved changes.
     pub fn title(&self) -> String {
         let diagram = &self.diagram;
-        let title = match (&diagram.name, &diagram.source) {
-            (Some(name), _) => name.clone(),
+        let title = match (diagram.name(), diagram.source()) {
+            (Some(name), _) => name.to_owned(),
             (
                 None,
                 DiagramSource::Tool {
@@ -62,7 +61,7 @@ impl Tab {
             }
             (None, DiagramSource::View { view }) => format!("{} (view)", view.simple_name()),
         };
-        if diagram.dirty {
+        if diagram.is_dirty() {
             format!("{title} •")
         } else {
             title
@@ -113,7 +112,7 @@ pub enum Grab {
 /// pressing on it pans.
 pub fn grab_at(scene: &Scene, view: View, origin: Pos2, pos: Pos2) -> Grab {
     let screen = |p: Point| view.to_screen(origin, p);
-    let movable = |key: &QualifiedName| movable(scene, key);
+    let movable = |key: &QualifiedName| scene.movable(key);
     let handle = scene
         .elements()
         .into_iter()

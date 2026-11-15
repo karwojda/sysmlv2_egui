@@ -32,7 +32,7 @@ fn move_car(dx: f32) -> Edit {
 }
 
 fn car_x(diagram: &OpenDiagram) -> f32 {
-    diagram.layout.nodes[&qn("P::Car")].x
+    diagram.layout().nodes[&qn("P::Car")].x
 }
 
 #[test]
@@ -40,19 +40,19 @@ fn undo_goes_back_to_the_layout_before_the_edit_and_redo_forward_again() {
     let model = model();
     let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
     diagram.edit(&move_car(40.0));
-    let moved = diagram.layout.clone();
+    let moved = diagram.layout().clone();
 
     diagram.undo();
 
-    assert_eq!(diagram.layout, Layout::default());
-    assert!(!diagram.dirty, "back at the Diagram as opened");
+    assert_eq!(*diagram.layout(), Layout::default());
+    assert!(!diagram.is_dirty(), "back at the Diagram as opened");
     assert!(!diagram.can_undo());
     assert!(diagram.can_redo());
 
     diagram.redo();
 
-    assert_eq!(diagram.layout, moved);
-    assert!(diagram.dirty);
+    assert_eq!(*diagram.layout(), moved);
+    assert!(diagram.is_dirty());
     assert!(!diagram.can_redo());
 }
 
@@ -72,10 +72,10 @@ fn undo_history_survives_a_model_reload() {
     diagram.reload(Arc::new(grown), None);
     diagram.undo();
 
-    assert_eq!(diagram.layout, Layout::default());
+    assert_eq!(*diagram.layout(), Layout::default());
     assert!(
         diagram
-            .scene
+            .scene()
             .as_ref()
             .unwrap()
             .node_bounds(&qn("P::Truck"))
@@ -89,7 +89,7 @@ fn undo_redraws_the_scene() {
     let model = model();
     let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
     let bounds = |d: &OpenDiagram| {
-        d.scene
+        d.scene()
             .as_ref()
             .unwrap()
             .node_bounds(&qn("P::Car"))
@@ -128,7 +128,7 @@ fn a_whole_drag_is_one_step() {
     diagram.end_drag();
     diagram.undo();
 
-    assert_eq!(diagram.layout, Layout::default());
+    assert_eq!(*diagram.layout(), Layout::default());
     assert!(!diagram.can_undo());
 }
 
@@ -143,7 +143,7 @@ fn a_drag_that_changes_nothing_records_no_step() {
     diagram.edit(&Edit::ShowAll);
     diagram.undo();
 
-    assert_eq!(diagram.layout, Layout::default());
+    assert_eq!(*diagram.layout(), Layout::default());
 }
 
 #[test]
@@ -164,12 +164,12 @@ fn reset_can_be_undone() {
     let mut diagram = common::open_tool(&model, DiagramKind::General, qn("P"));
     diagram.edit(&move_car(40.0));
     diagram.edit(&Edit::Hide(qn("P::Vehicle")));
-    let arranged = diagram.layout.clone();
+    let arranged = diagram.layout().clone();
     diagram.edit(&Edit::Reset);
 
     diagram.undo();
 
-    assert_eq!(diagram.layout, arranged);
+    assert_eq!(*diagram.layout(), arranged);
 }
 
 #[test]
@@ -181,10 +181,10 @@ fn the_history_survives_saving_and_the_saved_layout_is_not_unsaved() {
     diagram.save_as(folder.path(), "overview").unwrap();
 
     diagram.undo();
-    assert!(diagram.dirty, "the saved Diagram had Car moved");
+    assert!(diagram.is_dirty(), "the saved Diagram had Car moved");
 
     diagram.redo();
-    assert!(!diagram.dirty, "back at the saved Layout");
+    assert!(!diagram.is_dirty(), "back at the saved Layout");
 }
 
 #[test]
@@ -195,6 +195,6 @@ fn undo_with_nothing_to_undo_changes_nothing() {
     diagram.undo();
     diagram.redo();
 
-    assert_eq!(diagram.layout, Layout::default());
-    assert!(!diagram.dirty);
+    assert_eq!(*diagram.layout(), Layout::default());
+    assert!(!diagram.is_dirty());
 }

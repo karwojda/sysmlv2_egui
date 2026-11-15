@@ -89,7 +89,7 @@ fn reopening_a_model_rebuilds_the_open_diagram() {
     diagram.reload(Arc::new(smaller), None);
 
     assert_eq!(
-        diagram.scene.unwrap().elements(),
+        diagram.scene().unwrap().elements(),
         [&QualifiedName::from("P::Engine")]
     );
 }

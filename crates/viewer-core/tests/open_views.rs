@@ -46,8 +46,8 @@ fn a_view_opens_as_its_model_defined_diagram() {
 
     let diagram = OpenDiagram::open(Arc::new(model.clone()), None, tree());
 
-    assert_eq!(diagram.kind, Some(DiagramKind::General));
-    let scene = diagram.scene.unwrap();
+    assert_eq!(diagram.kind(), Some(DiagramKind::General));
+    let scene = diagram.scene().unwrap();
     assert!(scene.element_bounds(&qn("P::vehicle::body")).is_some());
     assert!(
         scene.element_bounds(&qn("P::vehicle::engine")).is_none(),
@@ -78,8 +78,8 @@ fn a_view_is_saved_under_a_file_safe_version_of_its_name_referring_to_the_view()
         None,
         DiagramFile::parse(&text).unwrap(),
     );
-    assert_eq!(reopened.name.as_deref(), Some("vehicle-tree"));
-    assert_eq!(reopened.layout, diagram.layout);
+    assert_eq!(reopened.name(), Some("vehicle-tree"));
+    assert_eq!(reopened.layout(), diagram.layout());
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn a_reloaded_model_redraws_the_view_with_its_new_exposes_keeping_the_layout() {
         dy: 0.0,
     });
     let placed = diagram
-        .scene
+        .scene()
         .as_ref()
         .unwrap()
         .element_bounds(&qn("P::vehicle"))
@@ -101,7 +101,7 @@ fn a_reloaded_model_redraws_the_view_with_its_new_exposes_keeping_the_layout() {
     let after = model_exposing(&["P::vehicle", "P::vehicle::engine"]);
     diagram.reload(Arc::new(after), None);
 
-    let scene = diagram.scene.as_ref().unwrap();
+    let scene = diagram.scene().unwrap();
     assert!(
         scene.element_bounds(&qn("P::vehicle::engine")).is_some(),
         "newly exposed"
@@ -129,7 +129,7 @@ fn layout_entries_of_elements_no_longer_exposed_are_kept() {
     diagram.edit(&Edit::Reset);
 
     assert!(
-        diagram.layout.nodes.contains_key(&qn("P::vehicle::body")),
+        diagram.layout().nodes.contains_key(&qn("P::vehicle::body")),
         "Reset keeps entries it can't place"
     );
 }
@@ -146,7 +146,7 @@ fn a_diagram_whose_view_is_gone_says_so() {
 
     let diagram = OpenDiagram::open_saved(Arc::new(model.clone()), None, file);
 
-    let error = diagram.scene.unwrap_err();
+    let error = diagram.scene().unwrap_err();
     assert!(matches!(error, DiagramError::View(_)));
     assert_eq!(error.to_string(), "`P::renamed` is not a view in the Model");
 }

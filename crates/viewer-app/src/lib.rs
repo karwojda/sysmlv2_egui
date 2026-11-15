@@ -79,6 +79,15 @@ pub struct ViewerApp {
     quit_confirmed: bool,
 }
 
+/// A change to the active Diagram's Selection, made by a click, a key or
+/// a selection box.
+enum Pick {
+    Only(QualifiedName),
+    Toggle(QualifiedName),
+    Within(viewer_core::scene::Rect),
+    Clear,
+}
+
 /// What a drag on the canvas is doing, decided when it starts. A bend
 /// drag carries the edge's bends being edited.
 enum Drag {
@@ -302,7 +311,7 @@ impl ViewerApp {
 
     fn open_source(&mut self, source: DiagramSource) {
         let Some(model) = &self.model else { return };
-        if let Some(index) = self.tabs.iter().position(|t| t.diagram.source == source) {
+        if let Some(index) = self.tabs.iter().position(|t| *t.diagram.source() == source) {
             self.activate(index);
             return;
         }
@@ -337,7 +346,7 @@ impl ViewerApp {
         if let Some(index) = self
             .tabs
             .iter()
-            .position(|t| t.diagram.name.as_deref() == Some(name))
+            .position(|t| t.diagram.name() == Some(name))
         {
             self.activate(index);
             return;
@@ -364,13 +373,13 @@ impl ViewerApp {
         // A Selection lasts only while its Diagram is the one shown.
         if self.active != Some(index) {
             for diagram in self.tabs.iter_mut().map(|t| &mut t.diagram) {
-                diagram.selection.clear();
+                diagram.clear_selection();
             }
         }
         self.active = Some(index);
         let diagram = &self.tabs[index].diagram;
-        let file_name = match (&diagram.name, &diagram.source) {
-            (Some(name), _) => name.clone(),
+        let file_name = match (diagram.name(), diagram.source()) {
+            (Some(name), _) => name.to_owned(),
             (None, DiagramSource::Tool { root, .. }) => root.simple_name().to_owned(),
             (None, DiagramSource::View { view }) => view::file_name(view),
         };
@@ -633,7 +642,7 @@ impl ViewerApp {
             .show(ui, |ui| match (self.style_tab, self.active) {
                 (StyleTab::Diagram, Some(active)) => {
                     let diagram = &mut self.tabs[active].diagram;
-                    let mut style = diagram.style.clone();
+                    let mut style = diagram.style().clone();
                     ui.checkbox(&mut style.model_style, "Use Model Style")
                         .on_hover_text("Off: only this Diagram's rules apply");
                     ui.checkbox(&mut style.legend, "Legend");
@@ -848,7 +857,7 @@ impl ViewerApp {
         ui.horizontal_wrapped(|ui| {
             for (index, open) in self.tabs.iter().enumerate() {
                 let tab = ui.selectable_label(self.active == Some(index), open.title());
-                let tab = if open.diagram.dirty {
+                let tab = if open.diagram.is_dirty() {
                     tab.on_hover_text("Unsaved changes")
                 } else {
                     tab
@@ -866,7 +875,7 @@ impl ViewerApp {
             self.activate(index);
         }
         if let Some(index) = close {
-            if self.tabs[index].diagram.dirty {
+            if self.tabs[index].diagram.is_dirty() {
                 self.confirm = Some(Confirm::CloseTab(index));
             } else {
                 self.close(index);
@@ -902,12 +911,12 @@ impl ViewerApp {
             ui.separator();
 
             let diagram = &self.tabs[active].diagram;
-            if diagram.name.is_some()
+            if diagram.name().is_some()
                 && ui
-                    .add_enabled(diagram.dirty, egui::Button::new("Save"))
+                    .add_enabled(diagram.is_dirty(), egui::Button::new("Save"))
                     .clicked()
             {
-                let name = diagram.name.clone().expect("checked above");
+                let name = diagram.name().expect("checked above").to_owned();
                 self.save_active(active, &name);
             }
             ui.add(
@@ -923,7 +932,7 @@ impl ViewerApp {
 
             let hidden: Vec<QualifiedName> = self.tabs[active]
                 .diagram
-                .layout
+                .layout()
                 .hidden
                 .iter()
                 .cloned()
@@ -951,8 +960,8 @@ impl ViewerApp {
             {
                 edits.push(Edit::Reset);
             }
-            if self.tabs[active].diagram.kind == Some(DiagramKind::General) {
-                let mut shown = !self.tabs[active].diagram.layout.inherited_hidden;
+            if self.tabs[active].diagram.kind() == Some(DiagramKind::General) {
+                let mut shown = !self.tabs[active].diagram.layout().inherited_hidden;
                 if ui
                     .checkbox(&mut shown, "Inherited")
                     .on_hover_text("Show Inherited Members as ^ rows")
@@ -965,7 +974,7 @@ impl ViewerApp {
                     });
                 }
             }
-            let mut legend = self.tabs[active].diagram.style.legend;
+            let mut legend = self.tabs[active].diagram.style().legend;
             if ui
                 .checkbox(&mut legend, "Legend")
                 .on_hover_text("Key the Style's colors on the Diagram")
@@ -974,7 +983,7 @@ impl ViewerApp {
                 let diagram = &mut self.tabs[active].diagram;
                 let style = viewer_core::DiagramStyle {
                     legend,
-                    ..diagram.style.clone()
+                    ..diagram.style().clone()
                 };
                 diagram.set_style(style);
             }
@@ -1037,7 +1046,7 @@ impl ViewerApp {
         let origin = response.rect.min;
         let tab = &mut self.tabs[active];
         let diagram = &mut tab.diagram;
-        let scene = match &diagram.scene {
+        let scene = match diagram.scene() {
             Ok(scene) => scene,
             Err(error) => {
                 painter.text(
@@ -1078,6 +1087,8 @@ impl ViewerApp {
         let mut edit = None;
         // A click's new selection, applied once the Diagram is let go.
         let mut select: Option<Option<QualifiedName>> = None;
+        // Changes to the Selection, applied once input is handled.
+        let mut picks = Vec::new();
 
         // Decide what a drag does from where the press began (not where
         // the pointer is once the drag is recognised).
@@ -1119,8 +1130,8 @@ impl ViewerApp {
             match &mut self.drag {
                 // A selected node takes the whole Selection along.
                 Some(Drag::Move(element)) => {
-                    let elements = if diagram.selection.contains(element) {
-                        diagram.selection.keys().to_vec()
+                    let elements = if diagram.selection().contains(element) {
+                        diagram.selection().keys().to_vec()
                     } else {
                         vec![element.clone()]
                     };
@@ -1173,12 +1184,12 @@ impl ViewerApp {
         let drag_ended = response.drag_stopped();
         if drag_ended {
             if let Some(Drag::Select { from, to }) = &self.drag {
-                diagram.selection.boxed(scene, area(*from, *to));
+                picks.push(Pick::Within(area(*from, *to)));
             }
             self.drag = None;
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) && !ui.ctx().egui_wants_keyboard_input() {
-            diagram.selection.clear();
+            picks.push(Pick::Clear);
         }
         if let Some(pointer) = response.hover_pos() {
             let (zoom, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
@@ -1244,9 +1255,9 @@ impl ViewerApp {
             // takes a node out.
             let adding = ui.input(|i| i.modifiers.shift || i.modifiers.command);
             match node_key {
-                Some(key) if adding => diagram.selection.toggle(scene, key),
-                Some(key) => diagram.selection.only(scene, key),
-                None if !adding => diagram.selection.clear(),
+                Some(key) if adding => picks.push(Pick::Toggle(key.clone())),
+                Some(key) => picks.push(Pick::Only(key.clone())),
+                None if !adding => picks.push(Pick::Clear),
                 None => {}
             }
             select = Some(port.or(node).or(connection));
@@ -1254,9 +1265,9 @@ impl ViewerApp {
         if response.secondary_clicked() {
             // Right-clicking a node outside the Selection picks it alone.
             if let Some(Grab::Resize(e) | Grab::Move(e)) = &hover
-                && !diagram.selection.contains(e)
+                && !diagram.selection().contains(e)
             {
-                diagram.selection.only(scene, e);
+                picks.push(Pick::Only(e.clone()));
             }
             self.context_target = match &hover {
                 Some(Grab::Resize(e) | Grab::Move(e)) => ContextTarget::Node(e.clone()),
@@ -1266,6 +1277,16 @@ impl ViewerApp {
                 _ => ContextTarget::Canvas,
             };
         }
+
+        for pick in picks {
+            match pick {
+                Pick::Only(key) => diagram.select_only(&key),
+                Pick::Toggle(key) => diagram.toggle_selected(&key),
+                Pick::Within(area) => diagram.select_in(area),
+                Pick::Clear => diagram.clear_selection(),
+            }
+        }
+        let Ok(scene) = diagram.scene() else { return };
 
         // Highlight the hovered node, else the selected element's node.
         let selected_key = self
@@ -1289,7 +1310,7 @@ impl ViewerApp {
                 egui::vec2(r.width, r.height) * view.zoom,
             )
         };
-        for key in diagram.selection.keys() {
+        for key in diagram.selection().keys() {
             if let Some(bounds) = scene.node_bounds(key) {
                 clipped.rect_stroke(
                     to_screen(bounds),
@@ -1339,9 +1360,7 @@ impl ViewerApp {
             }
         }
         // The resize handle, on nodes that can be resized (not the Frame).
-        let resizable = highlight_key
-            .as_ref()
-            .is_some_and(|k| scene.origins.is_empty() || scene.origins.contains_key(k));
+        let resizable = highlight_key.as_ref().is_some_and(|k| scene.movable(k));
         if let Some(bounds) = highlight.filter(|_| resizable) {
             let corner = view.to_screen(
                 origin,
@@ -1395,8 +1414,8 @@ impl ViewerApp {
 
         let target = self.context_target.clone();
         let collapsed =
-            matches!(&target, ContextTarget::Node(e) if diagram.layout.collapsed.contains(e));
-        let interconnection = diagram.kind == Some(DiagramKind::Interconnection);
+            matches!(&target, ContextTarget::Node(e) if diagram.layout().collapsed.contains(e));
+        let interconnection = diagram.kind() == Some(DiagramKind::Interconnection);
         let opens_interconnection = |element: &QualifiedName| {
             self.model
                 .as_ref()
@@ -1431,7 +1450,7 @@ impl ViewerApp {
                     ui.close();
                 }
                 if interconnection && opens_in_place(&element) {
-                    let open = diagram.layout.opened.contains(key.as_str());
+                    let open = diagram.layout().opened.contains(key.as_str());
                     let (label, toggle) = if open {
                         ("Close", Edit::Close(key.to_string()))
                     } else {
@@ -1442,7 +1461,7 @@ impl ViewerApp {
                         ui.close();
                     }
                 }
-                if let Some(arrange) = arrange_menu(ui, &diagram.selection, key, collapsed) {
+                if let Some(arrange) = arrange_menu(ui, diagram.selection(), key, collapsed) {
                     edit = Some(arrange);
                 }
                 if ui.button("Hide").clicked() {
@@ -1517,7 +1536,7 @@ impl ViewerApp {
     fn confirmations(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested())
             && !self.quit_confirmed
-            && self.tabs.iter().any(|t| t.diagram.dirty)
+            && self.tabs.iter().any(|t| t.diagram.is_dirty())
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Confirm::Quit);
@@ -1532,7 +1551,7 @@ impl ViewerApp {
                 let names: Vec<String> = self
                     .tabs
                     .iter()
-                    .filter(|t| t.diagram.dirty)
+                    .filter(|t| t.diagram.is_dirty())
                     .map(|d| d.title())
                     .collect();
                 format!("Discard unsaved changes to {} and quit?", names.join(", "))
