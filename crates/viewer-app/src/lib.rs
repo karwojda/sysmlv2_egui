@@ -377,18 +377,11 @@ impl ViewerApp {
             }
         }
         self.active = Some(index);
-        let diagram = &self.tabs[index].diagram;
-        let file_name = match (diagram.name(), diagram.source()) {
-            (Some(name), _) => name.to_owned(),
-            (None, DiagramSource::Tool { root, .. }) => root.simple_name().to_owned(),
-            (None, DiagramSource::View { view }) => view::file_name(view),
-        };
+        // Saving and exporting suggest the same name.
+        let name = self.tabs[index].diagram.default_name();
         let folder = self.folder.clone().unwrap_or_default();
-        self.export_path = folder
-            .join(format!("{file_name}.svg"))
-            .display()
-            .to_string();
-        self.save_name = diagram.default_name();
+        self.export_path = folder.join(format!("{name}.svg")).display().to_string();
+        self.save_name = name;
         self.status = None;
     }
 

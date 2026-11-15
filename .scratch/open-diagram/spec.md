@@ -1,6 +1,6 @@
 # Spec: The Open Diagram lives in the core
 
-Status: in progress
+Status: done
 
 ## Problem Statement
 

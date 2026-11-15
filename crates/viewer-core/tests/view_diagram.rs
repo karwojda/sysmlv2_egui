@@ -3,12 +3,13 @@
 mod common;
 
 use std::path::Path;
+use std::sync::Arc;
 
-use viewer_core::editing::{Edit, apply_with};
+use viewer_core::editing::Edit;
 use viewer_core::model::{ExposeScope, Model};
 use viewer_core::scene::{Depicts, Shape};
 use viewer_core::view::{ViewError, build_scene, layout_key_exists};
-use viewer_core::{Layout, QualifiedName, Scene, svg};
+use viewer_core::{DiagramSource, Layout, OpenDiagram, QualifiedName, Scene, svg};
 
 fn qn(s: &str) -> QualifiedName {
     QualifiedName::new(s)
@@ -152,36 +153,31 @@ fn connections_between_exposed_parts_are_drawn() {
 
 #[test]
 fn moving_and_hiding_work_on_a_view_s_diagram() {
-    let model = parts_tree();
-    let view = qn("P::tree");
-    let known = |key: &QualifiedName| layout_key_exists(&model, &view, key);
-    let mut layout = Layout::default();
-    let before = tree(&layout);
-
-    apply_with(
-        &mut layout,
-        &known,
-        &before,
-        &Edit::Move {
-            elements: vec![qn("P::vehicle::engine")],
-            dx: 40.0,
-            dy: 10.0,
+    let mut diagram = OpenDiagram::open(
+        Arc::new(parts_tree()),
+        None,
+        DiagramSource::View {
+            view: qn("P::tree"),
         },
     );
-    let moved = tree(&layout);
-    let (a, b) = (
-        before.element_bounds(&qn("P::vehicle::engine")).unwrap(),
-        moved.element_bounds(&qn("P::vehicle::engine")).unwrap(),
-    );
-    assert_eq!((b.x - a.x, b.y - a.y), (40.0, 10.0));
+    let engine = |d: &OpenDiagram| {
+        d.scene()
+            .unwrap()
+            .element_bounds(&qn("P::vehicle::engine"))
+            .unwrap()
+    };
+    let before = engine(&diagram);
 
-    apply_with(
-        &mut layout,
-        &known,
-        &moved,
-        &Edit::Hide(qn("P::vehicle::body::door")),
-    );
-    let hidden = tree(&layout);
+    diagram.edit(&Edit::Move {
+        elements: vec![qn("P::vehicle::engine")],
+        dx: 40.0,
+        dy: 10.0,
+    });
+    let moved = engine(&diagram);
+    assert_eq!((moved.x - before.x, moved.y - before.y), (40.0, 10.0));
+
+    diagram.edit(&Edit::Hide(qn("P::vehicle::body::door")));
+    let hidden = diagram.scene().unwrap();
     assert!(
         hidden
             .element_bounds(&qn("P::vehicle::body::door"))

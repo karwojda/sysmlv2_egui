@@ -178,3 +178,13 @@ fn a_diagram_that_cannot_be_drawn_ignores_edits_and_selections_but_still_saves()
     diagram.save_as(folder.path(), "gone").unwrap();
     assert!(diagram_file::path_for(folder.path(), "gone").exists());
 }
+
+#[test]
+fn the_name_suggested_for_saving_and_exporting_is_the_saved_one_else_the_root_s() {
+    let folder = TempDir::new().unwrap();
+    let mut diagram = common::open_tool(&model(), DiagramKind::General, qn("P::Vehicle"));
+    assert_eq!(diagram.default_name(), "vehicle");
+
+    diagram.save_as(folder.path(), "Overview").unwrap();
+    assert_eq!(diagram.default_name(), "Overview");
+}

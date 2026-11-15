@@ -1,8 +1,9 @@
 //! Layout editing: the changes a user makes to a Diagram's arrangement,
-//! applied to its Layout. The Model is never touched (ADR-0002).
+//! applied to its Layout. The Model is never touched (ADR-0002). Edits
+//! are applied only through [`crate::OpenDiagram::edit`].
 
 use crate::diagram_file::{Layout, NodePlacement, PortPlacement, PortSide};
-use crate::model::{Model, QualifiedName};
+use crate::model::QualifiedName;
 use crate::scene::{Point, Rect, Scene};
 
 /// The smallest size a node can be resized to.
@@ -113,18 +114,13 @@ pub enum Axis {
     Vertical,
 }
 
-/// Applies `edit` to a General Diagram's `layout`; see [`apply_with`].
-pub fn apply(layout: &mut Layout, model: &Model, scene: &Scene, edit: &Edit) {
-    apply_with(layout, &|key| model.element(key).is_some(), scene, edit);
-}
-
 /// Applies `edit` to `layout`. `scene` is the Diagram as currently drawn:
 /// every edit except `Reset` and showing or hiding Inherited Members first
 /// pins each drawn node where it is, so changing one node never rearranges
 /// the others. `known` tells whether a node key still names something in
 /// the Model, so `Reset` keeps Orphaned Layout Entries. An edit that
 /// changes nothing leaves the Layout exactly as it was.
-pub fn apply_with(
+pub(crate) fn apply_with(
     layout: &mut Layout,
     known: &dyn Fn(&QualifiedName) -> bool,
     scene: &Scene,

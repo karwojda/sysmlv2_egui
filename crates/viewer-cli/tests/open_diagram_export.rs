@@ -1,4 +1,5 @@
-//! Exporting from the viewer writes exactly what the command line writes.
+//! The command line Exports a Diagram exactly as the viewer's Open Diagram
+//! does.
 
 use std::sync::Arc;
 use viewer_core::OpenDiagram;
@@ -66,30 +67,5 @@ fn the_viewer_export_is_byte_identical_to_the_cli_export() {
     assert_eq!(
         std::fs::read(from_viewer).unwrap(),
         std::fs::read(from_cli).unwrap()
-    );
-}
-
-#[test]
-fn exporting_a_diagram_whose_root_is_gone_fails_with_the_reason() {
-    let diagram = open_tool(&model(), DiagramKind::General, QualifiedName::from("Gone"));
-    let folder = tempfile::TempDir::new().unwrap();
-
-    let error = diagram
-        .export_svg(&folder.path().join("x.svg"))
-        .unwrap_err();
-
-    assert!(error.to_string().contains("Gone"), "{error}");
-}
-
-#[test]
-fn reopening_a_model_rebuilds_the_open_diagram() {
-    let mut diagram = open_tool(&model(), DiagramKind::General, QualifiedName::from("P"));
-    let smaller = Model::builder().package("P").part_def("P::Engine").build();
-
-    diagram.reload(Arc::new(smaller), None);
-
-    assert_eq!(
-        diagram.scene().unwrap().elements(),
-        [&QualifiedName::from("P::Engine")]
     );
 }

@@ -4006,7 +4006,6 @@ dependencies = [
  "eframe",
  "image",
  "tempfile",
- "viewer-cli",
  "viewer-core",
  "viewer-opensysml",
  "viewer-tools",
