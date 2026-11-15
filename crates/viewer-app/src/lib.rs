@@ -16,11 +16,11 @@ use viewer_core::model::{Diagnostic, Severity};
 use viewer_core::scene::Depicts;
 use viewer_core::view::{self, ViewError};
 use viewer_core::{
-    DiagramFile, DiagramKind, DiagramSource, ElementKind, Model, ModelBackend, QualifiedName,
-    diagram_file,
+    DiagramFile, DiagramKind, DiagramSource, ElementKind, Model, ModelBackend, OpenDiagram,
+    QualifiedName, diagram_file,
 };
 
-use canvas::{Grab, OpenDiagram, RESIZE_HANDLE, View, grab_at};
+use canvas::{Grab, RESIZE_HANDLE, Tab, View, grab_at};
 use loader::Loader;
 use viewer_core::watch::{Shown, accept};
 use viewer_opensysml::{OpenSysmlBackend, ServiceConfig};
@@ -57,7 +57,7 @@ pub struct ViewerApp {
     style_error: Option<String>,
     right_tab: RightTab,
     style_tab: StyleTab,
-    diagrams: Vec<OpenDiagram>,
+    tabs: Vec<Tab>,
     active: Option<usize>,
     /// A Diagram to open once the Model has loaded: its root, and whether
     /// an Interconnection Diagram was asked for.
@@ -185,7 +185,7 @@ impl ViewerApp {
             style_error: None,
             right_tab: RightTab::Properties,
             style_tab: StyleTab::Model,
-            diagrams: Vec::new(),
+            tabs: Vec::new(),
             active: None,
             pending_root: root.map(|root| (root, false)),
             pending_select: None,
@@ -223,7 +223,7 @@ impl ViewerApp {
                 Ok(model) => {
                     let reload = self.folder.as_ref() == Some(&loaded.folder);
                     if !reload {
-                        self.diagrams.clear();
+                        self.tabs.clear();
                         self.active = None;
                         self.selected = None;
                         self.watcher.watch(loaded.folder.clone());
@@ -244,7 +244,7 @@ impl ViewerApp {
                         };
                     // A broken settings file is reported by the load itself.
                     self.settings = viewer_core::settings::load(&loaded.folder).unwrap_or_default();
-                    for diagram in &mut self.diagrams {
+                    for diagram in self.tabs.iter_mut().map(|t| &mut t.diagram) {
                         diagram.set_model_style(&shown.model, self.model_style.clone());
                     }
                     self.saved_names = diagram_file::names_in(&loaded.folder).unwrap_or_default();
@@ -301,14 +301,14 @@ impl ViewerApp {
 
     fn open_source(&mut self, source: DiagramSource) {
         let Some(model) = &self.model else { return };
-        if let Some(index) = self.diagrams.iter().position(|d| d.source == source) {
+        if let Some(index) = self.tabs.iter().position(|t| t.diagram.source == source) {
             self.activate(index);
             return;
         }
         let mut diagram = OpenDiagram::open_source(model, source);
         diagram.set_model_style(model, self.model_style.clone());
-        self.diagrams.push(diagram);
-        self.activate(self.diagrams.len() - 1);
+        self.tabs.push(Tab::new(diagram));
+        self.activate(self.tabs.len() - 1);
     }
 
     /// With a root given on the command line, open an Interconnection
@@ -335,9 +335,9 @@ impl ViewerApp {
     /// Opens the saved Diagram File `name`, or switches to it if open.
     fn open_saved(&mut self, name: &str) {
         if let Some(index) = self
-            .diagrams
+            .tabs
             .iter()
-            .position(|d| d.name.as_deref() == Some(name))
+            .position(|t| t.diagram.name.as_deref() == Some(name))
         {
             self.activate(index);
             return;
@@ -353,8 +353,8 @@ impl ViewerApp {
             Ok(file) => {
                 let mut diagram = OpenDiagram::open_saved(model, file);
                 diagram.set_model_style(model, self.model_style.clone());
-                self.diagrams.push(diagram);
-                self.activate(self.diagrams.len() - 1);
+                self.tabs.push(Tab::new(diagram));
+                self.activate(self.tabs.len() - 1);
             }
             Err(error) => self.status = Some(format!("Cannot open {}: {error}", path.display())),
         }
@@ -363,12 +363,12 @@ impl ViewerApp {
     fn activate(&mut self, index: usize) {
         // A Selection lasts only while its Diagram is the one shown.
         if self.active != Some(index) {
-            for diagram in &mut self.diagrams {
+            for diagram in self.tabs.iter_mut().map(|t| &mut t.diagram) {
                 diagram.selection.clear();
             }
         }
         self.active = Some(index);
-        let diagram = &self.diagrams[index];
+        let diagram = &self.tabs[index].diagram;
         let file_name = match (&diagram.name, &diagram.source) {
             (Some(name), _) => name.clone(),
             (None, DiagramSource::Tool { root, .. }) => root.simple_name().to_owned(),
@@ -384,9 +384,9 @@ impl ViewerApp {
     }
 
     fn close(&mut self, index: usize) {
-        self.diagrams.remove(index);
+        self.tabs.remove(index);
         self.active = match self.active {
-            _ if self.diagrams.is_empty() => None,
+            _ if self.tabs.is_empty() => None,
             Some(a) if a >= index && a > 0 => Some(a - 1),
             other => other,
         };
@@ -413,7 +413,7 @@ impl ViewerApp {
         let (Some(active), Some(model)) = (self.active, &self.model) else {
             return;
         };
-        self.diagrams[active].edit(model, &edit);
+        self.tabs[active].diagram.edit(model, &edit);
     }
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
@@ -634,7 +634,7 @@ impl ViewerApp {
             .auto_shrink(false)
             .show(ui, |ui| match (self.style_tab, self.active) {
                 (StyleTab::Diagram, Some(active)) => {
-                    let diagram = &mut self.diagrams[active];
+                    let diagram = &mut self.tabs[active].diagram;
                     let mut style = diagram.style.clone();
                     ui.checkbox(&mut style.model_style, "Use Model Style")
                         .on_hover_text("Off: only this Diagram's rules apply");
@@ -662,7 +662,7 @@ impl ViewerApp {
                     let edited = style_panel::rule_list(ui, "model", &mut rules, model);
                     if edited.changed {
                         self.model_style = Some(viewer_core::style::Style::new(rules));
-                        for diagram in &mut self.diagrams {
+                        for diagram in self.tabs.iter_mut().map(|t| &mut t.diagram) {
                             diagram.set_model_style(model, self.model_style.clone());
                         }
                     }
@@ -837,20 +837,20 @@ impl ViewerApp {
             });
             return;
         }
-        self.tabs(ui);
+        self.tab_bar(ui);
         let Some(active) = self.active else { return };
         self.toolbar(ui, active);
         ui.separator();
         self.canvas(ui, active);
     }
 
-    fn tabs(&mut self, ui: &mut egui::Ui) {
+    fn tab_bar(&mut self, ui: &mut egui::Ui) {
         let mut activate = None;
         let mut close = None;
         ui.horizontal_wrapped(|ui| {
-            for (index, diagram) in self.diagrams.iter().enumerate() {
-                let tab = ui.selectable_label(self.active == Some(index), diagram.title());
-                let tab = if diagram.dirty {
+            for (index, open) in self.tabs.iter().enumerate() {
+                let tab = ui.selectable_label(self.active == Some(index), open.title());
+                let tab = if open.diagram.dirty {
                     tab.on_hover_text("Unsaved changes")
                 } else {
                     tab
@@ -868,7 +868,7 @@ impl ViewerApp {
             self.activate(index);
         }
         if let Some(index) = close {
-            if self.diagrams[index].dirty {
+            if self.tabs[index].diagram.dirty {
                 self.confirm = Some(Confirm::CloseTab(index));
             } else {
                 self.close(index);
@@ -881,12 +881,12 @@ impl ViewerApp {
         let mut history = None;
         ui.horizontal_wrapped(|ui| {
             if ui.button("Fit").clicked() {
-                self.diagrams[active].needs_fit = true;
+                self.tabs[active].needs_fit = true;
             }
-            ui.label(format!("{:.0}%", self.diagrams[active].view.zoom * 100.0));
+            ui.label(format!("{:.0}%", self.tabs[active].view.zoom * 100.0));
             ui.separator();
 
-            let diagram = &self.diagrams[active];
+            let diagram = &self.tabs[active].diagram;
             if ui
                 .add_enabled(diagram.can_undo(), egui::Button::new("Undo"))
                 .on_hover_text("Ctrl+Z")
@@ -903,7 +903,7 @@ impl ViewerApp {
             }
             ui.separator();
 
-            let diagram = &self.diagrams[active];
+            let diagram = &self.tabs[active].diagram;
             if diagram.name.is_some()
                 && ui
                     .add_enabled(diagram.dirty, egui::Button::new("Save"))
@@ -923,7 +923,8 @@ impl ViewerApp {
             }
             ui.separator();
 
-            let hidden: Vec<QualifiedName> = self.diagrams[active]
+            let hidden: Vec<QualifiedName> = self.tabs[active]
+                .diagram
                 .layout
                 .hidden
                 .iter()
@@ -952,8 +953,8 @@ impl ViewerApp {
             {
                 edits.push(Edit::Reset);
             }
-            if self.diagrams[active].kind == Some(DiagramKind::General) {
-                let mut shown = !self.diagrams[active].layout.inherited_hidden;
+            if self.tabs[active].diagram.kind == Some(DiagramKind::General) {
+                let mut shown = !self.tabs[active].diagram.layout.inherited_hidden;
                 if ui
                     .checkbox(&mut shown, "Inherited")
                     .on_hover_text("Show Inherited Members as ^ rows")
@@ -966,14 +967,14 @@ impl ViewerApp {
                     });
                 }
             }
-            let mut legend = self.diagrams[active].style.legend;
+            let mut legend = self.tabs[active].diagram.style.legend;
             if ui
                 .checkbox(&mut legend, "Legend")
                 .on_hover_text("Key the Style's colors on the Diagram")
                 .changed()
                 && let Some(model) = &self.model
             {
-                let diagram = &mut self.diagrams[active];
+                let diagram = &mut self.tabs[active].diagram;
                 let style = viewer_core::DiagramStyle {
                     legend,
                     ..diagram.style.clone()
@@ -985,7 +986,7 @@ impl ViewerApp {
             ui.add(egui::TextEdit::singleline(&mut self.export_path).desired_width(260.0));
             if ui.button("Export SVG").clicked() {
                 let path = PathBuf::from(self.export_path.trim());
-                self.status = Some(match self.diagrams[active].export_svg(&path) {
+                self.status = Some(match self.tabs[active].diagram.export_svg(&path) {
                     Ok(()) => format!("Exported to {}", path.display()),
                     Err(error) => format!("Export failed: {error}"),
                 });
@@ -1012,7 +1013,7 @@ impl ViewerApp {
             });
         }
         if let (Some(history), Some(model)) = (history, &self.model) {
-            let diagram = &mut self.diagrams[active];
+            let diagram = &mut self.tabs[active].diagram;
             match history {
                 History::Undo => diagram.undo(model),
                 History::Redo => diagram.redo(model),
@@ -1024,7 +1025,7 @@ impl ViewerApp {
         let Some(folder) = self.folder.clone() else {
             return;
         };
-        self.status = Some(match self.diagrams[active].save_as(&folder, name) {
+        self.status = Some(match self.tabs[active].diagram.save_as(&folder, name) {
             Ok(()) => {
                 self.saved_names = diagram_file::names_in(&folder).unwrap_or_default();
                 format!("Saved {}", diagram_file::path_for(&folder, name).display())
@@ -1037,7 +1038,8 @@ impl ViewerApp {
         let (response, painter) =
             ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
         let origin = response.rect.min;
-        let diagram = &mut self.diagrams[active];
+        let tab = &mut self.tabs[active];
+        let diagram = &mut tab.diagram;
         let scene = match &diagram.scene {
             Ok(scene) => scene,
             Err(error) => {
@@ -1054,20 +1056,20 @@ impl ViewerApp {
         // Fit on request, and keep refitting while the canvas settles (side
         // panels appear) until the user pans or zooms.
         let size = response.rect.size();
-        let resized = diagram
+        let resized = tab
             .fitted_to
             .is_some_and(|fitted| (fitted - size).length() > 1.0);
-        if diagram.needs_fit || resized {
-            diagram.view = View::fit(
+        if tab.needs_fit || resized {
+            tab.view = View::fit(
                 egui::vec2(scene.x, scene.y),
                 egui::vec2(scene.width, scene.height),
                 size,
             );
-            diagram.needs_fit = false;
-            diagram.fitted_to = Some(size);
+            tab.needs_fit = false;
+            tab.fitted_to = Some(size);
         }
-        let view_before = diagram.view;
-        let view = diagram.view;
+        let view_before = tab.view;
+        let view = tab.view;
         let bends_of = |edge: &Depicts| -> Vec<[f32; 2]> {
             scene
                 .edges()
@@ -1167,7 +1169,7 @@ impl ViewerApp {
                         });
                     }
                 }
-                Some(Drag::Pan) | None => diagram.view.pan += response.drag_delta(),
+                Some(Drag::Pan) | None => tab.view.pan += response.drag_delta(),
             }
         }
         let drag_began = response.drag_started_by(egui::PointerButton::Primary);
@@ -1184,14 +1186,14 @@ impl ViewerApp {
         if let Some(pointer) = response.hover_pos() {
             let (zoom, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
             if zoom != 1.0 {
-                diagram.view.zoom_at(origin, pointer, zoom);
+                tab.view.zoom_at(origin, pointer, zoom);
             } else {
-                diagram.view.pan += scroll;
+                tab.view.pan += scroll;
             }
         }
 
-        if diagram.view != view_before {
-            diagram.fitted_to = None;
+        if tab.view != view_before {
+            tab.fitted_to = None;
         }
         let hover = response
             .hover_pos()
@@ -1497,13 +1499,13 @@ impl ViewerApp {
             }
         }
         if drag_began {
-            self.diagrams[active].begin_drag();
+            self.tabs[active].diagram.begin_drag();
         }
         if let Some(edit) = edit {
             self.edit_active(edit);
         }
         if drag_ended {
-            self.diagrams[active].end_drag();
+            self.tabs[active].diagram.end_drag();
         }
         if let Some(element) = select {
             self.select_and_reveal(element);
@@ -1518,7 +1520,7 @@ impl ViewerApp {
     fn confirmations(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested())
             && !self.quit_confirmed
-            && self.diagrams.iter().any(|d| d.dirty)
+            && self.tabs.iter().any(|t| t.diagram.dirty)
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Confirm::Quit);
@@ -1527,13 +1529,13 @@ impl ViewerApp {
         let question = match confirm {
             Confirm::CloseTab(index) => format!(
                 "Discard unsaved changes to “{}”?",
-                self.diagrams[*index].title()
+                self.tabs[*index].title()
             ),
             Confirm::Quit => {
                 let names: Vec<String> = self
-                    .diagrams
+                    .tabs
                     .iter()
-                    .filter(|d| d.dirty)
+                    .filter(|t| t.diagram.dirty)
                     .map(|d| d.title())
                     .collect();
                 format!("Discard unsaved changes to {} and quit?", names.join(", "))
@@ -1723,7 +1725,7 @@ fn open_in_editor(source: &viewer_core::SourceLocation) -> Result<(), String> {
 /// `collapsed` reference.
 fn arrange_menu(
     ui: &mut egui::Ui,
-    selection: &canvas::Selection,
+    selection: &viewer_core::Selection,
     reference: &QualifiedName,
     collapsed: bool,
 ) -> Option<Edit> {

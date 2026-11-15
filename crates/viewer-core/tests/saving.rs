@@ -2,8 +2,8 @@
 //! and reopening it restores the Layout. The Model files are never written.
 
 use tempfile::TempDir;
-use viewer_app::canvas::{OpenDiagram, check_name};
 use viewer_core::editing::Edit;
+use viewer_core::open_diagram::{OpenDiagram, OpenDiagramError, check_name};
 use viewer_core::{DiagramFile, DiagramKind, Model, QualifiedName, diagram_file};
 
 fn model() -> Model {
@@ -39,7 +39,6 @@ fn an_ad_hoc_diagram_starts_saved_and_unnamed() {
 
     assert!(!diagram.dirty);
     assert_eq!(diagram.name, None);
-    assert_eq!(diagram.title(), "P (General)");
 }
 
 #[test]
@@ -47,7 +46,6 @@ fn an_edit_marks_the_diagram_unsaved() {
     let (_, diagram) = moved();
 
     assert!(diagram.dirty);
-    assert_eq!(diagram.title(), "P (General) •");
 }
 
 #[test]
@@ -74,7 +72,7 @@ fn saving_writes_a_diagram_file_that_reopens_with_the_same_layout() {
     diagram.save_as(folder.path(), "overview").unwrap();
 
     assert!(!diagram.dirty);
-    assert_eq!(diagram.title(), "overview");
+    assert_eq!(diagram.name.as_deref(), Some("overview"));
     let text = std::fs::read_to_string(diagram_file::path_for(folder.path(), "overview")).unwrap();
     let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
     assert_eq!(
@@ -118,7 +116,7 @@ fn saving_again_under_its_own_name_overwrites_but_another_diagrams_name_is_refus
 
     let mut second = OpenDiagram::open(&model, DiagramKind::General, qn("P"));
     let error = second.save_as(folder.path(), "overview").unwrap_err();
-    assert!(error.contains("already exists"), "{error}");
+    assert!(matches!(error, OpenDiagramError::NameTaken(_)), "{error}");
 }
 
 #[test]

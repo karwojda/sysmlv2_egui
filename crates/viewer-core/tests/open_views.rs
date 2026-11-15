@@ -3,9 +3,9 @@
 //! Model changes.
 
 use tempfile::TempDir;
-use viewer_app::canvas::OpenDiagram;
 use viewer_core::editing::Edit;
 use viewer_core::model::ExposeScope;
+use viewer_core::open_diagram::OpenDiagram;
 use viewer_core::{
     DiagramError, DiagramFile, DiagramKind, DiagramSource, Model, QualifiedName, diagram_file,
 };
@@ -43,7 +43,6 @@ fn a_view_opens_as_its_model_defined_diagram() {
 
     let diagram = OpenDiagram::open_source(&model, tree());
 
-    assert_eq!(diagram.title(), "vehicle tree (view)");
     assert_eq!(diagram.kind, Some(DiagramKind::General));
     let scene = diagram.scene.unwrap();
     assert!(scene.element_bounds(&qn("P::vehicle::body")).is_some());
@@ -75,7 +74,7 @@ fn a_view_is_saved_under_a_file_safe_version_of_its_name_referring_to_the_view()
     assert!(text.contains(r#""view": "P::vehicle tree""#));
     assert!(!text.contains(r#""kind""#) && !text.contains(r#""root""#));
     let reopened = OpenDiagram::open_saved(&model, DiagramFile::parse(&text).unwrap());
-    assert_eq!(reopened.title(), "vehicle-tree");
+    assert_eq!(reopened.name.as_deref(), Some("vehicle-tree"));
     assert_eq!(reopened.layout, diagram.layout);
 }
 

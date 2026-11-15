@@ -1,8 +1,8 @@
 //! The Selection: which nodes clicks and selection boxes pick, keeping it
 //! within one box, and what drops out of it.
 
-use viewer_app::canvas::{OpenDiagram, Selection};
 use viewer_core::editing::Edit;
+use viewer_core::open_diagram::{OpenDiagram, Selection};
 use viewer_core::scene::Rect;
 use viewer_core::{DiagramKind, Model, QualifiedName, Scene};
 

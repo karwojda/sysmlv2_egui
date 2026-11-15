@@ -1,6 +1,6 @@
 //! Exporting from the viewer writes exactly what the command line writes.
 
-use viewer_app::canvas::OpenDiagram;
+use viewer_core::OpenDiagram;
 use viewer_core::model::Direction;
 use viewer_core::{DiagramFile, DiagramKind, FakeBackend, Model, QualifiedName, diagram_file};
 
@@ -66,7 +66,7 @@ fn exporting_a_diagram_whose_root_is_gone_fails_with_the_reason() {
         .export_svg(&folder.path().join("x.svg"))
         .unwrap_err();
 
-    assert!(error.contains("Gone"), "{error}");
+    assert!(error.to_string().contains("Gone"), "{error}");
 }
 
 #[test]

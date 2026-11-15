@@ -1,8 +1,8 @@
 //! Which Diagram opens for a root, and saving Interconnection Diagrams.
 
 use tempfile::TempDir;
-use viewer_app::canvas::OpenDiagram;
 use viewer_app::startup_kind;
+use viewer_core::OpenDiagram;
 use viewer_core::{DiagramFile, DiagramKind, Model, QualifiedName, diagram_file};
 
 fn model() -> Model {
@@ -71,7 +71,6 @@ fn an_interconnection_diagram_saves_and_reopens_as_one() {
     let folder = TempDir::new().unwrap();
     let model = model();
     let mut diagram = OpenDiagram::open(&model, DiagramKind::Interconnection, qn("P::Vehicle"));
-    assert_eq!(diagram.title(), "Vehicle (Interconnection)");
 
     diagram.save_as(folder.path(), "wiring").unwrap();
 

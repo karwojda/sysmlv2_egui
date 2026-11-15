@@ -2,8 +2,8 @@
 //! the unsaved mark follows whether the Diagram is back where it was saved.
 
 use tempfile::TempDir;
-use viewer_app::canvas::OpenDiagram;
 use viewer_core::editing::Edit;
+use viewer_core::open_diagram::OpenDiagram;
 use viewer_core::{DiagramKind, Layout, Model, QualifiedName};
 
 fn model() -> Model {

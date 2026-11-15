@@ -2,7 +2,7 @@
 //! own Style is an unsaved change until saved with it.
 
 use tempfile::TempDir;
-use viewer_app::canvas::OpenDiagram;
+use viewer_core::open_diagram::OpenDiagram;
 use viewer_core::scene::{Depicts, Fill, Rgb, Shape};
 use viewer_core::style::{Condition, Style, StyleRule};
 use viewer_core::{
