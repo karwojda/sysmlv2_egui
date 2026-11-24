@@ -1,8 +1,12 @@
-//! Exporting from the viewer writes exactly what the command line writes.
+//! The command line Exports a Diagram exactly as the viewer's Open Diagram
+//! does.
 
-use viewer_app::canvas::OpenDiagram;
+use std::sync::Arc;
+use viewer_core::OpenDiagram;
 use viewer_core::model::Direction;
-use viewer_core::{DiagramFile, DiagramKind, FakeBackend, Model, QualifiedName, diagram_file};
+use viewer_core::{
+    DiagramFile, DiagramKind, DiagramSource, FakeBackend, Model, QualifiedName, diagram_file,
+};
 
 fn model() -> Model {
     Model::builder()
@@ -19,6 +23,15 @@ fn model() -> Model {
         .part("P::vehicle")
         .typed_by("P::Vehicle")
         .build()
+}
+
+/// Opens the Tool-defined Diagram of `kind` rooted at `root`, unstyled.
+fn open_tool(model: &Model, kind: DiagramKind, root: QualifiedName) -> OpenDiagram {
+    OpenDiagram::open(
+        Arc::new(model.clone()),
+        None,
+        DiagramSource::Tool { kind, root },
+    )
 }
 
 #[test]
@@ -46,7 +59,7 @@ fn the_viewer_export_is_byte_identical_to_the_cli_export() {
         &mut FakeBackend::new(model()),
         &mut Vec::new(),
     );
-    OpenDiagram::open(&model(), DiagramKind::General, QualifiedName::from("P"))
+    open_tool(&model(), DiagramKind::General, QualifiedName::from("P"))
         .export_svg(&from_viewer)
         .unwrap();
 
@@ -54,30 +67,5 @@ fn the_viewer_export_is_byte_identical_to_the_cli_export() {
     assert_eq!(
         std::fs::read(from_viewer).unwrap(),
         std::fs::read(from_cli).unwrap()
-    );
-}
-
-#[test]
-fn exporting_a_diagram_whose_root_is_gone_fails_with_the_reason() {
-    let diagram = OpenDiagram::open(&model(), DiagramKind::General, QualifiedName::from("Gone"));
-    let folder = tempfile::TempDir::new().unwrap();
-
-    let error = diagram
-        .export_svg(&folder.path().join("x.svg"))
-        .unwrap_err();
-
-    assert!(error.contains("Gone"), "{error}");
-}
-
-#[test]
-fn reopening_a_model_rebuilds_the_open_diagram() {
-    let mut diagram = OpenDiagram::open(&model(), DiagramKind::General, QualifiedName::from("P"));
-    let smaller = Model::builder().package("P").part_def("P::Engine").build();
-
-    diagram.refresh(&smaller);
-
-    assert_eq!(
-        diagram.scene.unwrap().elements(),
-        [&QualifiedName::from("P::Engine")]
     );
 }

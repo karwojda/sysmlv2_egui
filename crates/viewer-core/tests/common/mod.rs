@@ -2,7 +2,19 @@
 
 #![allow(dead_code)]
 
-use viewer_core::Model;
+use std::sync::Arc;
+
+use viewer_core::{DiagramKind, DiagramSource, Model, OpenDiagram, QualifiedName};
+
+/// Opens the Tool-defined Diagram of `kind` rooted at `root`, drawn from
+/// `model` without a Model Style.
+pub fn open_tool(model: &Model, kind: DiagramKind, root: QualifiedName) -> OpenDiagram {
+    OpenDiagram::open(
+        Arc::new(model.clone()),
+        None,
+        DiagramSource::Tool { kind, root },
+    )
+}
 
 /// What starts the continuation lines of a wrapped compartment row.
 pub const CONTINUED: &str = "\u{2003}\u{2003}";

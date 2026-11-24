@@ -281,6 +281,27 @@ impl Depicts {
 }
 
 impl Scene {
+    /// Whether the node under `key` can be moved, resized and selected: any
+    /// node of a General Diagram, any part but the Frame in an
+    /// Interconnection Diagram.
+    pub fn movable(&self, key: &QualifiedName) -> bool {
+        self.origins.is_empty() || self.origins.contains_key(key)
+    }
+
+    /// The box the node under `key` is drawn in: the feature path of the
+    /// part it's inside in an Interconnection Diagram (`""` for the
+    /// Frame's), none on a General Diagram's page.
+    pub fn container_of<'a>(&self, key: &'a QualifiedName) -> Option<&'a str> {
+        if self.origins.is_empty() {
+            return None;
+        }
+        Some(
+            key.as_str()
+                .rsplit_once('.')
+                .map_or("", |(parent, _)| parent),
+        )
+    }
+
     /// The rect of the node drawn under `key` (see [`Depicts::node_key`]).
     pub fn node_bounds(&self, key: &QualifiedName) -> Option<Rect> {
         self.items

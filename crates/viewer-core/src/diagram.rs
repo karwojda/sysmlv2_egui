@@ -61,7 +61,7 @@ impl DiagramKind {
     }
 }
 
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum DiagramError {
     #[error("root element `{0}` does not exist in the Model")]
     RootNotFound(QualifiedName),

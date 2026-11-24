@@ -16,6 +16,7 @@ mod interconnection;
 mod layout;
 pub mod model;
 mod notation;
+pub mod open_diagram;
 pub mod properties;
 pub mod satisfaction;
 pub mod scene;
@@ -36,4 +37,5 @@ pub use diagram_file::{
     DiagramFile, DiagramFileError, DiagramStyle, Layout, NodePlacement, PortPlacement, PortSide,
 };
 pub use model::{Diagnostic, Element, ElementKind, Model, QualifiedName, Severity, SourceLocation};
+pub use open_diagram::{OpenDiagram, Selection};
 pub use scene::Scene;

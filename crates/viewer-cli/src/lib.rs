@@ -6,19 +6,19 @@ use std::ffi::OsString;
 use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::{ArgGroup, Parser, Subcommand};
 use viewer_core::backend::Analyses;
 use viewer_core::engineering_tools::{self, DesignValue, DesignValueSource, Parts, ToolLink};
 use viewer_core::model::{Element, ElementKind};
+use viewer_core::open_diagram::{OpenDiagram, OpenDiagramError};
 use viewer_core::satisfaction;
 use viewer_core::style::{self, Style};
 use viewer_core::units::readable_value;
 use viewer_core::verdict::{self, Finding, Kind, Status, Verdict};
 use viewer_core::view::{self, ViewError};
-use viewer_core::{
-    DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file, svg,
-};
+use viewer_core::{DiagramFile, DiagramSource, Model, ModelBackend, QualifiedName, diagram_file};
 use viewer_opensysml::ServiceConfig;
 
 pub const EXIT_OK: u8 = 0;
@@ -632,7 +632,7 @@ fn export_one(
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
     let diagram = read_diagram(model_folder, name)?;
-    let model = load_model(model_folder, backend, stderr)?;
+    let model = Arc::new(load_model(model_folder, backend, stderr)?);
     let style = load_style(model_folder, stderr);
     render_to(&model, &diagram, style.as_ref(), out)
 }
@@ -646,7 +646,7 @@ fn export_view(
     backend: &mut dyn ModelBackend,
     stderr: &mut dyn Write,
 ) -> Result<(), Failure> {
-    let model = load_model(model_folder, backend, stderr)?;
+    let model = Arc::new(load_model(model_folder, backend, stderr)?);
     let view = find_view(&model, name)?;
     if let Err(ViewError::Unsupported { reason, .. }) = view::kind(&model, &view) {
         return Err(Failure(format!("view `{view}` can't be drawn: {reason}")));
@@ -703,7 +703,7 @@ fn export_all(
             model_folder.display()
         ))
     })?;
-    let model = load_model(model_folder, backend, stderr)?;
+    let model = Arc::new(load_model(model_folder, backend, stderr)?);
 
     // What to write, by output name, and what each output came from.
     let mut jobs: Vec<(String, Result<DiagramFile, Failure>)> = Vec::new();
@@ -825,23 +825,20 @@ fn load_style(model_folder: &Path, stderr: &mut dyn Write) -> Option<Style> {
     })
 }
 
+/// Exports `diagram` to `out`: drawn as the Open Diagram the viewer would
+/// show for it, so both write the same SVG.
 fn render_to(
-    model: &Model,
+    model: &Arc<Model>,
     diagram: &DiagramFile,
     style: Option<&Style>,
     out: &Path,
 ) -> Result<(), Failure> {
-    let mut scene = diagram
-        .source
-        .build_scene(model, &diagram.layout)
-        .map_err(|e| Failure(format!("Diagram `{}`: {e}", diagram.name)))?;
-    style::apply_styles(&mut scene, model, style, &diagram.style);
-    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| Failure(format!("cannot create {}: {e}", parent.display())))?;
-    }
-    std::fs::write(out, svg::render(&scene))
-        .map_err(|e| Failure(format!("cannot write {}: {e}", out.display())))
+    OpenDiagram::open_saved(Arc::clone(model), style.cloned(), diagram.clone())
+        .export_svg(out)
+        .map_err(|error| match error {
+            OpenDiagramError::NotDrawn(e) => Failure(format!("Diagram `{}`: {e}", diagram.name)),
+            e => Failure(format!("cannot write {}: {e}", out.display())),
+        })
 }
 
 #[derive(Debug)]
